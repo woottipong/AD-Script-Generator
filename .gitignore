@@ -9,3 +9,4 @@ coverage/
 
 .impeccable
 .playwright-cli
+.data

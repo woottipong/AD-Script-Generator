@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertOctagon, Check } from 'lucide-react';
+import { AlertOctagon } from 'lucide-react';
 import {
   ADSpot,
   AnalysisBatch,
@@ -36,6 +36,7 @@ export default function App() {
   const [status, setStatus] = useState<JobStatus>('IDLE');
   const [jobId, setJobId] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [headerActionsElement, setHeaderActionsElement] = useState<HTMLDivElement | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
@@ -380,7 +381,12 @@ export default function App() {
         objectUrlRef.current = null;
       }
 
-      setVideoFile(file);
+      setVideoFile(null);
+      setVideoMetadata(null);
+      setVideoUrl(null);
+      setValidationIssues([]);
+      setCurrentTimeMs(0);
+      setStatus('IDLE');
 
       const validation = await validateAndInspectMp4File(file, {
         maxDurationSeconds: FIXED_MAX_VIDEO_DURATION_SECONDS,
@@ -388,10 +394,11 @@ export default function App() {
       });
       if (selectionToken.aborted) return;
 
-      setVideoMetadata(validation.metadata);
       setValidationIssues(validation.issues);
 
       if (validation.valid && validation.metadata) {
+        setVideoFile(file);
+        setVideoMetadata(validation.metadata);
         const blobUrl = URL.createObjectURL(file);
         objectUrlRef.current = blobUrl;
         setVideoUrl(blobUrl);
@@ -818,35 +825,23 @@ export default function App() {
   };
 
   const hasProject = Boolean(videoMetadata);
-  const workflowStep = status === 'READY' ? 2 : hasProject ? 1 : 0;
 
   return (
     <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <a href="#main-workspace" className="skip-link">ข้ามไปยังพื้นที่ทำงาน</a>
       <header className="min-h-16 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center py-3">
-        <div className="w-full flex items-center justify-between gap-4">
+        <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
           <a
-            href="#section-upload-vad"
+            href={hasProject ? '#main-workspace' : '#section-upload-vad'}
             className="inline-flex items-center gap-2.5 text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
           >
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
             AD Script Studio
           </a>
 
-          {!hasProject && <span className="hidden sm:block text-sm text-slate-600">สร้างบทบรรยายภาพภาษาไทยจากวิดีโอ</span>}
+          <div ref={setHeaderActionsElement} className="contents" />
         </div>
       </header>
-
-      <ol aria-label="ขั้นตอนสร้างบทบรรยาย" className="grid grid-cols-3 gap-2 bg-white border-b border-slate-200 px-4 sm:px-6 py-3 shrink-0">
-        {['เลือกวิดีโอ', 'สร้างบทบรรยาย', 'ตรวจและส่งออก'].map((label, index) => (
-          <li key={label} aria-current={workflowStep === index ? 'step' : undefined} className={`flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left text-xs sm:text-sm ${workflowStep === index ? 'text-emerald-800 font-semibold' : 'text-slate-600'}`}>
-            <span className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs ${workflowStep >= index ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
-              {workflowStep > index ? <Check className="w-4 h-4" aria-hidden="true" /> : index + 1}
-            </span>
-            <span className="whitespace-nowrap">{label}</span>
-          </li>
-        ))}
-      </ol>
 
       {/* Browser Compatibility Blocking Banner */}
       {browserCompat && !browserCompat.supported && (
@@ -873,6 +868,7 @@ export default function App() {
 
       {/* Top Studio Project & Queue Command Bar */}
       <UploadAndVadPanel
+        headerActionsElement={headerActionsElement}
         status={status}
         videoFile={videoFile}
         videoMetadata={videoMetadata}
