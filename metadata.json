@@ -1,0 +1,6 @@
+{
+  "name": "AD Script Generator",
+  "description": "Automatic Thai Audio Description (AD) Script Generator with Browser-first Silero VAD (ONNX Runtime Web + WebCodecs) and Server-side Gemini 3.8 Flash Video Analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

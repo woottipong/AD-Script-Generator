@@ -1,0 +1,651 @@
+{
+  "job_id": "job_1794484155216_b24f1ab6",
+  "created_at": "2026-11-12T11:49:24.309Z",
+  "updated_at": "2026-11-12T12:16:46.831Z",
+  "status": "ANALYZING",
+  "video_metadata": {
+    "fileName": "081 บ้านหกเหลี่ยมของผึ้ง 480p.mp4",
+    "fileSize": 105061445,
+    "mimeType": "video/mp4",
+    "width": 854,
+    "height": 480,
+    "durationMs": 612751,
+    "videoCodec": "avc1.64001f",
+    "audioCodec": "mp4a.40.2",
+    "hasAudioTrack": true,
+    "sampleRate": 44100,
+    "channelCount": 2
+  },
+  "vad_config": {
+    "speechThreshold": 0.5,
+    "minSpeechDurationMs": 250,
+    "minSilenceDurationMs": 400,
+    "speechPaddingMs": 200,
+    "minAdGapMs": 3000
+  },
+  "ad_settings": {
+    "contentGenre": "auto_cinema",
+    "narrationPaceCharsPerSec": 11.5,
+    "safetyBufferMs": 250,
+    "avoidCameraJargon": true,
+    "prioritizeCharacterActions": true
+  },
+  "vad_output": {
+    "duration_ms": 612751,
+    "speech_segments": [
+      {
+        "start_ms": 1016,
+        "end_ms": 1704
+      },
+      {
+        "start_ms": 130680,
+        "end_ms": 135624
+      },
+      {
+        "start_ms": 139800,
+        "end_ms": 141160
+      },
+      {
+        "start_ms": 141368,
+        "end_ms": 147272
+      },
+      {
+        "start_ms": 147512,
+        "end_ms": 150920
+      },
+      {
+        "start_ms": 151032,
+        "end_ms": 152488
+      },
+      {
+        "start_ms": 152984,
+        "end_ms": 160232
+      },
+      {
+        "start_ms": 160856,
+        "end_ms": 168360
+      },
+      {
+        "start_ms": 168632,
+        "end_ms": 175016
+      },
+      {
+        "start_ms": 175192,
+        "end_ms": 176168
+      },
+      {
+        "start_ms": 176408,
+        "end_ms": 177128
+      },
+      {
+        "start_ms": 177176,
+        "end_ms": 181640
+      },
+      {
+        "start_ms": 182104,
+        "end_ms": 182920
+      },
+      {
+        "start_ms": 182936,
+        "end_ms": 192104
+      },
+      {
+        "start_ms": 193240,
+        "end_ms": 195176
+      },
+      {
+        "start_ms": 196952,
+        "end_ms": 199304
+      },
+      {
+        "start_ms": 199864,
+        "end_ms": 201096
+      },
+      {
+        "start_ms": 201656,
+        "end_ms": 202792
+      },
+      {
+        "start_ms": 203736,
+        "end_ms": 204520
+      },
+      {
+        "start_ms": 207096,
+        "end_ms": 208136
+      },
+      {
+        "start_ms": 208728,
+        "end_ms": 222280
+      },
+      {
+        "start_ms": 225016,
+        "end_ms": 228136
+      },
+      {
+        "start_ms": 228280,
+        "end_ms": 231880
+      },
+      {
+        "start_ms": 232312,
+        "end_ms": 235720
+      },
+      {
+        "start_ms": 236088,
+        "end_ms": 248168
+      },
+      {
+        "start_ms": 249080,
+        "end_ms": 250056
+      },
+      {
+        "start_ms": 259960,
+        "end_ms": 264584
+      },
+      {
+        "start_ms": 265688,
+        "end_ms": 266760
+      },
+      {
+        "start_ms": 267320,
+        "end_ms": 271080
+      },
+      {
+        "start_ms": 271128,
+        "end_ms": 272488
+      },
+      {
+        "start_ms": 272696,
+        "end_ms": 273544
+      },
+      {
+        "start_ms": 273816,
+        "end_ms": 276008
+      },
+      {
+        "start_ms": 276504,
+        "end_ms": 278664
+      },
+      {
+        "start_ms": 281080,
+        "end_ms": 281896
+      },
+      {
+        "start_ms": 285496,
+        "end_ms": 286632
+      },
+      {
+        "start_ms": 286872,
+        "end_ms": 288776
+      },
+      {
+        "start_ms": 293208,
+        "end_ms": 309288
+      },
+      {
+        "start_ms": 309624,
+        "end_ms": 312520
+      },
+      {
+        "start_ms": 312568,
+        "end_ms": 316040
+      },
+      {
+        "start_ms": 316312,
+        "end_ms": 317096
+      },
+      {
+        "start_ms": 319992,
+        "end_ms": 320776
+      },
+      {
+        "start_ms": 320824,
+        "end_ms": 323144
+      },
+      {
+        "start_ms": 324120,
+        "end_ms": 328296
+      },
+      {
+        "start_ms": 328440,
+        "end_ms": 331240
+      },
+      {
+        "start_ms": 332920,
+        "end_ms": 333864
+      },
+      {
+        "start_ms": 337464,
+        "end_ms": 339432
+      },
+      {
+        "start_ms": 341752,
+        "end_ms": 343656
+      },
+      {
+        "start_ms": 343864,
+        "end_ms": 345480
+      },
+      {
+        "start_ms": 345656,
+        "end_ms": 347400
+      },
+      {
+        "start_ms": 352120,
+        "end_ms": 353192
+      },
+      {
+        "start_ms": 354168,
+        "end_ms": 354952
+      },
+      {
+        "start_ms": 355960,
+        "end_ms": 357128
+      },
+      {
+        "start_ms": 359128,
+        "end_ms": 360104
+      },
+      {
+        "start_ms": 361304,
+        "end_ms": 362568
+      },
+      {
+        "start_ms": 362904,
+        "end_ms": 364232
+      },
+      {
+        "start_ms": 364376,
+        "end_ms": 367240
+      },
+      {
+        "start_ms": 367512,
+        "end_ms": 368744
+      },
+      {
+        "start_ms": 370680,
+        "end_ms": 372104
+      },
+      {
+        "start_ms": 372856,
+        "end_ms": 374952
+      },
+      {
+        "start_ms": 375032,
+        "end_ms": 376136
+      },
+      {
+        "start_ms": 376344,
+        "end_ms": 377192
+      },
+      {
+        "start_ms": 378264,
+        "end_ms": 381320
+      },
+      {
+        "start_ms": 381432,
+        "end_ms": 383272
+      },
+      {
+        "start_ms": 384984,
+        "end_ms": 389192
+      },
+      {
+        "start_ms": 389208,
+        "end_ms": 390760
+      },
+      {
+        "start_ms": 392024,
+        "end_ms": 393032
+      },
+      {
+        "start_ms": 395448,
+        "end_ms": 399176
+      },
+      {
+        "start_ms": 399352,
+        "end_ms": 404104
+      },
+      {
+        "start_ms": 405496,
+        "end_ms": 406280
+      },
+      {
+        "start_ms": 549976,
+        "end_ms": 552744
+      },
+      {
+        "start_ms": 556888,
+        "end_ms": 568424
+      },
+      {
+        "start_ms": 570136,
+        "end_ms": 575784
+      },
+      {
+        "start_ms": 576504,
+        "end_ms": 598696
+      }
+    ],
+    "candidate_spots": [
+      {
+        "spot_id": "spot_001",
+        "start_ms": 1704,
+        "end_ms": 130680,
+        "duration_ms": 128976
+      },
+      {
+        "spot_id": "spot_002",
+        "start_ms": 135624,
+        "end_ms": 139800,
+        "duration_ms": 4176
+      },
+      {
+        "spot_id": "spot_003",
+        "start_ms": 250056,
+        "end_ms": 259960,
+        "duration_ms": 9904
+      },
+      {
+        "spot_id": "spot_004",
+        "start_ms": 281896,
+        "end_ms": 285496,
+        "duration_ms": 3600
+      },
+      {
+        "spot_id": "spot_005",
+        "start_ms": 288776,
+        "end_ms": 293208,
+        "duration_ms": 4432
+      },
+      {
+        "spot_id": "spot_006",
+        "start_ms": 333864,
+        "end_ms": 337464,
+        "duration_ms": 3600
+      },
+      {
+        "spot_id": "spot_007",
+        "start_ms": 347400,
+        "end_ms": 352120,
+        "duration_ms": 4720
+      },
+      {
+        "spot_id": "spot_008",
+        "start_ms": 406280,
+        "end_ms": 549976,
+        "duration_ms": 143696
+      },
+      {
+        "spot_id": "spot_009",
+        "start_ms": 552744,
+        "end_ms": 556888,
+        "duration_ms": 4144
+      },
+      {
+        "spot_id": "spot_010",
+        "start_ms": 598696,
+        "end_ms": 612751,
+        "duration_ms": 14055
+      }
+    ],
+    "signal_analysis": {
+      "rmsDbFs": -24.5,
+      "peakDbFs": -6.4,
+      "noiseFloorDbFs": -40.6,
+      "avgSpeechProbability": 0.315,
+      "highConfidenceFrameRatio": 0.293,
+      "acousticProfileLabel": "เสียงพูดสมดุล มาตรฐาน (Balanced Dialogue)",
+      "recommendedConfig": {
+        "speechThreshold": 0.5,
+        "minSpeechDurationMs": 250,
+        "minSilenceDurationMs": 400,
+        "speechPaddingMs": 200,
+        "minAdGapMs": 3000
+      },
+      "recommendationReason": "สัญญาณเสียงพูดแยกจากช่วงเงียบได้ชัดเจน เหมาะกับค่ามาตรฐาน Optimal Default (Threshold 0.50, Padding 200ms)"
+    }
+  },
+  "local_file_path": "/app/applet/.data/jobs/job_1794484155216_b24f1ab6/source_video.mp4",
+  "batches": [
+    {
+      "batch_index": 1,
+      "batch_id": "batch_001",
+      "batch_start_ms": 0,
+      "batch_end_ms": 120000,
+      "window_start_ms": 0,
+      "window_end_ms": 140680,
+      "candidate_spots": [
+        {
+          "spot_id": "spot_001",
+          "start_ms": 1704,
+          "end_ms": 130680,
+          "duration_ms": 128976
+        }
+      ],
+      "status": "completed",
+      "retry_count": 1
+    },
+    {
+      "batch_index": 2,
+      "batch_id": "batch_002",
+      "batch_start_ms": 120000,
+      "batch_end_ms": 240000,
+      "window_start_ms": 100000,
+      "window_end_ms": 250000,
+      "candidate_spots": [
+        {
+          "spot_id": "spot_002",
+          "start_ms": 135624,
+          "end_ms": 139800,
+          "duration_ms": 4176
+        }
+      ],
+      "status": "completed",
+      "retry_count": 1
+    },
+    {
+      "batch_index": 3,
+      "batch_id": "batch_003",
+      "batch_start_ms": 240000,
+      "batch_end_ms": 360000,
+      "window_start_ms": 220000,
+      "window_end_ms": 370000,
+      "candidate_spots": [
+        {
+          "spot_id": "spot_003",
+          "start_ms": 250056,
+          "end_ms": 259960,
+          "duration_ms": 9904
+        },
+        {
+          "spot_id": "spot_004",
+          "start_ms": 281896,
+          "end_ms": 285496,
+          "duration_ms": 3600
+        },
+        {
+          "spot_id": "spot_005",
+          "start_ms": 288776,
+          "end_ms": 293208,
+          "duration_ms": 4432
+        },
+        {
+          "spot_id": "spot_006",
+          "start_ms": 333864,
+          "end_ms": 337464,
+          "duration_ms": 3600
+        },
+        {
+          "spot_id": "spot_007",
+          "start_ms": 347400,
+          "end_ms": 352120,
+          "duration_ms": 4720
+        }
+      ],
+      "status": "completed",
+      "retry_count": 1
+    },
+    {
+      "batch_index": 4,
+      "batch_id": "batch_004",
+      "batch_start_ms": 360000,
+      "batch_end_ms": 480000,
+      "window_start_ms": 340000,
+      "window_end_ms": 559976,
+      "candidate_spots": [
+        {
+          "spot_id": "spot_008",
+          "start_ms": 406280,
+          "end_ms": 549976,
+          "duration_ms": 143696
+        }
+      ],
+      "status": "processing",
+      "retry_count": 0
+    },
+    {
+      "batch_index": 5,
+      "batch_id": "batch_005",
+      "batch_start_ms": 480000,
+      "batch_end_ms": 600000,
+      "window_start_ms": 460000,
+      "window_end_ms": 612751,
+      "candidate_spots": [
+        {
+          "spot_id": "spot_009",
+          "start_ms": 552744,
+          "end_ms": 556888,
+          "duration_ms": 4144
+        },
+        {
+          "spot_id": "spot_010",
+          "start_ms": 598696,
+          "end_ms": 612751,
+          "duration_ms": 14055
+        }
+      ],
+      "status": "pending",
+      "retry_count": 0
+    }
+  ],
+  "spots": [
+    {
+      "spot_id": "spot_001",
+      "start_ms": 1704,
+      "end_ms": 130680,
+      "duration_ms": 128976,
+      "decision": "generate",
+      "text": "บ้านกล่องกระดาษลายการ์ตูนเปิดช่องหน้าต่างออก มีเด็กชาย เด็กหญิง และหุ่นมังกรสีม่วงโผล่หน้าออกมาทักทาย ก่อนที่ภาพจะตัดไปที่การ์ตูนอนิเมชั่นของกลุ่มตัวละครที่กำลังทำกิจกรรมสำรวจธรรมชาติและทดลองวิทยาศาสตร์ มีภาพเหตุการณ์การทดลองและกิจกรรมจากเด็กๆ ตัวจริงแทรกเป็นระยะ ทั้งการเล่นทราย ต่อบล็อกไม้ และสร้างของเล่น จากนั้นตัวละครมังกรสีม่วงพากันไปที่กระดานดำและเขียนภาพสัญลักษณ์หลอดไฟขึ้นมา ก่อนจะตัดไปที่ภาพจริงของน้ำผึ้งในกล่องพลาสติกที่มีการวาดการ์ตูนตาและปากใส่ลงไปบนผิวหน้าของน้ำผึ้ง ช้อนกำลังตักน้ำผึ้งรวงขึ้นมาเพื่อราดลงบนชีสเค้กชิ้นโตอย่างน่ารับประทาน ต่อมาเป็นแอนิเมชันสอนนับจำนวนเหลี่ยมของรูปหกเหลี่ยมจนครบ 6 ด้าน และเปรียบเทียบรูปทรงหกเหลี่ยมกับรังผึ้งจริง ที่มีผึ้งงานเกาะอยู่หนาแน่นบนแผงรังผึ้ง ตัดสลับกับภาพของเด็กกลุ่มหนึ่งที่กำลังนั่งมองแผงรังผึ้งอย่างตั้งใจกลางสวน",
+      "is_edited": false,
+      "original_start_ms": 1704,
+      "original_end_ms": 130680
+    },
+    {
+      "spot_id": "spot_002",
+      "start_ms": 135624,
+      "end_ms": 139800,
+      "duration_ms": 4176,
+      "decision": "generate",
+      "text": "รังผึ้งที่แบ่งเป็นช่องหกเหลี่ยมขนาดเท่ากันจำนวนหกช่อง",
+      "is_edited": false,
+      "original_start_ms": 135624,
+      "original_end_ms": 139800,
+      "reason": ""
+    },
+    {
+      "spot_id": "spot_003",
+      "start_ms": 250056,
+      "end_ms": 259960,
+      "duration_ms": 9904,
+      "decision": "generate",
+      "text": "ภายในรังผึ้งที่มีช่องหกเหลี่ยมเรียงตัวหนาแน่น มีผึ้งงานหลายตัวเดินสำรวจช่องว่าง บางตัวกำลังทำความสะอาดและตรวจสอบความเรียบร้อยของรัง",
+      "is_edited": false,
+      "original_start_ms": 250056,
+      "original_end_ms": 259960
+    },
+    {
+      "spot_id": "spot_004",
+      "start_ms": 281896,
+      "end_ms": 285496,
+      "duration_ms": 3600,
+      "decision": "generate",
+      "text": "เด็กชายใช้มือประกอบชิ้นส่วนกระดาษทรงสามเหลี่ยมสีแดง",
+      "is_edited": false,
+      "original_start_ms": 281896,
+      "original_end_ms": 285496
+    },
+    {
+      "spot_id": "spot_005",
+      "start_ms": 288776,
+      "end_ms": 293208,
+      "duration_ms": 4432,
+      "decision": "generate",
+      "text": "โครงกระดาษทรงหกเหลี่ยมสีแดง เหลือง และน้ำเงินวางเรียงกันบนโต๊ะ",
+      "is_edited": false,
+      "original_start_ms": 288776,
+      "original_end_ms": 293208
+    },
+    {
+      "spot_id": "spot_006",
+      "start_ms": 333864,
+      "end_ms": 337464,
+      "duration_ms": 3600,
+      "decision": "generate",
+      "text": "เด็กหญิงวางตัวตุ๊กตาผึ้งลงในช่องกระดาษสีฟ้า",
+      "is_edited": false,
+      "original_start_ms": 333864,
+      "original_end_ms": 337464
+    },
+    {
+      "spot_id": "spot_007",
+      "start_ms": 347400,
+      "end_ms": 352120,
+      "duration_ms": 4720,
+      "decision": "generate",
+      "text": "ตุ๊กตาผึ้งตัวจิ๋วที่วางซ้อนกันไว้ร่วงหล่นลงมา",
+      "is_edited": false,
+      "original_start_ms": 347400,
+      "original_end_ms": 352120
+    },
+    {
+      "spot_id": "spot_008",
+      "start_ms": 406280,
+      "end_ms": 549976,
+      "duration_ms": 143696,
+      "decision": "pending",
+      "text": "",
+      "is_edited": false,
+      "original_start_ms": 406280,
+      "original_end_ms": 549976
+    },
+    {
+      "spot_id": "spot_009",
+      "start_ms": 552744,
+      "end_ms": 556888,
+      "duration_ms": 4144,
+      "decision": "pending",
+      "text": "",
+      "is_edited": false,
+      "original_start_ms": 552744,
+      "original_end_ms": 556888
+    },
+    {
+      "spot_id": "spot_010",
+      "start_ms": 598696,
+      "end_ms": 612751,
+      "duration_ms": 14055,
+      "decision": "pending",
+      "text": "",
+      "is_edited": false,
+      "original_start_ms": 598696,
+      "original_end_ms": 612751
+    }
+  ],
+  "gemini_file_uri": "https://generativelanguage.googleapis.com/v1/files/d1mmj753n22j",
+  "gemini_file_name": "files/d1mmj753n22j",
+  "gemini_file_mime_type": "video/mp4",
+  "gemini_file_expires_at": "2026-11-14T11:49:31.992072037Z",
+  "progress_percent": 63,
+  "active_model": "gemini-3.8-flash",
+  "progress_stage": "กำลังวิเคราะห์ภาพและเสียง ชุดที่ 4/5 (00:06:00.000–00:08:00.000)..."
+}
