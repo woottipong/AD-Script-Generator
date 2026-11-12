@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   ad-script-generator:
     build:
@@ -11,8 +9,5 @@ services:
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
-      - ad_jobs_data:/app/.data/jobs
+      - ./_data/jobs:/app/.data/jobs
     restart: unless-stopped
-
-volumes:
-  ad_jobs_data:
