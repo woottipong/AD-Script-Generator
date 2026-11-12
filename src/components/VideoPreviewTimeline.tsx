@@ -59,6 +59,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   const [loopSelectedSpot, setLoopSelectedSpot] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1.5);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(600);
+
+  useEffect(() => {
+    const container = timelineScrollContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(([entry]) => setTimelineViewportWidth(entry.contentRect.width));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const effectiveDurationMs = Math.max(1, durationMs || videoMetadata?.durationMs || 0);
 
@@ -155,7 +164,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     setHoverTimeMs(Math.round((posX / rect.width) * effectiveDurationMs));
   };
 
-  const tickCount = Math.min(32, Math.max(6, Math.round(8 * zoomLevel)));
+  const tickCount = Math.min(32, Math.max(3, Math.floor(timelineViewportWidth * zoomLevel / 80)));
   const ticks = Array.from({ length: tickCount + 1 }, (_, idx) =>
     Math.round((idx / tickCount) * effectiveDurationMs)
   );
@@ -173,11 +182,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   return (
     <section
       id="section-preview-timeline"
-      className="flex flex-col h-full min-h-0 bg-white overflow-hidden"
+      tabIndex={-1}
+      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
     >
       {/* 1. Video Monitor Canvas */}
-      <div className="bg-slate-950 flex flex-col shrink-0 border-b border-slate-800">
-        <div className="relative aspect-video max-h-[38vh] lg:max-h-[42vh] w-full mx-auto bg-slate-950 flex items-center justify-center overflow-hidden">
+      <div className="bg-slate-950 flex flex-col min-h-0 border-b border-slate-800">
+        <div className="relative aspect-video min-h-0 max-h-[38vh] lg:max-h-[42vh] w-full mx-auto bg-slate-950 flex items-center justify-center overflow-hidden">
           {videoUrl ? (
             <>
               <video
@@ -186,6 +196,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 className="w-full h-full object-contain cursor-pointer"
                 playsInline
                 onClick={togglePlayPause}
+                tabIndex={0}
+                role="button"
+                aria-label={isPlaying ? 'หยุดวิดีโอ' : 'เล่นวิดีโอ'}
+                onKeyDown={(event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    togglePlayPause();
+                  }
+                }}
               />
 
               {/* Top-left subtle monitor HUD showing current window spot */}
@@ -225,7 +244,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         </div>
 
         {/* 2. Precision Editor Transport & Spot Navigation Bar */}
-        <div className="px-3.5 py-2 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-slate-200">
+        <div className="px-3.5 py-2 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-slate-200 shrink-0">
           <div className="flex flex-wrap items-center gap-1">
             {/* Play / Pause */}
             <button
@@ -289,6 +308,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)}
               disabled={!prevSpot}
               title="ไปยังจุดบรรยายก่อนหน้า (Alt + ↑)"
+              aria-label="ไปยังจุดบรรยายก่อนหน้า"
               className="px-2 py-1 rounded text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-30 cursor-pointer flex items-center gap-1"
             >
               <SkipBack className="w-3.5 h-3.5" />
@@ -300,6 +320,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)}
               disabled={!nextSpot}
               title="ไปยังจุดบรรยายถัดไป (Alt + ↓)"
+              aria-label="ไปยังจุดบรรยายถัดไป"
               className="px-2 py-1 rounded text-xs text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-30 cursor-pointer flex items-center gap-1"
             >
               <span className="hidden sm:inline">จุดถัดไป</span>
@@ -312,9 +333,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => setLoopSelectedSpot((prev) => !prev)}
               disabled={!selectedSpot}
               title="เล่นวนซ้ำเฉพาะช่วงเวลาของจุดที่เลือก"
+              aria-label="เล่นวนซ้ำจุดที่เลือก"
+              aria-pressed={loopSelectedSpot}
               className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-30 ${
                 loopSelectedSpot
-                  ? 'bg-emerald-600 text-white font-semibold'
+                  ? 'bg-emerald-700 text-white font-semibold'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -327,6 +350,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={toggleMute}
               disabled={!videoUrl}
               title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'}
+              aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'}
               className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 cursor-pointer"
             >
               {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
@@ -408,7 +432,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         {/* Timeline Header & Zoom Controls */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-600">
-            <span className="font-semibold text-slate-900">ไทม์ไลน์มัลติแทร็ก</span>
+            <span className="font-semibold text-slate-900">ช่วงเสียงพูดและบทบรรยาย</span>
             <span aria-hidden="true">·</span>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-xs bg-slate-600 inline-block" />
@@ -471,6 +495,23 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         >
           <div
             ref={timelineTrackRef}
+            role="slider"
+            tabIndex={0}
+            aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
+            aria-valuemin={0}
+            aria-valuemax={durationMs}
+            aria-valuenow={Math.min(durationMs, currentTimeMs)}
+            aria-valuetext={formatTimestampDisplay(currentTimeMs)}
+            onKeyDown={(event) => {
+              const nextTime = event.key === 'ArrowLeft' ? currentTimeMs - 1000
+                : event.key === 'ArrowRight' ? currentTimeMs + 1000
+                : event.key === 'Home' ? 0
+                : event.key === 'End' ? durationMs : null;
+              if (nextTime !== null) {
+                event.preventDefault();
+                seekToMs(nextTime);
+              }
+            }}
             onClick={handleTimelineClick}
             onMouseMove={handleTimelineMouseMove}
             onMouseLeave={() => setHoverTimeMs(null)}
@@ -489,7 +530,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   >
                     <div className="w-px h-1.5 bg-slate-300" />
                     <span
-                      className={`text-[10px] font-mono tabular-nums text-slate-500 pb-0.5 ${
+                      className={`text-xs font-mono tabular-nums text-slate-500 pb-0.5 ${
                         idx === 0
                           ? 'translate-x-1'
                           : idx === ticks.length - 1
@@ -507,7 +548,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             {/* Track 0: Batch Queue Boundaries (Shows pending/processing/completed batch regions) */}
             {batches.length > 0 && (
               <div className="relative h-6 border-b border-slate-100 bg-slate-50/60 flex items-center">
-                <span className="sticky left-2 z-10 text-[10px] font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
+                <span className="sticky left-2 z-10 text-xs font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
                   คิววิเคราะห์ ({batches.length} ชุด)
                 </span>
                 {batches.map((b) => {
@@ -520,7 +561,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     <div
                       key={b.batch_id}
                       style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                      className={`absolute top-0.5 bottom-0.5 border-r border-slate-200 px-1.5 flex items-center justify-between text-[10px] font-mono tabular-nums pointer-events-none overflow-hidden ${
+                      className={`absolute top-0.5 bottom-0.5 border-r border-slate-200 px-1.5 flex items-center justify-between text-xs font-mono tabular-nums pointer-events-none overflow-hidden ${
                         b.status === 'processing'
                           ? 'bg-amber-100/80 text-slate-900 font-semibold'
                           : b.status === 'completed'
@@ -542,7 +583,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
             {/* Track 1: Speech Segments */}
             <div className="relative h-8 border-b border-slate-100 flex items-center">
-              <span className="sticky left-2 z-10 text-[10px] font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
+              <span className="sticky left-2 z-10 text-xs font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
                 เสียงพูด ({speechSegments.length})
               </span>
 
@@ -565,7 +606,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
             {/* Track 2: Candidate AD Spots */}
             <div className="relative h-10 flex items-center bg-slate-50/40">
-              <span className="sticky left-2 z-10 text-[10px] font-medium text-slate-600 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
+              <span className="sticky left-2 z-10 text-xs font-medium text-slate-600 bg-white/90 px-1.5 py-0.5 rounded pointer-events-none">
                 จุดบรรยายภาพ ({spots.length})
               </span>
 
@@ -581,7 +622,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   'bg-amber-500/85 hover:bg-amber-500 text-slate-950 border-amber-600';
                 if (spot.decision === 'generate') {
                   colorClasses =
-                    'bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-700';
+                    'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-800';
                 } else if (spot.decision === 'skip') {
                   colorClasses =
                     'bg-slate-300 hover:bg-slate-400 text-slate-800 border-slate-400';
@@ -598,11 +639,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     }}
                     style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                     title={`${spot.spot_id} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`}
-                    className={`absolute top-1 bottom-1 rounded-xs border transition-opacity flex items-center justify-center overflow-hidden px-1 cursor-pointer ${colorClasses} ${
+                    className={`absolute top-1 bottom-1 min-h-0 min-w-0 rounded-xs border transition-opacity flex items-center justify-center overflow-hidden px-1 cursor-pointer ${colorClasses} ${
                       isSelected ? 'ring-2 ring-slate-950 ring-offset-1 z-20' : 'z-10'
                     }`}
                   >
-                    <span className="text-[10px] font-mono tabular-nums font-semibold truncate">
+                    <span className="text-xs font-mono tabular-nums font-semibold truncate">
                       {spot.spot_id.replace('spot_', '#')}
                     </span>
                   </button>

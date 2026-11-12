@@ -28,6 +28,7 @@ interface AdScriptEditorProps {
   spots: ADSpot[];
   batches: AnalysisBatch[];
   isAnalyzing: boolean;
+  emptyState: 'preparing' | 'no-gaps' | 'failed';
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
   selectedSpotId: string | null;
@@ -36,6 +37,8 @@ interface AdScriptEditorProps {
   onUpdateSpot: (updatedSpot: ADSpot) => void;
   onExportSrt: () => void;
   onExportJson: () => void;
+  saveStatus: 'local' | 'saving' | 'saved' | 'error';
+  onRetrySave: () => void;
 }
 
 type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'over_duration';
@@ -219,9 +222,11 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           <span className="text-slate-300" aria-hidden="true">·</span>
 
           {/* Interactive Decision Segmented Control */}
-          <div
+          <fieldset
+            disabled={isAnalyzing}
+            aria-label={`เลือกการบรรยายจุดที่ ${spotOrder}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center p-0.5 bg-slate-100 border border-slate-200 rounded"
+            className="min-w-0 inline-flex items-center p-0.5 bg-slate-100 border border-slate-200 rounded"
           >
             <button
               type="button"
@@ -232,9 +237,9 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   is_edited: true,
                 })
               }
-              className={`px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 spot.decision === 'generate'
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-emerald-700 text-white'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -250,7 +255,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   is_edited: true,
                 })
               }
-              className={`px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                 spot.decision === 'skip'
                   ? 'bg-slate-700 text-white'
                   : 'text-slate-600 hover:text-slate-900'
@@ -259,19 +264,19 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               <MinusCircle className="w-3 h-3" />
               <span>ข้าม</span>
             </button>
-          </div>
+          </fieldset>
 
           {spot.is_edited && (
             <>
               <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="text-[11px] font-medium text-slate-600">แก้ไขแล้ว</span>
+              <span className="text-xs font-medium text-slate-600">แก้ไขแล้ว</span>
             </>
           )}
 
           {isPlayingNow && (
             <>
               <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="text-[11px] font-semibold text-emerald-700">
+              <span className="text-xs font-semibold text-emerald-700">
                 กำลังเล่นบนมอนิเตอร์
               </span>
             </>
@@ -294,9 +299,11 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       </div>
 
       {/* Second Row: Precision Timecode Editor + Quick ±0.2s Nudgers */}
-      <div
+      <fieldset
+        disabled={isAnalyzing}
+        aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
         onClick={(e) => e.stopPropagation()}
-        className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs"
+        className="min-w-0 w-full mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Start Time + Nudge */}
@@ -307,26 +314,27 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               onClick={() => nudgeStartMs(-200)}
               disabled={spot.start_ms <= spot.original_start_ms}
               title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
-              className="px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              className="px-1.5 py-0.5 text-xs font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
             >
               -0.2s
             </button>
             <input
               type="text"
+              aria-label={`เวลาเริ่มบทบรรยายที่ ${spotOrder}`}
               value={startInput}
               onChange={(e) => setStartInput(e.target.value)}
               onBlur={handleStartBlur}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleStartBlur();
               }}
-              className="w-[96px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
+              className="w-[126px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
             />
             <button
               type="button"
               onClick={() => nudgeStartMs(200)}
               disabled={spot.start_ms + 1000 >= spot.end_ms}
               title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
-              className="px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              className="px-1.5 py-0.5 text-xs font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
             >
               +0.2s
             </button>
@@ -342,26 +350,27 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               onClick={() => nudgeEndMs(-200)}
               disabled={spot.end_ms - 1000 <= spot.start_ms}
               title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
-              className="px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              className="px-1.5 py-0.5 text-xs font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
             >
               -0.2s
             </button>
             <input
               type="text"
+              aria-label={`เวลาจบบทบรรยายที่ ${spotOrder}`}
               value={endInput}
               onChange={(e) => setEndInput(e.target.value)}
               onBlur={handleEndBlur}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleEndBlur();
               }}
-              className="w-[96px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
+              className="w-[126px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
             />
             <button
               type="button"
               onClick={() => nudgeEndMs(200)}
               disabled={spot.end_ms >= spot.original_end_ms}
               title="ขยายเวลาจบออกไป 0.2 วินาที"
-              className="px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              className="px-1.5 py-0.5 text-xs font-mono tabular-nums text-slate-600 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 cursor-pointer"
             >
               +0.2s
             </button>
@@ -369,7 +378,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
         </div>
 
         {/* Gap Bounds & Reset */}
-        <div className="flex items-center gap-2 text-[11px] font-mono tabular-nums text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-500">
           <span>
             ช่วงว่าง {(spot.duration_ms / 1000).toFixed(1)}s
           </span>
@@ -385,12 +394,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
             </button>
           )}
         </div>
-      </div>
+      </fieldset>
 
       {/* Timestamp Validation Error */}
       {timestampError && (
         <div
           onClick={(e) => e.stopPropagation()}
+          role="alert"
           className="mt-2 px-2.5 py-1.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-1.5"
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -399,7 +409,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       )}
 
       {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
-      <div onClick={(e) => e.stopPropagation()} className="mt-2.5">
+      <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full mt-2.5">
         {spot.decision === 'pending' ? (
           <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2 text-slate-700">
@@ -420,8 +430,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                     <strong className="font-semibold text-slate-800">
                       อยู่ในคิวรอวิเคราะห์ (ชุดที่ {batchInfo?.batch_index})
                     </strong>{' '}
-                    · คุณสามารถรอให้ระบบสร้างอัตโนมัติ หรือกดเขียนเองได้ทันที
+                    · ตรวจและแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
                   </span>
+                </>
+              ) : isAnalyzing ? (
+                <>
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>กำลังเตรียมการวิเคราะห์ · ตรวจและแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด</span>
                 </>
               ) : (
                 <>
@@ -442,7 +457,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   is_edited: true,
                 })
               }
-              className="px-2.5 py-1 text-xs font-medium text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-2.5 py-1 text-xs font-medium text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 rounded whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               เขียนบทบรรยายจุดนี้เอง
             </button>
@@ -451,6 +466,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           <div className="space-y-2">
             <textarea
               rows={2}
+              aria-label={`บทบรรยายที่ ${spotOrder}`}
               value={spot.text}
               onChange={(e) =>
                 onUpdate({
@@ -460,7 +476,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 })
               }
               placeholder={`พิมพ์บทบรรยายภาพภาษาไทย (แนะนำไม่เกิน ${recommendedMaxChars} ตัวอักษร เพื่อให้พูดทันใน ${(spot.duration_ms / 1000).toFixed(1)} วินาที)...`}
-              className={`w-full px-3 py-2 text-sm rounded border bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 leading-relaxed ${
+              className={`w-full px-3 py-2 text-sm rounded border bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 leading-relaxed disabled:bg-slate-50 disabled:cursor-not-allowed ${
                 isOverDurationWarning
                   ? 'border-amber-400 focus:ring-amber-600'
                   : 'border-slate-300 focus:ring-slate-900'
@@ -484,7 +500,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 />
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-mono tabular-nums">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-mono tabular-nums">
                 <span>
                   ขอบเขตสูงสุด: {formatTimestampDisplay(spot.original_start_ms)} –{' '}
                   {formatTimestampDisplay(spot.original_end_ms)}
@@ -548,13 +564,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   is_edited: true,
                 })
               }
-              className="text-xs font-medium text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer"
+              className="text-xs font-medium text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               เปลี่ยนเป็นเขียนคำบรรยาย
             </button>
           </div>
         )}
-      </div>
+      </fieldset>
     </div>
   );
 };
@@ -563,6 +579,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   spots,
   batches,
   isAnalyzing,
+  emptyState,
   speechSegments,
   videoDurationMs,
   selectedSpotId,
@@ -571,11 +588,18 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   onUpdateSpot,
   onExportSrt,
   onExportJson,
+  saveStatus,
+  onRetrySave,
 }) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSrtPreview, setShowSrtPreview] = useState(false);
   const [copiedSrt, setCopiedSrt] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+
+  useEffect(() => {
+    if (spots.length === 0) setShowSrtPreview(false);
+  }, [spots.length]);
 
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -644,28 +668,30 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 
   const handleCopySrt = async () => {
     if (!srtPreviewText) return;
+    setCopyError(false);
     try {
       await navigator.clipboard.writeText(srtPreviewText);
       setCopiedSrt(true);
       setTimeout(() => setCopiedSrt(false), 2000);
     } catch {
-      // Fallback ignored
+      setCopyError(true);
     }
   };
 
   return (
     <section
       id="section-script-editor"
-      className="flex flex-col h-full min-h-0 bg-white overflow-hidden"
+      tabIndex={-1}
+      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
     >
       {/* 1. Sticky Editor Command Header */}
       <div className="px-4 py-3 border-b border-slate-200 bg-white space-y-2.5 shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              ตัวแก้ไขบทบรรยายภาพ (AD Script Editor)
-            </h2>
-            <p className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">
+            <h1 className="text-base font-semibold text-slate-900">
+              ตรวจและแก้บทบรรยาย
+            </h1>
+            <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
               ทั้งหมด {spots.length} จุด · บรรยาย {generatedCount} · รอคิว {pendingCount} · ข้าม {skippedCount}
               {overDurationCount > 0 ? ` · เกินเวลา ${overDurationCount}` : ''}
             </p>
@@ -708,86 +734,37 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           </div>
         </div>
 
+        {isAnalyzing && (
+          <p role="status" className="text-sm text-slate-700">
+            ระหว่างรอผลวิเคราะห์ คุณดูวิดีโอและตรวจผลได้ และแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
+          </p>
+        )}
+
         {/* Filter Bar & Live Search */}
-        {!showSrtPreview && (
+        {!showSrtPreview && spots.length > 0 && (
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1 p-0.5 bg-slate-100 border border-slate-200 rounded self-start">
-              <button
-                type="button"
-                onClick={() => setFilterMode('all')}
-                className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filterMode === 'all'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+            <div className="flex items-center gap-2 min-w-0">
+              <label htmlFor="spot-filter" className="text-sm text-slate-600 shrink-0">แสดง</label>
+              <select
+                id="spot-filter"
+                value={filterMode}
+                onChange={(event) => setFilterMode(event.target.value as FilterMode)}
+                className="min-w-0 flex-1 px-3 py-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
               >
-                ทั้งหมด ({spots.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode('generate')}
-                className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filterMode === 'generate'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                บรรยาย ({generatedCount})
-              </button>
-              {pendingCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setFilterMode('pending')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    filterMode === 'pending'
-                      ? 'bg-white text-amber-800 shadow-2xs'
-                      : 'text-amber-700 hover:text-amber-900'
-                  }`}
-                >
-                  รอคิว ({pendingCount})
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setFilterMode('skip')}
-                className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filterMode === 'skip'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                ข้าม ({skippedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode('edited')}
-                className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filterMode === 'edited'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                แก้ไขแล้ว ({editedCount})
-              </button>
-              {overDurationCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setFilterMode('over_duration')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    filterMode === 'over_duration'
-                      ? 'bg-white text-red-700 shadow-2xs'
-                      : 'text-red-700 hover:text-red-900'
-                  }`}
-                >
-                  เกินเวลา ({overDurationCount})
-                </button>
-              )}
+                <option value="all">ทั้งหมด ({spots.length})</option>
+                <option value="generate">มีบทบรรยาย ({generatedCount})</option>
+                <option value="pending">รอสร้าง ({pendingCount})</option>
+                <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
+                <option value="edited">แก้ไขแล้ว ({editedCount})</option>
+                <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
+              </select>
             </div>
 
             <div className="relative w-full xl:w-56">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
+                aria-label="ค้นหาบทบรรยายหรือเวลา"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="ค้นหาบทบรรยายหรือเวลา..."
@@ -799,7 +776,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       </div>
 
       {/* 2. Scrollable Body: Either Live SRT Preview OR Spot Block Editor List */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 lg:overflow-y-auto">
         {showSrtPreview ? (
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -826,6 +803,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </button>
             </div>
 
+            {copyError && <p role="alert" className="text-sm text-red-700">คัดลอกไม่สำเร็จ เลือกข้อความด้านล่างเพื่อคัดลอก หรือกดส่งออก SRT แทน</p>}
+
             {srtPreviewText ? (
               <pre className="p-4 rounded border border-slate-200 bg-slate-50 text-xs font-mono tabular-nums text-slate-800 whitespace-pre-wrap leading-relaxed select-all">
                 {srtPreviewText}
@@ -839,16 +818,17 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
         ) : spots.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center py-16 px-6 text-center">
             <Maximize2 className="w-7 h-7 text-slate-300 mb-2" />
-            <p className="text-sm font-medium text-slate-700">
-              พื้นที่แก้ไขบทบรรยายภาพ (AD Script)
+            <p className="text-base font-medium text-slate-700">
+              {emptyState === 'preparing' ? 'กำลังหาช่วงสำหรับบรรยาย…' : emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
             </p>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm">
-              เมื่อเปิดไฟล์วิดีโอ MP4 ระบบจะสแกนหาช่วงว่างไร้เสียงพูดและแสดงรายการจุดบรรยายทั้งหมดที่นี่เพื่อให้คุณตรวจสอบและปรับแก้แบบเต็มหน้าจอ
+            <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
+              {emptyState === 'preparing' ? 'ระบบกำลังตรวจช่วงเสียงพูดบนเครื่องของคุณ รายการบทบรรยายจะแสดงที่นี่เมื่อพร้อม' : emptyState === 'failed' ? 'ดูข้อความแจ้งปัญหาด้านบน แล้วลองสแกนเสียงใหม่หรือเลือกวิดีโออื่น' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
             </p>
           </div>
         ) : filteredSpots.length === 0 ? (
-          <div className="py-12 px-6 text-center text-xs text-slate-500">
-            ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา
+          <div className="py-12 px-6 text-center text-sm text-slate-600 space-y-3">
+            <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>
+            <button type="button" onClick={() => { setFilterMode('all'); setSearchQuery(''); }} className="px-3 py-2 border border-slate-300 rounded font-medium hover:bg-slate-50 cursor-pointer">ล้างตัวกรองและคำค้นหา</button>
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
@@ -880,15 +860,25 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       </div>
 
       {/* 3. Compact Editor Shortcut Footer */}
-      <div className="px-4 py-2 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 shrink-0">
+      {spots.length > 0 && <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 shrink-0">
         <span>
           คีย์ลัดผู้แก้ไข: <strong className="font-mono text-slate-700">Alt + ↑/↓</strong> เปลี่ยนจุดบรรยาย ·{' '}
           <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุดฉากที่เลือก
         </span>
-        <span className="font-mono tabular-nums">
-          บันทึกการแก้ไขลงโปรเจกต์อัตโนมัติ
-        </span>
-      </div>
+        <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-red-700' : ''}`}>
+          <span>
+            {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้ · ส่งออก JSON เพื่อเก็บงาน'
+              : saveStatus === 'saving' ? 'กำลังบันทึกการแก้ไข…'
+              : saveStatus === 'error' ? 'บันทึกไม่สำเร็จ · งานที่แก้ยังอยู่ในหน้านี้'
+              : 'บันทึกบนเซิร์ฟเวอร์แล้ว'}
+          </span>
+          {saveStatus === 'error' && (
+            <button type="button" onClick={onRetrySave} disabled={isAnalyzing} className="font-semibold underline cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">
+              ลองบันทึกอีกครั้ง
+            </button>
+          )}
+        </div>
+      </div>}
     </section>
   );
 };

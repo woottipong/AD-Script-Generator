@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+}
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -12,9 +19,61 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
+  button, input, select {
+    min-height: 2.25rem;
+  }
+
+  button {
+    min-width: 2.25rem;
+  }
+
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid #047857;
+    outline-offset: 3px;
+  }
+
+  input, textarea {
+    caret-color: #047857;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #64748b;
+  }
+
+  @media (pointer: coarse) {
+    button, input, select {
+      min-height: 2.75rem;
+    }
+  }
+
   code, pre, .font-mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 1rem;
+  z-index: 50;
+  padding: 0.75rem 1rem;
+  background: white;
+  color: #0f172a;
+  border: 1px solid #94a3b8;
+  border-radius: 0.25rem;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

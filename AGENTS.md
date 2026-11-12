@@ -20,6 +20,10 @@ Use Bun to maintain `bun.lock`; Docker installs with `--frozen-lockfile`. Keep d
 
 Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. Preserve this separation when changing the container setup. The jobs bind mount maps host `./_data/jobs` to container `/app/.data/jobs`; refreshing the anonymous dependency volume must preserve that bind mount.
 
+## UX conventions
+
+For interface changes, preserve the guided intake and [three-step workflow](README.md#วิธีใช้งาน). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+
 ## System constraints
 
 ### Video input specifications

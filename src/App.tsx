@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertOctagon, Download, PlayCircle } from 'lucide-react';
+import { AlertOctagon, Check, PlayCircle } from 'lucide-react';
 import {
   ADSpot,
   AnalysisBatch,
@@ -55,11 +55,26 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingSample, setIsLoadingSample] = useState<boolean>(false);
   const [restoredIncompleteJob, setRestoredIncompleteJob] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
+  const saveQueueRef = useRef<Promise<boolean | void>>(Promise.resolve());
+  const saveRequestRef = useRef(0);
+
+  const leaveServerJob = useCallback((activeJobId: string) => {
+    saveRequestRef.current++;
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}`, { method: 'DELETE' }).catch(() => {});
+    });
+  }, []);
+
+  useEffect(() => {
+    saveRequestRef.current++;
+    setSaveStatus('saved');
+  }, [jobId]);
 
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
@@ -198,12 +213,14 @@ export default function App() {
         const res = await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}`);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = await parseResponseJson<any>(res);
+        if (token.aborted) return;
 
-        if (!res.ok || !data?.job) {
+        if (!res.ok || data?.job?.job_id !== activeJobId || !Array.isArray(data.job.batches) || !Array.isArray(data.job.spots)) {
           throw new Error(data?.error || 'ไม่พบสถานะงานประมวลผลบนเซิร์ฟเวอร์');
         }
 
         consecutiveErrors = 0;
+        setErrorMessage(null);
         const liveJob: PersistedJobState = data.job;
         const isRunning = Boolean(data.isRunning);
 
@@ -253,17 +270,12 @@ export default function App() {
         } else {
           idlePollsWithoutRunner = 0;
         }
-      } catch (err) {
+      } catch {
+        if (token.aborted) return;
         consecutiveErrors++;
-        if (consecutiveErrors >= 6) {
+        if (consecutiveErrors === 6) {
           setVadProgress(null);
-          setStatus('FAILED');
-          setErrorMessage(
-            `การเชื่อมต่อเซิร์ฟเวอร์ขัดข้อง: ${
-              err instanceof Error ? err.message : String(err)
-            }`
-          );
-          return;
+          setErrorMessage('ตรวจสถานะการวิเคราะห์ไม่ได้ กำลังลองเชื่อมต่ออีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         }
         await new Promise((r) => setTimeout(r, 1500));
       }
@@ -273,6 +285,8 @@ export default function App() {
   // 1. Check Browser Compatibility & Active Persisted Job on Mount
   useEffect(() => {
     let mounted = true;
+    const restoreToken = { aborted: false };
+    pollAbortRef.current = restoreToken;
 
     checkBrowserCompatibility().then((res) => {
       if (mounted) {
@@ -285,7 +299,7 @@ export default function App() {
         r.ok && r.headers.get('content-type')?.includes('application/json') ? r.json() : null
       )
       .then((data) => {
-        if (!mounted || !data?.job) return;
+        if (!mounted || restoreToken.aborted || !data?.job) return;
         const savedJob: PersistedJobState = data.job;
         setJobId(savedJob.job_id);
         setVideoMetadata(savedJob.video_metadata);
@@ -336,7 +350,14 @@ export default function App() {
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
     async (file: File) => {
+      if (videoMetadata && !window.confirm('เปลี่ยนวิดีโอและออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
       pollAbortRef.current.aborted = true;
+      const selectionToken = { aborted: false };
+      pollAbortRef.current = selectionToken;
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
       setErrorMessage(null);
       setVadProgress(null);
       setVadOutput(null);
@@ -346,7 +367,7 @@ export default function App() {
       setRestoredIncompleteJob(false);
 
       if (jobId) {
-        fetch(`/api/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+        leaveServerJob(jobId);
         setJobId(null);
       }
 
@@ -361,6 +382,7 @@ export default function App() {
         maxDurationSeconds: FIXED_MAX_VIDEO_DURATION_SECONDS,
         maxFileSizeMb: FIXED_MAX_UPLOAD_SIZE_MB,
       });
+      if (selectionToken.aborted) return;
 
       setVideoMetadata(validation.metadata);
       setValidationIssues(validation.issues);
@@ -377,11 +399,14 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [jobId, startVadForFile]
+    [jobId, videoMetadata, startVadForFile, leaveServerJob]
   );
 
   // Load bundled 480p sample MP4 video
   const handleLoadSampleVideo = async () => {
+    pollAbortRef.current.aborted = true;
+    const sampleToken = { aborted: false };
+    pollAbortRef.current = sampleToken;
     try {
       setIsLoadingSample(true);
       setErrorMessage(null);
@@ -390,10 +415,11 @@ export default function App() {
         throw new Error('ไม่สามารถโหลดไฟล์วิดีโอตัวอย่าง 480p ได้');
       }
       const blob = await res.blob();
+      if (sampleToken.aborted) return;
       const sampleFile = new File([blob], 'sample_480p_scene.mp4', { type: 'video/mp4' });
       await handleSelectFile(sampleFile);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err));
+      if (!sampleToken.aborted) setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoadingSample(false);
     }
@@ -402,6 +428,15 @@ export default function App() {
   // 3. Trigger Browser Silero VAD manually if needed
   const handleRunVad = () => {
     if (!videoFile || !videoMetadata) return;
+    if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !window.confirm('สแกนเสียงใหม่? บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
+    pollAbortRef.current.aborted = true;
+    if (jobId) leaveServerJob(jobId);
+    setJobId(null);
+    setVadOutput(null);
+    setBatches([]);
+    setSpots([]);
+    setSelectedSpotId(null);
+    setRestoredIncompleteJob(false);
     startVadForFile(videoFile);
   };
 
@@ -477,20 +512,48 @@ export default function App() {
   };
 
   const resumeExistingServerJob = async (existingJobId: string) => {
+    const token = pollAbortRef.current;
     try {
       setStatus('ANALYZING');
       setErrorMessage(null);
       setVadProgress({
-        stage: 'กำลังเริ่มประมวลผลชุดข้อมูลต่อบนเซิร์ฟเวอร์...',
+        stage: 'กำลังรอบันทึกการแก้ไขก่อนดำเนินการต่อ...',
         percent: 15,
       });
 
-      const startRes = await fetch(`/api/jobs/${encodeURIComponent(existingJobId)}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const saved = await saveQueueRef.current;
+      if (token.aborted) return;
+      if (saved === false) {
+        setVadProgress(null);
+        setStatus('FAILED');
+        setErrorMessage('บันทึกการแก้ไขไม่สำเร็จ กรุณาลองบันทึกอีกครั้งก่อนดำเนินการต่อ');
+        return;
+      }
+
+      setVadProgress({
+        stage: 'กำลังเริ่มประมวลผลชุดข้อมูลต่อบนเซิร์ฟเวอร์...',
+        percent: 15,
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const startData = await parseResponseJson<any>(startRes);
+      let startRes: Response;
+      let startData: { job?: PersistedJobState; error?: string };
+      try {
+        startRes = await fetch(`/api/jobs/${encodeURIComponent(existingJobId)}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        startData = await parseResponseJson(startRes);
+        if (startRes.ok && (startData.job?.job_id !== existingJobId || !Array.isArray(startData.job.batches) || !Array.isArray(startData.job.spots))) {
+          throw new Error('Invalid job response');
+        }
+      } catch {
+        if (token.aborted) return;
+        const polling = pollJobUntilComplete(existingJobId);
+        setVadProgress(null);
+        setErrorMessage('ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กำลังตรวจสถานะอีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
+        await polling;
+        return;
+      }
+      if (token.aborted) return;
       if (!startRes.ok || !startData?.job) {
         setVadProgress(null);
         setStatus('FAILED');
@@ -504,6 +567,7 @@ export default function App() {
       setSpots(startData.job.spots);
       await pollJobUntilComplete(existingJobId);
     } catch (err) {
+      if (token.aborted) return;
       setVadProgress(null);
       setStatus('FAILED');
       setErrorMessage(
@@ -533,6 +597,8 @@ export default function App() {
       return;
     }
 
+    if (spots.some((spot) => spot.text.trim()) && !window.confirm('สร้างบทบรรยายใหม่? ข้อความและเวลาที่แก้ไว้อาจถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
+
     try {
       setStatus('ANALYZING');
       setErrorMessage(null);
@@ -559,6 +625,7 @@ export default function App() {
         percent: 8,
       });
 
+      await saveQueueRef.current;
       const initRes = await fetch('/api/jobs/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -668,33 +735,48 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [spots, selectedSpotId, handleSelectSpot]);
 
+  // Serialize saves so a slower earlier request cannot overwrite a later edit.
+  const persistSpots = useCallback((activeJobId: string, nextSpots: ADSpot[]) => {
+    const request = ++saveRequestRef.current;
+    setSaveStatus('saving');
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      if (request !== saveRequestRef.current) return;
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}/spots`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spots: nextSpots }),
+        });
+        if (!response.ok) throw new Error('Save failed');
+        const data = await response.json() as { job?: PersistedJobState };
+        if (data.job?.job_id !== activeJobId) throw new Error('Save not acknowledged');
+        if (request === saveRequestRef.current) setSaveStatus('saved');
+        return true;
+      } catch {
+        if (request === saveRequestRef.current) setSaveStatus('error');
+        return false;
+      }
+    });
+  }, []);
+
   // 7. Update Spot & Persist to Server JSON
   const handleUpdateSpot = useCallback(
     (updatedSpot: ADSpot) => {
-      setSpots((prevSpots) => {
-        const nextSpots = prevSpots.map((s) =>
-          s.spot_id === updatedSpot.spot_id ? updatedSpot : s
-        );
-
-        if (jobId) {
-          fetch(`/api/jobs/${jobId}/spots`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ spots: nextSpots }),
-          }).catch(() => {});
-        }
-
-        return nextSpots;
-      });
+      const nextSpots = spots.map((spot) =>
+        spot.spot_id === updatedSpot.spot_id ? updatedSpot : spot
+      );
+      setSpots(nextSpots);
+      if (jobId) persistSpots(jobId, nextSpots);
     },
-    [jobId]
+    [jobId, spots, persistSpots]
   );
 
   // 8. Reset Job
   const handleResetJob = () => {
+    if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
     pollAbortRef.current.aborted = true;
     if (jobId) {
-      fetch(`/api/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+      leaveServerJob(jobId);
     }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
@@ -757,59 +839,48 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const generatedSpotsCount = spots.filter(
-    (s) => s.decision === 'generate' && s.text.trim().length > 0
-  ).length;
+  const hasProject = Boolean(videoMetadata);
+  const workflowStep = status === 'READY' ? 2 : hasProject ? 1 : 0;
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-slate-100 text-slate-900">
-      {/* Top Bar Contract: 3 zones separated by gap-8 */}
-      <header className="h-12 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center">
-        <div className="w-full flex items-center justify-between gap-8">
-          {/* Zone 1: Single text element wordmark */}
+    <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
+      <a href={hasProject ? '#section-script-editor' : '#section-upload-vad'} className="skip-link">ข้ามไปยังพื้นที่ทำงาน</a>
+      <header className="min-h-16 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center py-3">
+        <div className="w-full flex items-center justify-between gap-4">
           <a
             href="#section-upload-vad"
-            className="text-sm font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
+            className="text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
           >
             AD Script Studio
           </a>
 
-          {/* Zone 2: Concise single-line navigation links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600">
-            <a
-              href="#section-upload-vad"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              โปรเจกต์และคิวงาน
-            </a>
+          {hasProject ? <nav aria-label="พื้นที่ทำงาน" className="flex items-center gap-4 text-sm font-medium text-slate-600">
             <a
               href="#section-preview-timeline"
               className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              มอนิเตอร์และไทม์ไลน์
+              วิดีโอ
             </a>
             <a
               href="#section-script-editor"
               className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              ตัวแก้ไขบทบรรยายภาพ
+              บทบรรยาย
             </a>
-          </nav>
-
-          {/* Zone 3: 1 primary action */}
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={handleExportSrt}
-              disabled={generatedSpotsCount === 0}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>ส่งออกไฟล์ SRT ({generatedSpotsCount})</span>
-            </button>
-          </div>
+          </nav> : <span className="hidden sm:block text-sm text-slate-600">สร้างบทบรรยายภาพภาษาไทยจากวิดีโอ</span>}
         </div>
       </header>
+
+      <ol aria-label="ขั้นตอนสร้างบทบรรยาย" className="grid grid-cols-3 gap-2 bg-white border-b border-slate-200 px-4 sm:px-6 py-3 shrink-0">
+        {['เลือกวิดีโอ', 'สร้างบทบรรยาย', 'ตรวจและส่งออก'].map((label, index) => (
+          <li key={label} aria-current={workflowStep === index ? 'step' : undefined} className={`flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left text-xs sm:text-sm ${workflowStep === index ? 'text-emerald-800 font-semibold' : 'text-slate-600'}`}>
+            <span className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs ${workflowStep >= index ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {workflowStep > index ? <Check className="w-4 h-4" aria-hidden="true" /> : index + 1}
+            </span>
+            <span className="whitespace-nowrap">{label}</span>
+          </li>
+        ))}
+      </ol>
 
       {/* Browser Compatibility Blocking Banner */}
       {browserCompat && !browserCompat.supported && (
@@ -868,9 +939,9 @@ export default function App() {
       />
 
       {/* Full-Screen Split-Pane NLE Workstation */}
-      <main className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+      {hasProject && <main aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Transport & Multi-Track Timeline (6 cols) */}
-        <div className="lg:col-span-6 h-full min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 overflow-hidden">
+        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
           <VideoPreviewTimeline
             videoUrl={videoUrl}
             videoMetadata={videoMetadata}
@@ -887,11 +958,12 @@ export default function App() {
         </div>
 
         {/* Right Pane: Full-Height Scrollable AD Script Editor & SRT Preview (6 cols) */}
-        <div className="lg:col-span-6 h-full min-h-0 flex flex-col overflow-hidden">
+        <div className="lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden">
           <AdScriptEditor
             spots={spots}
             batches={batches}
             isAnalyzing={status === 'ANALYZING'}
+            emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}
             speechSegments={vadOutput?.speech_segments || []}
             videoDurationMs={vadOutput?.duration_ms || videoMetadata?.durationMs || 0}
             selectedSpotId={selectedSpotId}
@@ -900,9 +972,11 @@ export default function App() {
             onUpdateSpot={handleUpdateSpot}
             onExportSrt={handleExportSrt}
             onExportJson={handleExportJson}
+            saveStatus={jobId ? saveStatus : 'local'}
+            onRetrySave={() => { if (jobId) persistSpots(jobId, spots); }}
           />
         </div>
-      </main>
+      </main>}
     </div>
   );
 }
