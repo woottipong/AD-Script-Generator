@@ -1,4 +1,4 @@
-# Agent Guide
+# Agent guide
 
 Guidance for automated agents working on the AD Script Generator repository.
 
@@ -9,7 +9,7 @@ AD Script Generator is an automated Thai Audio Description (AD) script authoring
 1. Client demuxes and decodes audio locally using `mp4box.js` and `WebCodecs AudioDecoder`.
 2. Client runs Silero VAD v5 via ONNX Runtime Web inside a dedicated Web Worker to identify non-speech gaps.
 3. Server receives candidate spots and uploads the video file to the Gemini Files API.
-4. Server analyses 120-second timeline batches sequentially using `gemini-3.8-flash` (with fallback to `gemini-3.1-flash-lite`).
+4. Server analyses 120-second timeline batches sequentially using `gemini-3.8-flash` (with fallback to `gemini-3.5-flash-lite`).
 5. Client renders an NLE workstation timeline and script editor for review, time adjustment, and export to SRT or JSON.
 
 ## Development workflow
@@ -55,7 +55,7 @@ VAD runs in `src/workers/vad.worker.ts` and post-processes in `src/utils/vadPost
 Batching and Gemini interaction run in `server.ts` and `src/utils/formatters.ts`:
 
 - Primary model: `gemini-3.8-flash` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
-- Fallback model: `gemini-3.1-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.
+- Fallback model: `gemini-3.5-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.
 - Batch interval: 120 seconds of video timeline per batch.
 - Batch context window: Includes 20 seconds before batch start and 10 seconds after batch end, clamped to [0, duration].
 - Narration pace standard: 11.5 base Thai characters per second.
@@ -123,8 +123,7 @@ AD-Script-Generator/
 │   └── API.md              # Complete HTTP REST API specification
 ├── public/
 │   ├── models/             # silero_vad.onnx model file
-│   ├── ort/                # ONNX Runtime Web WASM binaries and loaders
-│   └── samples/            # sample_480p.mp4 for quick testing
+│   └── ort/                # ONNX Runtime Web WASM binaries and loaders
 └── src/
     ├── App.tsx             # Root state machine, upload coordinator, poller, layout
     ├── index.css           # Tailwind CSS imports

@@ -182,9 +182,13 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   return (
     <section
       id="section-preview-timeline"
+      aria-label="วิดีโอและไทม์ไลน์"
       tabIndex={-1}
       className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
     >
+      <div className="px-4 py-3 bg-white border-b border-slate-200 text-base font-semibold text-slate-900 shrink-0">
+        วิดีโอและไทม์ไลน์
+      </div>
       {/* 1. Video Monitor Canvas */}
       <div className="bg-slate-950 flex flex-col min-h-0 border-b border-slate-800">
         <div className="relative aspect-video min-h-0 max-h-[38vh] lg:max-h-[42vh] w-full mx-auto bg-slate-950 flex items-center justify-center overflow-hidden">
@@ -209,9 +213,9 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
               {/* Top-left subtle monitor HUD showing current window spot */}
               {currentWindowSpot && (
-                <div className="absolute top-2.5 left-3 px-2.5 py-1 rounded bg-black/75 text-white text-xs font-mono tabular-nums pointer-events-none flex items-center gap-2">
+                <div className="absolute top-2.5 left-3 max-w-[calc(100%_-_1.5rem)] px-2.5 py-1 rounded bg-black/75 text-white text-xs font-mono tabular-nums pointer-events-none flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <span className="font-semibold text-emerald-400">
-                    {currentWindowSpot.spot_id}
+                    ช่วงที่ {spots.indexOf(currentWindowSpot) + 1}
                   </span>
                   <span>·</span>
                   <span>
@@ -234,10 +238,10 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <div className="flex flex-col items-center justify-center text-slate-400 p-6 text-center">
               <Film className="w-8 h-8 mb-2 text-slate-600" />
               <p className="text-sm font-medium text-slate-300">
-                มอนิเตอร์พรีวิววิดีโอพร้อมซับไตเติลบรรยายภาพสด
+                วิดีโอยังไม่พร้อมแสดง
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                เปิดไฟล์วิดีโอ MP4 หรือโหลดวิดีโอตัวอย่างด้านบนเพื่อเริ่มต้น
+                ตรวจสอบข้อความด้านบน หรือเลือกวิดีโออีกครั้ง
               </p>
             </div>
           )}
@@ -263,6 +267,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => seekToMs(currentTimeMs - 5000)}
               disabled={!videoUrl}
               title="ย้อนกลับ 5 วินาที"
+              aria-label="ย้อนกลับ 5 วินาที"
               className="px-1.5 py-1 rounded text-xs font-mono tabular-nums text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 cursor-pointer flex items-center gap-0.5"
             >
               <Rewind className="w-3.5 h-3.5" />
@@ -274,6 +279,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => seekToMs(currentTimeMs - 1000)}
               disabled={!videoUrl}
               title="ย้อนกลับ 1 วินาที"
+              aria-label="ย้อนกลับ 1 วินาที"
               className="px-1.5 py-1 rounded text-xs font-mono tabular-nums text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 cursor-pointer"
             >
               -1s
@@ -284,6 +290,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => seekToMs(currentTimeMs + 1000)}
               disabled={!videoUrl}
               title="เดินหน้า 1 วินาที"
+              aria-label="เดินหน้า 1 วินาที"
               className="px-1.5 py-1 rounded text-xs font-mono tabular-nums text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 cursor-pointer"
             >
               +1s
@@ -294,6 +301,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               onClick={() => seekToMs(currentTimeMs + 5000)}
               disabled={!videoUrl}
               title="เดินหน้า 5 วินาที"
+              aria-label="เดินหน้า 5 วินาที"
               className="px-1.5 py-1 rounded text-xs font-mono tabular-nums text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40 cursor-pointer flex items-center gap-0.5"
             >
               <span>5s</span>
@@ -371,8 +379,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         {selectedSpot ? (
           <>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              <span className="font-mono tabular-nums font-bold text-slate-900">
-                {selectedSpot.spot_id}
+              <span className="font-semibold text-slate-900" title={selectedSpot.spot_id}>
+                ช่วงที่ {selectedSpotIndex + 1}
               </span>
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span className="font-mono tabular-nums text-slate-700">
@@ -422,7 +430,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           </>
         ) : (
           <div className="text-slate-500">
-            คลิกเลือกจุดบรรยายบนไทม์ไลน์หรือรายการด้านขวาเพื่อตรวจสอบเวลาและซับไตเติล
+            เลือกช่วงบนไทม์ไลน์หรือรายการบทบรรยายเพื่อตรวจเวลา
           </div>
         )}
       </div>
@@ -432,7 +440,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         {/* Timeline Header & Zoom Controls */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-600">
-            <span className="font-semibold text-slate-900">ช่วงเสียงพูดและบทบรรยาย</span>
+            <span className="font-semibold text-slate-900">ไทม์ไลน์</span>
             <span aria-hidden="true">·</span>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-xs bg-slate-600 inline-block" />

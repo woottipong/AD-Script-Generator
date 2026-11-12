@@ -57,7 +57,7 @@ Returns the latest persisted job state stored in `.data/jobs/active_job.json`.
     "updated_at": "2026-11-12T13:12:40.100Z",
     "status": "READY",
     "video_metadata": {
-      "fileName": "sample_480p.mp4",
+      "fileName": "video_480p.mp4",
       "fileSize": 152978,
       "mimeType": "video/mp4",
       "width": 854,

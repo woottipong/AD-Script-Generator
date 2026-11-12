@@ -53,7 +53,6 @@ export default function App() {
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isLoadingSample, setIsLoadingSample] = useState<boolean>(false);
   const [restoredIncompleteJob, setRestoredIncompleteJob] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
 
@@ -406,29 +405,6 @@ export default function App() {
     },
     [jobId, videoMetadata, startVadForFile, leaveServerJob]
   );
-
-  // Load bundled 480p sample MP4 video
-  const handleLoadSampleVideo = async () => {
-    pollAbortRef.current.aborted = true;
-    const sampleToken = { aborted: false };
-    pollAbortRef.current = sampleToken;
-    try {
-      setIsLoadingSample(true);
-      setErrorMessage(null);
-      const res = await fetch('/samples/sample_480p.mp4');
-      if (!res.ok) {
-        throw new Error('ไม่สามารถโหลดไฟล์วิดีโอตัวอย่าง 480p ได้');
-      }
-      const blob = await res.blob();
-      if (sampleToken.aborted) return;
-      const sampleFile = new File([blob], 'sample_480p_scene.mp4', { type: 'video/mp4' });
-      await handleSelectFile(sampleFile);
-    } catch (err) {
-      if (!sampleToken.aborted) setErrorMessage(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsLoadingSample(false);
-    }
-  };
 
   // 3. Trigger Browser Silero VAD manually if needed
   const handleRunVad = () => {
@@ -851,25 +827,13 @@ export default function App() {
         <div className="w-full flex items-center justify-between gap-4">
           <a
             href="#section-upload-vad"
-            className="text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-2.5 text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
           >
+            <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
             AD Script Studio
           </a>
 
-          {hasProject ? <nav aria-label="พื้นที่ทำงาน" className="flex items-center gap-4 text-sm font-medium text-slate-600">
-            <a
-              href="#section-preview-timeline"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              วิดีโอ
-            </a>
-            <a
-              href="#section-script-editor"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              บทบรรยาย
-            </a>
-          </nav> : <span className="hidden sm:block text-sm text-slate-600">สร้างบทบรรยายภาพภาษาไทยจากวิดีโอ</span>}
+          {!hasProject && <span className="hidden sm:block text-sm text-slate-600">สร้างบทบรรยายภาพภาษาไทยจากวิดีโอ</span>}
         </div>
       </header>
 
@@ -902,12 +866,7 @@ export default function App() {
       {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
         <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
           <div>
-            <strong className="font-semibold">มีงานที่ยังไม่เสร็จ</strong>{' '}
-            วิเคราะห์แล้ว{' '}
-            <span className="font-mono tabular-nums font-semibold">
-              {batches.filter((b) => b.status === 'completed').length}/{batches.length}
-            </span>{' '}
-            ชุด เลือกทำต่อจากแถบงานได้
+            <strong className="font-semibold">มีงานวิเคราะห์ที่ยังไม่เสร็จ</strong>
           </div>
         </div>
       )}
@@ -923,8 +882,6 @@ export default function App() {
         batches={batches}
         spots={spots}
         onSelectFile={handleSelectFile}
-        onLoadSampleVideo={handleLoadSampleVideo}
-        isLoadingSample={isLoadingSample}
         onRunVad={handleRunVad}
         onStartGeminiAnalysis={handleStartGeminiAnalysis}
         onRetryFailedBatches={handleRetryFailedBatches}

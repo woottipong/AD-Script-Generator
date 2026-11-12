@@ -43,7 +43,7 @@ const FIXED_SERVER_CONFIG: ServerConfig = {
   contextAfterSeconds: 10,
 };
 
-const FALLBACK_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 let primaryModelCooldownUntil = 0;
 const verifiedActiveFileNames = new Set<string>();
 
@@ -1288,11 +1288,11 @@ async function startServer() {
 
   const publicDir = path.resolve(process.cwd(), 'public');
 
-  // Serve static assets in /public (ORT WASM binaries, .mjs modules, sample videos, Silero ONNX models)
+  // Serve static assets in /public (ORT WASM binaries, .mjs modules, Silero ONNX models)
   // before Vite middleware to ensure dynamic import modules and wasm files bypass Vite transform query parameters (?import)
   app.use((req, res, next) => {
     const p = req.path;
-    if (p.startsWith('/ort/') || p.startsWith('/models/') || p.startsWith('/samples/')) {
+    if (p.startsWith('/ort/') || p.startsWith('/models/')) {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       if (p.endsWith('.wasm')) {

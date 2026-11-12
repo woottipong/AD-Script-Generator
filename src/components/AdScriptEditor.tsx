@@ -203,21 +203,9 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       {/* Top Row: Spot Order, ID, Batch Info, Decision Segmented Control, and Play Trigger */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-mono tabular-nums font-bold text-slate-900">
-            #{String(spotOrder).padStart(2, '0')}
+          <span className="font-semibold text-slate-900" title={spot.spot_id}>
+            ช่วงที่ {spotOrder}
           </span>
-          <span className="font-mono tabular-nums text-slate-500">
-            ({spot.spot_id})
-          </span>
-
-          {batchInfo && (
-            <>
-              <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="font-mono tabular-nums text-slate-500">
-                ชุดที่ {batchInfo.batch_index}
-              </span>
-            </>
-          )}
 
           <span className="text-slate-300" aria-hidden="true">·</span>
 
@@ -277,7 +265,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
             <>
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span className="text-xs font-semibold text-emerald-700">
-                กำลังเล่นบนมอนิเตอร์
+                กำลังเล่น
               </span>
             </>
           )}
@@ -303,11 +291,11 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
         disabled={isAnalyzing}
         aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
         onClick={(e) => e.stopPropagation()}
-        className="min-w-0 w-full mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs"
+        className="min-w-0 w-full mt-3 pt-3 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Start Time + Nudge */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 rounded-md bg-slate-50 p-1">
             <span className="text-slate-500">เริ่ม</span>
             <button
               type="button"
@@ -343,7 +331,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           <span className="text-slate-400">–</span>
 
           {/* End Time + Nudge */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 rounded-md bg-slate-50 p-1">
             <span className="text-slate-500">จบ</span>
             <button
               type="button"
@@ -379,9 +367,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
 
         {/* Gap Bounds & Reset */}
         <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-500">
-          <span>
-            ช่วงว่าง {(spot.duration_ms / 1000).toFixed(1)}s
-          </span>
+          {spot.decision !== 'generate' && <span>ช่วงว่าง {(spot.duration_ms / 1000).toFixed(1)} วินาที</span>}
           {isTimestampsModified && (
             <button
               type="button"
@@ -418,9 +404,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   <Loader2 className="w-4 h-4 animate-spin text-slate-900 shrink-0" />
                   <span>
                     <strong className="font-semibold text-slate-900">
-                      กำลังวิเคราะห์ฉากนี้ในชุดที่ {batchInfo?.batch_index}...
-                    </strong>{' '}
-                    ระบบกำลังสร้างคำบรรยายภาษาไทยให้พอดีกับเวลา {(spot.duration_ms / 1000).toFixed(1)}s
+                      กำลังวิเคราะห์ฉากนี้ · ชุดที่ {batchInfo?.batch_index}
+                    </strong>
                   </span>
                 </>
               ) : isBatchPending ? (
@@ -428,21 +413,20 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>
                     <strong className="font-semibold text-slate-800">
-                      อยู่ในคิวรอวิเคราะห์ (ชุดที่ {batchInfo?.batch_index})
-                    </strong>{' '}
-                    · ตรวจและแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
+                      รอวิเคราะห์ · ชุดที่ {batchInfo?.batch_index}
+                    </strong>
                   </span>
                 </>
               ) : isAnalyzing ? (
                 <>
                   <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>กำลังเตรียมการวิเคราะห์ · ตรวจและแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด</span>
+                  <span>กำลังเตรียมวิเคราะห์</span>
                 </>
               ) : (
                 <>
                   <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>
-                    รอกดสร้างบทบรรยายภาพอัตโนมัติ (แนะนำไม่เกิน {recommendedMaxChars} ตัวอักษร)
+                    รอสร้างบทบรรยาย
                   </span>
                 </>
               )}
@@ -475,7 +459,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   is_edited: true,
                 })
               }
-              placeholder={`พิมพ์บทบรรยายภาพภาษาไทย (แนะนำไม่เกิน ${recommendedMaxChars} ตัวอักษร เพื่อให้พูดทันใน ${(spot.duration_ms / 1000).toFixed(1)} วินาที)...`}
+              placeholder="เขียนบทบรรยายภาพ"
               className={`w-full px-3 py-2 text-sm rounded border bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 leading-relaxed disabled:bg-slate-50 disabled:cursor-not-allowed ${
                 isOverDurationWarning
                   ? 'border-amber-400 focus:ring-amber-600'
@@ -501,10 +485,12 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-mono tabular-nums">
-                <span>
-                  ขอบเขตสูงสุด: {formatTimestampDisplay(spot.original_start_ms)} –{' '}
-                  {formatTimestampDisplay(spot.original_end_ms)}
-                </span>
+                {isTimestampsModified && (
+                  <span>
+                    ช่วงว่างต้นทาง: {formatTimestampDisplay(spot.original_start_ms)} –{' '}
+                    {formatTimestampDisplay(spot.original_end_ms)}
+                  </span>
+                )}
 
                 <div className="flex items-center gap-2">
                   <span>
@@ -520,8 +506,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                         : 'text-slate-700'
                     }
                   >
-                    เวลาพูด ~{(estimatedSpeechMs / 1000).toFixed(1)}s / ช่วงว่าง{' '}
-                    {(spot.duration_ms / 1000).toFixed(1)}s
+                    เวลาพูดประมาณ {(estimatedSpeechMs / 1000).toFixed(1)} /{' '}
+                    {(spot.duration_ms / 1000).toFixed(1)} วินาที
                   </span>
                 </div>
               </div>
@@ -608,7 +594,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     if (!selectedSpotId || showSrtPreview) return;
     const el = itemRefs.current[selectedSpotId];
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
     }
   }, [selectedSpotId, showSrtPreview]);
 
@@ -689,15 +676,11 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-base font-semibold text-slate-900">
-              ตรวจและแก้บทบรรยาย
+              บทบรรยาย
             </h1>
-            <p className="text-xs text-slate-500 font-mono tabular-nums mt-0.5">
-              ทั้งหมด {spots.length} จุด · บรรยาย {generatedCount} · รอคิว {pendingCount} · ข้าม {skippedCount}
-              {overDurationCount > 0 ? ` · เกินเวลา ${overDurationCount}` : ''}
-            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
             <button
               type="button"
               onClick={() => setShowSrtPreview((prev) => !prev)}
@@ -709,7 +692,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
-              <span>{showSrtPreview ? 'กลับไปหน้าแก้ไข' : 'ดูตัวอย่าง SRT'}</span>
+              <span>{showSrtPreview ? 'กลับไปแก้ไข' : 'ตัวอย่าง SRT'}</span>
             </button>
 
             <button
@@ -719,24 +702,25 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>JSON</span>
+              <span>ส่งออก JSON</span>
             </button>
 
             <button
               type="button"
               onClick={onExportSrt}
               disabled={generatedCount === 0}
-              className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
+              title={generatedCount === 0 ? 'เพิ่มบทบรรยายก่อนส่งออก' : undefined}
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>ส่งออก SRT ({generatedCount})</span>
+              <span>ส่งออก SRT</span>
             </button>
           </div>
         </div>
 
         {isAnalyzing && (
           <p role="status" className="text-sm text-slate-700">
-            ระหว่างรอผลวิเคราะห์ คุณดูวิดีโอและตรวจผลได้ และแก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
+            ดูผลได้ระหว่างวิเคราะห์ · แก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
           </p>
         )}
 
@@ -781,7 +765,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700">
-                ตัวอย่างไฟล์ซับไตเติล .SRT ({generatedCount} รายการบรรยาย)
+                ตัวอย่างไฟล์ SRT ({generatedCount} รายการ)
               </span>
               <button
                 type="button"
@@ -862,8 +846,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       {/* 3. Compact Editor Shortcut Footer */}
       {spots.length > 0 && <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 shrink-0">
         <span>
-          คีย์ลัดผู้แก้ไข: <strong className="font-mono text-slate-700">Alt + ↑/↓</strong> เปลี่ยนจุดบรรยาย ·{' '}
-          <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุดฉากที่เลือก
+          <strong className="font-mono text-slate-700">Alt + ↑/↓</strong> เลือกช่วง ·{' '}
+          <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุด
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-red-700' : ''}`}>
           <span>

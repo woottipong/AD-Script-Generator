@@ -8,7 +8,6 @@ import {
   FileVideo,
   Layers,
   Loader2,
-  Play,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -42,8 +41,6 @@ interface UploadAndVadPanelProps {
   batches: AnalysisBatch[];
   spots: ADSpot[];
   onSelectFile: (file: File) => void;
-  onLoadSampleVideo: () => void;
-  isLoadingSample: boolean;
   onRunVad: () => void;
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
@@ -62,8 +59,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   batches,
   spots,
   onSelectFile,
-  onLoadSampleVideo,
-  isLoadingSample,
   onRunVad,
   onStartGeminiAnalysis,
   onRetryFailedBatches,
@@ -174,7 +169,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <section
         id="section-upload-vad"
         tabIndex={-1}
-        className="w-[calc(100%_-_2rem)] max-w-5xl mx-auto my-6 sm:my-12 bg-white border border-slate-200 rounded-lg px-5 sm:px-10 py-7 sm:py-10"
+        className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
       >
         <input
           ref={fileInputRef}
@@ -185,8 +180,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         />
 
         <div className="mb-7">
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">เริ่มสร้างบทบรรยายภาพ</h1>
-          <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">เลือกวิดีโอ ระบบจะหาช่วงที่ไม่มีเสียงพูดให้ก่อน จากนั้นสร้างบทบรรยายภาษาไทยให้คุณตรวจแก้และส่งออกเป็นไฟล์ SRT</p>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">สร้างบทบรรยายภาพ</h1>
+          <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">ระบบหาช่วงว่างบนเครื่องของคุณ</p>
         </div>
         <div className="flex flex-col gap-7">
           {/* Dropzone (7 cols) */}
@@ -203,10 +198,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 setIsDragging(false);
               }}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-md p-6 sm:p-8 transition-colors flex flex-col items-center text-center gap-5 ${
+              className={`border-2 border-dashed rounded-lg p-6 sm:p-10 transition-colors flex flex-col items-center text-center gap-5 ${
                 isDragging
                   ? 'border-slate-900 bg-slate-50'
-                  : 'border-slate-300 hover:border-slate-500 bg-slate-50/50'
+                  : 'border-slate-300 hover:border-slate-500 bg-white'
               }`}
             >
               <div className="min-w-0">
@@ -223,30 +218,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                   <Upload className="w-4 h-4" aria-hidden="true" />
                   เลือกวิดีโอ
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLoadSampleVideo();
-                  }}
-                  disabled={isLoadingSample}
-                  className="px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-                >
-                  {isLoadingSample ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isLoadingSample ? 'กำลังเปิดตัวอย่าง…' : 'ลองวิดีโอตัวอย่าง'}</span>
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Workflow Pipeline Overview (5 cols) */}
-          <div className="border-t border-slate-200 pt-5 text-sm leading-relaxed text-slate-600">
-            <p><strong className="font-medium text-slate-900">คุณตรวจแก้ได้ทุกจุด</strong> ดูวิดีโอพร้อมบทบรรยาย ปรับข้อความและเวลา แล้วส่งออกไฟล์ SRT หรือ JSON</p>
-            <p className="mt-2">การหาช่วงเสียงพูดทำบนเครื่องของคุณ เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+          <div className="text-sm leading-relaxed text-slate-600">
+            <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
           </div>
         </div>
 
@@ -274,18 +251,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         onChange={handleFileChange}
         className="hidden"
       />
-
-      {!isBusy && !errorMessage && !hasBlockingErrors && (
-        <div className="px-4 sm:px-6 py-3 border-b border-slate-200 bg-emerald-50 text-sm text-emerald-900" role="status">
-          {vadOutput?.candidate_spots.length === 0
-            ? 'ไม่พบช่วงที่ไม่มีเสียงพูดยาวพอสำหรับบทบรรยาย ลองใช้วิดีโอที่มีช่วงเงียบอย่างน้อย 3 วินาที'
-            : status === 'READY'
-            ? `สร้างบทบรรยายแล้ว ${generatedSpotsCount} จุด · ตรวจข้อความให้ตรงกับภาพ แล้วส่งออก SRT จากแผงบทบรรยาย`
-            : vadOutput
-            ? `พบช่วงสำหรับบรรยาย ${vadOutput.candidate_spots.length} จุด · กด “สร้างบทบรรยายภาพ” เพื่อวิเคราะห์วิดีโอด้วย Google Gemini`
-            : 'กำลังเตรียมวิดีโอเพื่อหาช่วงสำหรับบรรยาย'}
-        </div>
-      )}
 
       {/* Compact Studio Project & Queue Ribbon */}
       <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
@@ -322,32 +287,25 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </>
           )}
 
-          {vadOutput && (
-            <>
-              <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="text-slate-600">
-                เสียงพูด{' '}
-                <strong className="font-mono tabular-nums text-slate-900">
-                  {vadOutput.speech_segments.length}
-                </strong>{' '}
-                ช่วง ({speechPercent}%)
-              </span>
-              <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="text-slate-600">
-                ช่องว่าง{' '}
-                <strong className="font-mono tabular-nums text-emerald-700">
-                  {vadOutput.candidate_spots.length} จุด
-                </strong>{' '}
-                ({formatCompactTime(nonSpeechDurationMs)})
-              </span>
-            </>
+          {vadOutput && !isBusy && !errorMessage && !hasBlockingErrors && (videoFile || status === 'READY' || vadOutput.candidate_spots.length === 0) && (
+            <span
+              role="status"
+              className={`rounded px-2 py-1 ${vadOutput.candidate_spots.length === 0 ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-900'}`}
+            >
+              {vadOutput.candidate_spots.length === 0
+                ? 'ไม่พบช่วงว่าง'
+                : status === 'READY'
+                ? 'วิเคราะห์เสร็จแล้ว'
+                : `พบช่วงว่าง ${vadOutput.candidate_spots.length} ช่วง`}
+            </span>
           )}
+
         </div>
 
         {/* Right: Live Status Trigger, Queue Drawer Toggle, and Primary Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 w-full min-w-0 lg:w-auto">
           {/* Primary Generate / Resume Button */}
-          {vadOutput && vadOutput.candidate_spots.length > 0 && (
+          {vadOutput && vadOutput.candidate_spots.length > 0 && (videoFile || completedBatchesCount < batches.length) && (
             <button
               type="button"
               onClick={
@@ -366,19 +324,19 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <span>
                 {isAnalyzing
                   ? 'กำลังวิเคราะห์วิดีโอ...'
-                  : failedBatchesCount > 0
-                  ? `ลองใหม่ชุดที่ค้าง (${failedBatchesCount} ชุด)`
-                  : completedBatchesCount > 0 && completedBatchesCount < batches.length
-                  ? `ทำต่อชุดที่เหลือ (${batches.length - completedBatchesCount} ชุด)`
+                  : failedBatchesCount > 0 ||
+                    (completedBatchesCount > 0 && completedBatchesCount < batches.length) ||
+                    (!videoFile && batches.length > 0 && completedBatchesCount < batches.length)
+                  ? 'ทำต่อจากชุดที่ค้าง'
                   : generatedSpotsCount > 0 && pendingSpotsCount === 0
                   ? 'สร้างบทบรรยายใหม่'
-                  : `สร้างบทบรรยายภาพ (${vadOutput.candidate_spots.length} จุด)`}
+                  : 'สร้างบทบรรยายภาพ'}
               </span>
             </button>
           )}
 
           {/* Live Job / Queue Status Summary Button */}
-          {(batches.length > 0 || isBusy) && (
+          {(vadOutput || batches.length > 0 || isBusy) && (
             <button
               type="button"
               onClick={() => setIsQueueExpanded((prev) => !prev)}
@@ -398,15 +356,23 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 <Layers className="w-3.5 h-3.5 shrink-0" />
               )}
 
-              <span className="min-w-0 text-left">
+              <span aria-live="polite" aria-atomic="true" className="min-w-0 text-left">
                 {isDetecting
                   ? `กำลังสแกนเสียง ${vadProgress?.percent ?? 0}%`
                   : isAnalyzing
                   ? `กำลังทำงาน: ชุดที่ ${
                       processingBatch?.batch_index ?? completedBatchesCount + 1
-                    }/${batches.length} (${formatElapsed(elapsedSeconds)})`
-                  : `รายละเอียดการทำงาน · ${completedBatchesCount}/${batches.length} ชุด`}
+                    }/${batches.length} · ${vadProgress?.percent ?? 0}%`
+                  : batches.length > 0
+                  ? `รายละเอียดการทำงาน · ${completedBatchesCount}/${batches.length} ชุด`
+                  : 'รายละเอียดการทำงาน'}
               </span>
+
+              {isAnalyzing && (
+                <span aria-hidden="true" className="font-mono tabular-nums shrink-0">
+                  {formatElapsed(elapsedSeconds)}
+                </span>
+              )}
 
               {pendingSpotsCount > 0 && !isBusy && (
                 <span className="text-amber-700 font-mono tabular-nums">
@@ -432,7 +398,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
-              <span className="hidden sm:inline">สแกนเสียงใหม่</span>
+              <span>สแกนใหม่</span>
             </button>
           )}
 
@@ -464,30 +430,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </div>
       </div>
 
-      {/* Active Progress Bar Strip (Always visible when detecting or analyzing) */}
-      {vadProgress && (
-        <div role="status" className="px-4 py-3 bg-slate-900 text-white border-t border-slate-800 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-4 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 shrink-0" />
-              <span className="font-medium">{vadProgress.stage}</span>
-            </div>
-            <div className="flex items-center gap-3 shrink-0 font-mono tabular-nums text-slate-300">
-              {isBusy && (
-                <span>เวลาที่ใช้: {formatElapsed(elapsedSeconds)}</span>
-              )}
-              <span className="text-white font-semibold">{vadProgress.percent}%</span>
-            </div>
-          </div>
-          <div role="progressbar" aria-label={isDetecting ? 'หาช่วงเสียงพูด' : 'สร้างบทบรรยาย'} aria-valuenow={Math.round(vadProgress.percent)} aria-valuemin={0} aria-valuemax={100} className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 transition-transform duration-200 origin-left"
-              style={{ transform: `scaleX(${Math.max(0.02, vadProgress.percent / 100)})` }}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Validation Issues or Error Banner */}
       {(validationIssues.length > 0 || errorMessage) && (
         <div role="alert" className="px-4 py-3 bg-red-50 border-t border-red-200 flex flex-wrap items-center justify-between gap-2 text-sm text-red-800">
@@ -498,21 +440,43 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 validationIssues.map((i) => i.message).join(' · ')}
             </span>
           </div>
-          {failedBatchesCount > 0 && !isBusy && (
-            <button
-              type="button"
-              onClick={onRetryFailedBatches}
-              className="px-2.5 py-1 text-xs font-semibold text-white bg-red-700 hover:bg-red-800 rounded whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              กดลองใหม่เฉพาะชุดที่ค้าง
-            </button>
-          )}
         </div>
       )}
 
       {/* Expandable Queue & Pipeline Monitor Drawer */}
       {isQueueExpanded && (
         <div id="analysis-details" className="px-4 py-3 bg-slate-50 border-t border-slate-200 space-y-3 lg:max-h-[28vh] overflow-y-auto">
+          {/* Active progress stays available inside the details drawer. */}
+          {vadProgress && (
+            <div role="status" className="px-4 py-3 bg-slate-900 text-white border-t border-slate-800 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 shrink-0" />
+                  <span className="font-medium">{vadProgress.stage}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 font-mono tabular-nums text-slate-300">
+                  {isBusy && (
+                    <span>เวลาที่ใช้: {formatElapsed(elapsedSeconds)}</span>
+                  )}
+                  <span className="text-white font-semibold">{vadProgress.percent}%</span>
+                </div>
+              </div>
+              <div role="progressbar" aria-label={isDetecting ? 'หาช่วงเสียงพูด' : 'สร้างบทบรรยาย'} aria-valuenow={Math.round(vadProgress.percent)} aria-valuemin={0} aria-valuemax={100} className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-transform duration-200 origin-left"
+                  style={{ transform: `scaleX(${Math.max(0.02, vadProgress.percent / 100)})` }}
+                />
+              </div>
+            </div>
+          )}
+          {vadOutput && (
+            <div className="space-y-2 text-xs text-slate-600">
+              <p>เสียงพูด {vadOutput.speech_segments.length} ช่วง ({speechPercent}%) · ช่วงว่าง {vadOutput.candidate_spots.length} ช่วง ({formatCompactTime(nonSpeechDurationMs)})</p>
+              {videoFile && vadOutput.candidate_spots.length > 0 && status !== 'READY' && (
+                <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+              )}
+            </div>
+          )}
           {/* 4-Stage Pipeline Tracker */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
             {/* Step 1: Silero VAD */}
