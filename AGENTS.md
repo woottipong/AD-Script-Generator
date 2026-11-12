@@ -14,15 +14,15 @@ AD Script Generator is an automated Thai Audio Description (AD) script authoring
 
 ## Development workflow
 
-For local setup, Docker hot reload, dependency or environment changes, production builds, and verification, follow [README.md — การรันโปรเจกต์](README.md#การรันโปรเจกต์). Keep executable setup instructions there; consult `package.json` for available scripts.
+For local setup, Docker hot reload, dependency or environment changes, production builds, and verification, follow [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์). Keep executable setup instructions there; consult `package.json` for available scripts.
 
-Use Bun to maintain `bun.lock`; Docker installs with `--frozen-lockfile`. Keep dependency changes in `package.json` and `bun.lock` together. Plain `npm install` currently fails on the Vite/esbuild peer dependency conflict.
+Use Bun (version 1.4 or higher) to maintain `bun.lock` (lockfileVersion 2). Docker installs with `--frozen-lockfile`. Keep dependency changes in `package.json` and `bun.lock` together. Plain `npm install` fails due to the Vite/esbuild peer dependency conflict; run `npm install --legacy-peer-deps` when using npm.
 
-Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. Preserve this separation when changing the container setup. The jobs bind mount maps host `./_data/jobs` to container `/app/.data/jobs`; refreshing the anonymous dependency volume must preserve that bind mount.
+Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. The project root is bind mounted to `/app`, and jobs persist directly in `.data/jobs` on both the host and the container.
 
 ## UX conventions
 
-For interface changes, preserve the guided intake and [three-step workflow](README.md#วิธีใช้งาน). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+For interface changes, preserve the guided intake and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
 
 ## System constraints
 
@@ -88,6 +88,8 @@ All server endpoints live under `/api`:
 - `PATCH /api/jobs/:jobId/spots`: Validates and saves manual script or timestamp edits.
 - `DELETE /api/jobs/:jobId`: Clears active job pointer.
 
+Full request and response specifications are documented in [docs/API.md](docs/API.md).
+
 ### HTTP status code sanitization
 
 Cloud Run and container Nginx reverse proxies intercept status codes 403, 502, 503, and 504, replacing JSON bodies with HTML error pages. `server.ts` uses `sanitizeApiStatusCode` to remap 403 to 401, and 502/503/504 to 500. Keep this sanitization on all API error paths.
@@ -110,13 +112,15 @@ When editing candidate spots in the UI or via `PATCH /api/jobs/:jobId/spots`:
 ```
 AD-Script-Generator/
 ├── server.ts               # Express backend, Gemini Files API, batch queue, job persistence
-├── Dockerfile              # Production image build
+├── Dockerfile              # Production multi-stage image build
 ├── Dockerfile.Dev          # Development image with tsx watch
 ├── docker-compose.yml      # Local dev orchestration with HMR port and jobs volume
 ├── .dockerignore           # Excludes dependencies, build output, secrets, and jobs from images
 ├── vite.config.ts          # Vite build and server middleware config
 ├── package.json            # Scripts and dependencies
-├── bun.lock                # Dependency lockfile
+├── bun.lock                # Dependency lockfile (version 2)
+├── docs/
+│   └── API.md              # Complete HTTP REST API specification
 ├── public/
 │   ├── models/             # silero_vad.onnx model file
 │   ├── ort/                # ONNX Runtime Web WASM binaries and loaders

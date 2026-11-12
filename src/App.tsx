@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertOctagon, Check, PlayCircle } from 'lucide-react';
+import { AlertOctagon, Check } from 'lucide-react';
 import {
   ADSpot,
   AnalysisBatch,
@@ -193,7 +193,7 @@ export default function App() {
   };
 
   // Poll Server Background Job Until Complete (no long-held HTTP connections)
-  const pollJobUntilComplete = useCallback(async (activeJobId: string) => {
+  const pollJobUntilComplete = useCallback(async (activeJobId: string, startError?: string) => {
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
     pollAbortRef.current = token;
@@ -223,6 +223,7 @@ export default function App() {
         setErrorMessage(null);
         const liveJob: PersistedJobState = data.job;
         const isRunning = Boolean(data.isRunning);
+        if (isRunning) startError = undefined;
 
         setBatches(liveJob.batches);
         setSpots(liveJob.spots);
@@ -251,9 +252,13 @@ export default function App() {
           setVadProgress(null);
           setStatus('FAILED');
           setErrorMessage(
-            liveJob.error_message || 'เกิดข้อผิดพลาดระหว่างการวิเคราะห์วิดีโอด้วย Gemini'
+            startError || liveJob.error_message || 'เกิดข้อผิดพลาดระหว่างการวิเคราะห์วิดีโอด้วย Gemini'
           );
           return;
+        }
+
+        if (!isRunning && startError) {
+          setErrorMessage(`${startError} กำลังตรวจสถานะงานอีกครั้ง`);
         }
 
         // If server restarted mid-job and is no longer actively running, auto-resume once
@@ -534,37 +539,34 @@ export default function App() {
         stage: 'กำลังเริ่มประมวลผลชุดข้อมูลต่อบนเซิร์ฟเวอร์...',
         percent: 15,
       });
-      let startRes: Response;
-      let startData: { job?: PersistedJobState; error?: string };
+      let startedJob: PersistedJobState;
+      let startError: string | undefined;
       try {
-        startRes = await fetch(`/api/jobs/${encodeURIComponent(existingJobId)}/start`, {
+        const startRes = await fetch(`/api/jobs/${encodeURIComponent(existingJobId)}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
-        startData = await parseResponseJson(startRes);
-        if (startRes.ok && (startData.job?.job_id !== existingJobId || !Array.isArray(startData.job.batches) || !Array.isArray(startData.job.spots))) {
+        const startData = await parseResponseJson<{ job?: PersistedJobState; error?: string }>(startRes);
+        if (!startRes.ok) {
+          startError = startData?.error || 'ไม่สามารถเริ่มงานประมวลผลต่อบนเซิร์ฟเวอร์ได้';
+          throw new Error('Start not confirmed');
+        }
+        if (startData?.job?.job_id !== existingJobId || !Array.isArray(startData.job.batches) || !Array.isArray(startData.job.spots)) {
           throw new Error('Invalid job response');
         }
+        startedJob = startData.job;
       } catch {
         if (token.aborted) return;
-        const polling = pollJobUntilComplete(existingJobId);
+        const polling = pollJobUntilComplete(existingJobId, startError);
         setVadProgress(null);
         setErrorMessage('ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กำลังตรวจสถานะอีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         await polling;
         return;
       }
       if (token.aborted) return;
-      if (!startRes.ok || !startData?.job) {
-        setVadProgress(null);
-        setStatus('FAILED');
-        setErrorMessage(
-          startData?.error || 'ไม่สามารถเริ่มงานประมวลผลต่อบนเซิร์ฟเวอร์ได้'
-        );
-        return;
-      }
 
-      setBatches(startData.job.batches);
-      setSpots(startData.job.spots);
+      setBatches(startedJob.batches);
+      setSpots(startedJob.spots);
       await pollJobUntilComplete(existingJobId);
     } catch (err) {
       if (token.aborted) return;
@@ -844,7 +846,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
-      <a href={hasProject ? '#section-script-editor' : '#section-upload-vad'} className="skip-link">ข้ามไปยังพื้นที่ทำงาน</a>
+      <a href="#main-workspace" className="skip-link">ข้ามไปยังพื้นที่ทำงาน</a>
       <header className="min-h-16 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full flex items-center justify-between gap-4">
           <a
@@ -888,32 +890,25 @@ export default function App() {
           <AlertOctagon className="w-4 h-4 text-red-600 shrink-0" />
           <div className="text-xs">
             <strong className="font-bold">
-              เบราว์เซอร์ไม่รองรับการถอดรหัสเสียง WebCodecs AudioDecoder:
+              เบราว์เซอร์นี้ไม่รองรับการวิเคราะห์เสียง:
             </strong>{' '}
             {browserCompat.reason} กรุณาเปิดใช้งานด้วย Google Chrome หรือ Microsoft Edge เวอร์ชันล่าสุดบนคอมพิวเตอร์
           </div>
         </div>
       )}
 
+      <main id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
       {/* Restored Incomplete Job Resume Banner */}
       {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
-        <div className="px-4 py-2 border-b border-amber-300 bg-amber-50 text-slate-900 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="text-xs">
-            <strong className="font-semibold">พบคิวงานที่ค้างอยู่:</strong>{' '}
-            ไฟล์ <span className="font-mono">{videoMetadata?.fileName}</span> วิเคราะห์สำเร็จแล้ว{' '}
+        <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
+          <div>
+            <strong className="font-semibold">มีงานที่ยังไม่เสร็จ</strong>{' '}
+            วิเคราะห์แล้ว{' '}
             <span className="font-mono tabular-nums font-semibold">
               {batches.filter((b) => b.status === 'completed').length}/{batches.length}
             </span>{' '}
-            ชุด กดเพื่อดำเนินการต่อจากชุดที่ค้างได้ทันที
+            ชุด เลือกทำต่อจากแถบงานได้
           </div>
-          <button
-            type="button"
-            onClick={handleRetryFailedBatches}
-            className="px-3 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <PlayCircle className="w-3.5 h-3.5" />
-            <span>ทำต่อจากชุดที่ค้าง</span>
-          </button>
         </div>
       )}
 
@@ -939,7 +934,7 @@ export default function App() {
       />
 
       {/* Full-Screen Split-Pane NLE Workstation */}
-      {hasProject && <main aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
+      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Transport & Multi-Track Timeline (6 cols) */}
         <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
           <VideoPreviewTimeline
@@ -976,7 +971,8 @@ export default function App() {
             onRetrySave={() => { if (jobId) persistSpots(jobId, spots); }}
           />
         </div>
-      </main>}
+      </section>}
+      </main>
     </div>
   );
 }
