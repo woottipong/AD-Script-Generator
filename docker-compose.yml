@@ -2,12 +2,18 @@ services:
   ad-script-generator:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.Dev
+    init: true
     ports:
       - "3000:3000"
+      - "24678:24678"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+      - DISABLE_HMR=false
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=300
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
-      - ./_data/jobs:/app/.data/jobs
+      - .:/app
+      - /app/node_modules
     restart: unless-stopped
