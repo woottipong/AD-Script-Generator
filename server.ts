@@ -580,7 +580,7 @@ ${candidateListDescription}
         }
         resultMap.set(item.spot_id, {
           decision: item.decision,
-          text: item.decision === 'generate' ? cleanedText : '',
+          text: cleanedText,
           reason: item.decision === 'skip' ? item.reason || 'ไม่มีเหตุการณ์สำคัญที่ต้องบรรยาย' : item.reason,
         });
       }

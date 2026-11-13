@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, SpeechSegment } from '../types/ad';
 import {
+  enableSpotNarration,
   estimateThaiSpeechDurationMs,
   formatTimestampDisplay,
   parseTimestampInput,
@@ -223,13 +224,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               <button
                 type="button"
                 aria-pressed={spot.decision === 'generate'}
-                onClick={() =>
-                  onUpdate({
-                    ...spot,
-                    decision: 'generate',
-                    is_edited: true,
-                  })
-                }
+                onClick={() => onUpdate(enableSpotNarration(spot))}
                 className={`video-control px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   spot.decision === 'generate'
                     ? 'bg-brand-700 text-white'
@@ -680,7 +675,12 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   speechSegments={speechSegments}
                   videoDurationMs={videoDurationMs}
                   onSelect={onSelectSpot}
-                  onUpdate={onUpdateSpot}
+                  onUpdate={(updatedSpot) => {
+                    if (filterMode === 'skip' && updatedSpot.decision === 'generate') {
+                      setFilterMode('all');
+                    }
+                    onUpdateSpot(updatedSpot);
+                  }}
                   itemRef={(el) => {
                     itemRefs.current[spot.spot_id] = el;
                   }}

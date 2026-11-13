@@ -189,6 +189,17 @@ export function buildAnalysisBatches(
   return batches;
 }
 
+export function enableSpotNarration(spot: ADSpot): ADSpot {
+  return {
+    ...spot,
+    decision: 'generate',
+    text: spot.decision === 'skip' && !spot.text.trim()
+      ? spot.reason?.trim() || ''
+      : spot.text,
+    is_edited: true,
+  };
+}
+
 /**
  * Generates SRT content according to Section 10:
  * Only includes spots with decision === 'generate' and non-empty text

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { CandidateSpot } from '../types/ad';
-import { buildAnalysisBatches } from './formatters';
+import type { ADSpot, CandidateSpot } from '../types/ad';
+import { buildAnalysisBatches, enableSpotNarration, generateSrtContent } from './formatters';
 
 function spot(id: string, start: number, end: number): CandidateSpot {
   return { spot_id: id, start_ms: start, end_ms: end, duration_ms: end - start };
@@ -61,4 +61,42 @@ test('covers a crossing spot, clips context at video ends, and omits empty bucke
 
 test('produces no batches when there are no candidate spots', () => {
   assert.deepEqual(buildAnalysisBatches([], 1_800_000), []);
+});
+
+const skippedSpot: ADSpot = {
+  ...spot('skipped', 1_000, 8_000),
+  original_start_ms: 1_000,
+  original_end_ms: 8_000,
+  decision: 'skip',
+  text: '',
+  reason: 'เด็กหญิงวางตุ๊กตาผึ้งลงในช่องกระดาษ',
+  is_edited: false,
+};
+
+test('enables a skipped spot with its displayed AI explanation and includes it in SRT', () => {
+  const enabled = enableSpotNarration(skippedSpot);
+
+  assert.equal(enabled.decision, 'generate');
+  assert.equal(enabled.text, skippedSpot.reason);
+  assert.equal(enabled.is_edited, true);
+  assert.equal(enabled.reason, skippedSpot.reason);
+  assert.equal(skippedSpot.decision, 'skip');
+  assert.equal(generateSrtContent([skippedSpot]), '');
+  assert.equal(generateSrtContent([enabled]),
+    `1\n00:00:01,000 --> 00:00:08,000\n${skippedSpot.reason}`);
+});
+
+test('keeps existing narration when enabling a skipped spot again', () => {
+  const edited = { ...skippedSpot, text: 'บทบรรยายที่ผู้ใช้แก้ไขแล้ว' };
+  const enabled = enableSpotNarration(edited);
+  const enabledAgain = enableSpotNarration({ ...enabled, decision: 'skip' });
+
+  assert.equal(enabledAgain.text, edited.text);
+  assert.equal(enabledAgain.start_ms, edited.start_ms);
+  assert.equal(enabledAgain.end_ms, edited.end_ms);
+});
+
+test('leaves an intentionally empty narration empty and handles missing AI text', () => {
+  assert.equal(enableSpotNarration({ ...skippedSpot, decision: 'generate' }).text, '');
+  assert.equal(enableSpotNarration({ ...skippedSpot, text: '  ', reason: undefined }).text, '');
 });
