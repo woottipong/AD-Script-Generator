@@ -25,7 +25,6 @@ import {
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
-import { VideoProcessingStatus } from './components/VideoProcessingStatus';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
 
 const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
@@ -901,12 +900,6 @@ export default function App() {
         errorMessage={errorMessage}
       />
 
-      {hasProject && processingFeedback && (
-        <div className="lg:hidden px-4 py-5 border-b border-slate-200 bg-white">
-          <VideoProcessingStatus feedback={processingFeedback} />
-        </div>
-      )}
-
       {/* Full-Screen Split-Pane NLE Workstation */}
       {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Transport & Multi-Track Timeline (6 cols) */}
@@ -926,13 +919,12 @@ export default function App() {
           />
         </div>
 
-        {/* Right Pane: Full-Height Scrollable AD Script Editor & SRT Preview (6 cols) */}
+        {/* Right Pane: Full-Height Scrollable AD Script Editor (6 cols) */}
         <div className={`lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
           <AdScriptEditor
             spots={spots}
             batches={batches}
             isAnalyzing={status === 'ANALYZING'}
-            processingFeedback={processingFeedback}
             errorMessage={errorMessage}
             onRetryVad={handleRunVad}
             emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}

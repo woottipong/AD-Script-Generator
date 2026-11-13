@@ -98,3 +98,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.48);
 }
+
+.video-control {
+  min-width: 2rem;
+  min-height: 2rem;
+  height: 2rem;
+}
+
+@media (pointer: coarse) {
+  .video-control {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    height: 2.75rem;
+  }
+}

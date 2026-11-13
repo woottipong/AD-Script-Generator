@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
 import {
   ADSpot,
@@ -28,6 +29,33 @@ import {
   formatCompactTime,
   formatFileSize,
 } from '../utils/formatters';
+
+const batchColors = {
+  pending: {
+    surface: 'border-amber-200 bg-amber-50 hover:border-amber-400 hover:bg-amber-100',
+    foreground: 'text-amber-950',
+    secondary: 'text-amber-800',
+    badge: 'bg-amber-100 text-amber-900',
+  },
+  processing: {
+    surface: 'border-emerald-500 bg-emerald-100 hover:bg-emerald-200',
+    foreground: 'text-emerald-950',
+    secondary: 'text-emerald-900',
+    badge: 'bg-emerald-800 text-white',
+  },
+  completed: {
+    surface: 'border-emerald-200 bg-emerald-50 hover:border-emerald-400 hover:bg-emerald-100',
+    foreground: 'text-emerald-950',
+    secondary: 'text-emerald-800',
+    badge: 'bg-emerald-100 text-emerald-900',
+  },
+  failed: {
+    surface: 'border-red-300 bg-red-50 hover:border-red-400 hover:bg-red-100',
+    foreground: 'text-red-950',
+    secondary: 'text-red-800',
+    badge: 'bg-red-100 text-red-900',
+  },
+};
 
 interface UploadAndVadPanelProps {
   headerActionsElement: HTMLDivElement | null;
@@ -78,6 +106,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const managementRef = useRef<HTMLDetailsElement | null>(null);
+  const analysisDetailsRef = useRef<HTMLDivElement | null>(null);
   const statusButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
@@ -86,6 +115,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
+  const activityFeedback: ProcessingFeedback | null = checkingFileName
+    ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
+    : processingFeedback;
 
   useEffect(() => {
     // Match keyboard order to the header layout without duplicating its controls.
@@ -100,6 +132,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     const dismissDisclosures = (event: PointerEvent | KeyboardEvent) => {
       const isEscape = event instanceof KeyboardEvent && event.key === 'Escape';
       if (event instanceof KeyboardEvent && !isEscape) return;
+      if (isQueueExpanded && (isEscape || (!analysisDetailsRef.current?.contains(event.target as Node) && !statusButtonRef.current?.contains(event.target as Node)))) {
+        setIsQueueExpanded(false);
+        if (isEscape) statusButtonRef.current?.focus();
+      }
       for (const disclosure of [videoDetailsRef.current, managementRef.current]) {
         if (disclosure?.open && (isEscape || !disclosure.contains(event.target as Node))) {
           disclosure.open = false;
@@ -113,7 +149,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       document.removeEventListener('pointerdown', dismissDisclosures);
       document.removeEventListener('keydown', dismissDisclosures);
     };
-  }, []);
+  }, [isQueueExpanded]);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -172,8 +208,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
   const fileName = videoMetadata?.fileName || videoFile?.name || 'วิดีโอโปรเจกต์';
-  const statusText = processingFeedback
-    ? `${processingFeedback.title}${processingFeedback.percent !== undefined ? ` ${processingFeedback.percent}%` : ''}`
+  const statusText = activityFeedback
+    ? `${activityFeedback.title}${activityFeedback.percent !== undefined ? ` ${activityFeedback.percent}%` : ''}`
     : errorMessage || failedBatchesCount > 0
     ? 'ต้องตรวจสอบการทำงาน'
     : status === 'READY'
@@ -305,7 +341,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'}`}
       >
         {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden="true" /> : <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-        <span role={processingFeedback ? undefined : 'status'} className="min-w-0 text-left">{statusText}</span>
+        <span role={activityFeedback ? undefined : 'status'} className="min-w-0 text-left">{statusText}</span>
         {isQueueExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
       </button>
 
@@ -336,7 +372,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   // Keep project controls in the header and processing details beside the workspace.
   return (
     <section
-      className="shrink-0"
+      className="relative shrink-0"
     >
       <input
         ref={fileInputRef}
@@ -364,106 +400,73 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </div>
       )}
 
-      {/* Expandable Queue & Pipeline Monitor Drawer */}
-      {isQueueExpanded && (
-        <div id="analysis-details" className="px-4 py-3 bg-slate-50 border-t border-slate-200 space-y-3 max-h-[60vh] lg:max-h-[45vh] overflow-y-auto">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
-            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} className="px-2 text-xs text-slate-600 hover:text-slate-900 underline cursor-pointer">ปิดรายละเอียด</button>
-          </div>
-          {processingFeedback && <p className="text-sm text-slate-600">{processingFeedback.detail || processingFeedback.title}</p>}
-          {vadOutput && (
-            <div className="space-y-2 text-xs text-slate-600">
-              <p>เสียงพูด {vadOutput.speech_segments.length} ช่วง ({speechPercent}%) · ช่วงว่าง {vadOutput.candidate_spots.length} ช่วง ({formatCompactTime(nonSpeechDurationMs)})</p>
-              {videoFile && vadOutput.candidate_spots.length > 0 && status !== 'READY' && (
-                <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
-              )}
-            </div>
-          )}
-          {/* Batch Queue Grid (Click any batch to jump to its first spot) */}
-          {batches.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-800">
-                    สถานะคิวงานรายชุด (คลิกเพื่อเลื่อนไปยังจุดบรรยายในชุดนั้น)
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="font-mono tabular-nums">
-                    เสร็จแล้ว {completedBatchesCount} ชุด · กำลังทำ {processingBatch ? 1 : 0} ชุด · รอคิว {pendingBatchesCount} ชุด
-                    {failedBatchesCount > 0 ? ` · ล้มเหลว ${failedBatchesCount} ชุด` : ''}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }}
-                  className="text-xs text-slate-500 hover:text-slate-900 underline cursor-pointer"
-                >
-                  ซ่อนแผงคิวงาน
-                </button>
-              </div>
+      {activityFeedback && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 sm:px-6">
+          <VideoProcessingStatus feedback={activityFeedback} compact />
+        </div>
+      )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                {batches.map((b) => {
-                  const firstSpotId = b.candidate_spots[0]?.spot_id;
+      <div
+        id="analysis-details"
+        ref={analysisDetailsRef}
+        role="region"
+        aria-labelledby="analysis-details-title"
+        hidden={!isQueueExpanded}
+        className="absolute left-3 right-3 top-full z-40 mt-2 rounded-lg border border-slate-300 bg-white shadow-lg sm:left-auto sm:right-4 sm:w-[calc(100%_-_2rem)] sm:max-w-4xl"
+      >
+        <div className="max-h-[50vh] overflow-y-auto rounded-lg">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-slate-900 px-4 py-2 text-white">
+            <h2 id="analysis-details-title" className="text-sm font-semibold">รายละเอียดการทำงาน</h2>
+            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="inline-flex items-center justify-center rounded text-slate-300 hover:bg-slate-700 hover:text-white focus-visible:outline-emerald-300 cursor-pointer">
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="border-b border-slate-200 bg-slate-100 px-4 py-3">
+            {vadOutput ? (
+              <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                <div className="flex items-center gap-2"><dt className="text-slate-600">เสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd></div>
+                <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-emerald-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>
+                <div className="flex items-center gap-2"><dt className="text-slate-600">เวลาที่ไม่มีเสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{formatCompactTime(nonSpeechDurationMs)}</dd></div>
+              </dl>
+            ) : <p className="mt-2 text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
+            {activityFeedback && <p className="mt-2 text-xs leading-relaxed text-slate-600">{activityFeedback.description}</p>}
+            {videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+            )}
+          </div>
+          {batches.length > 0 && (
+            <div className="bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
+                <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
+                  <span className={completedBatchesCount > 0 ? 'font-medium text-emerald-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
+                  <span className={processingBatch ? 'font-medium text-emerald-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
+                  <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
+                  {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
+                </p>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
+              <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+                {batches.map((batch) => {
+                  const firstSpotId = batch.candidate_spots[0]?.spot_id;
+                  const colors = batchColors[batch.status];
                   return (
                     <button
-                      key={b.batch_id}
+                      key={batch.batch_id}
                       type="button"
-                      onClick={() => {
-                        if (firstSpotId) {
-                          onSelectSpot(firstSpotId, true);
-                        }
-                      }}
-                      className={`p-2.5 rounded border text-left transition-colors cursor-pointer flex flex-col justify-between gap-1.5 ${
-                        b.status === 'processing'
-                          ? 'border-slate-900 bg-white ring-1 ring-slate-900'
-                          : b.status === 'completed'
-                          ? 'border-slate-200 bg-white hover:bg-slate-50'
-                          : b.status === 'failed'
-                          ? 'border-red-300 bg-red-50/60 hover:bg-red-50'
-                          : 'border-slate-200 bg-white/60 hover:bg-white text-slate-500'
-                      }`}
+                      disabled={!firstSpotId}
+                      onClick={() => { if (firstSpotId) onSelectSpot(firstSpotId, true); }}
+                      aria-label={`ชุดที่ ${batch.batch_index} · ${formatCompactTime(batch.batch_start_ms)} ถึง ${formatCompactTime(batch.batch_end_ms)} · ${batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}`}
+                      className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 text-left text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-60 ${colors.surface} ${colors.foreground}`}
                     >
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="font-semibold text-slate-900">
-                          ชุดที่ {b.batch_index}
-                        </span>
-                        <span className="font-mono tabular-nums text-xs text-slate-500">
-                          {formatCompactTime(b.batch_start_ms)}–{formatCompactTime(b.batch_end_ms)}
-                        </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
+                        <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
                       </div>
-
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="font-mono tabular-nums text-slate-500">
-                          {b.candidate_spots.length} จุดบรรยาย
-                        </span>
-
-                        {b.status === 'completed' && (
-                          <span className="text-emerald-700 font-medium flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>เสร็จสิ้น</span>
-                          </span>
-                        )}
-                        {b.status === 'processing' && (
-                          <span className="text-slate-900 font-semibold flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>กำลังวิเคราะห์...</span>
-                          </span>
-                        )}
-                        {b.status === 'pending' && (
-                          <span className="text-amber-700 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            <span>รอคิว</span>
-                          </span>
-                        )}
-                        {b.status === 'failed' && (
-                          <span className="text-red-700 font-medium flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>ล้มเหลว</span>
-                          </span>
-                        )}
-                      </div>
+                      <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
+                        {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                        {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
+                      </span>
                     </button>
                   );
                 })}
@@ -471,7 +474,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </div>
           )}
         </div>
-      )}
+      </div>
     </section>
   );
 };
