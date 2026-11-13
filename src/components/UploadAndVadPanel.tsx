@@ -32,21 +32,21 @@ import {
 
 const batchColors = {
   pending: {
-    surface: 'border-amber-200 bg-amber-50 hover:border-amber-400 hover:bg-amber-100',
-    foreground: 'text-amber-950',
-    secondary: 'text-amber-800',
+    surface: 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50',
+    foreground: 'text-slate-900',
+    secondary: 'text-slate-600',
     badge: 'bg-amber-100 text-amber-900',
   },
   processing: {
-    surface: 'border-emerald-500 bg-emerald-100 hover:bg-emerald-200',
-    foreground: 'text-emerald-950',
-    secondary: 'text-emerald-900',
-    badge: 'bg-emerald-800 text-white',
+    surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
+    foreground: 'text-brand-950',
+    secondary: 'text-brand-900',
+    badge: 'bg-brand-800 text-white',
   },
   completed: {
-    surface: 'border-emerald-200 bg-emerald-50 hover:border-emerald-400 hover:bg-emerald-100',
-    foreground: 'text-emerald-950',
-    secondary: 'text-emerald-800',
+    surface: 'border-brand-200 bg-white hover:border-brand-300 hover:bg-brand-50',
+    foreground: 'text-slate-900',
+    secondary: 'text-slate-600',
     badge: 'bg-emerald-100 text-emerald-900',
   },
   failed: {
@@ -265,7 +265,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               onDrop={handleDrop}
               className={`border-2 border-dashed rounded-lg p-6 sm:p-10 transition-colors flex flex-col items-center text-center gap-5 ${
                 isDragging
-                  ? 'border-slate-900 bg-slate-50'
+                  ? 'border-brand-500 bg-brand-50'
                   : 'border-slate-300 hover:border-slate-500 bg-white'
               }`}
             >
@@ -279,7 +279,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </div>
 
               <div className="flex flex-wrap justify-center items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="px-6 py-3 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md flex items-center gap-2 cursor-pointer">
+                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="px-6 py-3 text-sm font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded-md flex items-center gap-2 cursor-pointer">
                   <Upload className="w-4 h-4" aria-hidden="true" />
                   เลือกวิดีโอ
                 </button>
@@ -315,11 +315,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const projectControls = (
     <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
-      <details ref={videoDetailsRef} name="project-header" className="relative min-w-0 flex-1 basis-36 lg:max-w-xs">
-        <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+      <details ref={videoDetailsRef} name="project-header" className="group relative min-w-0 flex-1 basis-36 lg:max-w-xs">
+        <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
           <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="truncate font-medium">{fileName}</span>
-          <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-lg lg:left-auto lg:right-0">
           <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
@@ -338,7 +338,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         aria-expanded={isQueueExpanded}
         aria-controls="analysis-details"
         aria-label={`${statusText} · ดูรายละเอียดการทำงาน`}
-        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'}`}
+        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-brand-50 text-brand-900 hover:bg-brand-100'}`}
       >
         {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden="true" /> : <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
         <span role={activityFeedback ? undefined : 'status'} className="min-w-0 text-left">{statusText}</span>
@@ -346,7 +346,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       </button>
 
       {canShowGenerate && !isBusy && !isRegenerating && (
-        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer sm:grow-0">
+        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer sm:grow-0">
           <Sparkles className="w-4 h-4" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
         </button>
@@ -355,9 +355,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   );
 
   const managementMenu = (
-    <details key="project-management" ref={managementRef} name="project-header" className="relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-        จัดการ <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+    <details key="project-management" ref={managementRef} name="project-header" className="group relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-700 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
+        จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
         {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
@@ -401,7 +401,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       )}
 
       {activityFeedback && (
-        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 sm:px-6">
+        <div className="border-b border-brand-200 bg-brand-50 px-4 py-3 sm:px-6">
           <VideoProcessingStatus feedback={activityFeedback} compact />
         </div>
       )}
@@ -415,17 +415,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         className="absolute left-3 right-3 top-full z-40 mt-2 rounded-lg border border-slate-300 bg-white shadow-lg sm:left-auto sm:right-4 sm:w-[calc(100%_-_2rem)] sm:max-w-4xl"
       >
         <div className="max-h-[50vh] overflow-y-auto rounded-lg">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-slate-900 px-4 py-2 text-white">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-200 bg-brand-100 px-4 py-2 text-brand-950">
             <h2 id="analysis-details-title" className="text-sm font-semibold">รายละเอียดการทำงาน</h2>
-            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="inline-flex items-center justify-center rounded text-slate-300 hover:bg-slate-700 hover:text-white focus-visible:outline-emerald-300 cursor-pointer">
+            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="inline-flex items-center justify-center rounded text-brand-700 hover:bg-brand-200 hover:text-brand-950 focus-visible:outline-brand-700 cursor-pointer">
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="border-b border-slate-200 bg-slate-100 px-4 py-3">
+          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3">
             {vadOutput ? (
               <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd></div>
-                <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-emerald-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>
+                <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-brand-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เวลาที่ไม่มีเสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{formatCompactTime(nonSpeechDurationMs)}</dd></div>
               </dl>
             ) : <p className="mt-2 text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
@@ -439,13 +439,13 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                 <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
                 <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
-                  <span className={completedBatchesCount > 0 ? 'font-medium text-emerald-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
-                  <span className={processingBatch ? 'font-medium text-emerald-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
+                  <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
+                  <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
                   <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
                   {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
                 </p>
               </div>
-              <p className="mt-1 text-xs text-slate-500">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
+              <p className="mt-1 text-xs text-slate-600">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
               <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
                 {batches.map((batch) => {
                   const firstSpotId = batch.candidate_spots[0]?.spot_id;

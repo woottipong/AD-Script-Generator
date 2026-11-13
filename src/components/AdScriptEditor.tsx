@@ -193,27 +193,26 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       role="listitem"
       aria-label={`ช่วงบรรยายที่ ${spotOrder}`}
       onClick={() => onSelect(spot.spot_id, true)}
-      className={`py-2.5 px-4 transition-colors cursor-pointer ${
+      className={`rounded-md border px-3 py-2.5 transition-colors cursor-pointer ${
         isSelected
-          ? 'bg-emerald-50/40 ring-1 ring-inset ring-emerald-700/40'
-          : isPlayingNow
-          ? 'bg-emerald-50/40'
-          : 'bg-white hover:bg-slate-50/60'
+          ? 'border-brand-700 bg-white shadow-sm'
+          : 'border-slate-300 bg-white hover:border-brand-400'
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+      <div className={`-mx-3 -mt-2.5 mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-t-md px-3 py-1.5 ${isSelected ? 'bg-brand-800 text-white' : 'bg-slate-50'}`}>
         <button
           type="button"
           aria-pressed={isSelected}
           aria-label={`เลือกช่วงที่ ${spotOrder} เวลา ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)}`}
           onClick={(event) => { event.stopPropagation(); onSelect(spot.spot_id, true); }}
-          className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 rounded py-1 text-left text-xs text-slate-600 cursor-pointer hover:text-slate-900"
+          className={`min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 rounded py-1 text-left text-xs cursor-pointer ${isSelected ? 'text-brand-100 hover:text-white focus-visible:outline-white' : 'text-slate-600 hover:text-slate-900'}`}
         >
-          <span className="font-semibold text-slate-900" title={spot.spot_id}>ช่วง {spotOrder}</span>
+          <span className={`font-semibold ${isSelected ? 'text-white' : 'text-slate-900'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
           <span className="whitespace-nowrap font-mono tabular-nums">{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>
-          <span className="tabular-nums text-slate-500">{(spot.duration_ms / 1000).toFixed(1)}s</span>
+          <span className="tabular-nums">{(spot.duration_ms / 1000).toFixed(1)}s</span>
         </button>
         <div className="flex flex-wrap items-center gap-2 text-xs">
+          {isSelected && <span className="rounded bg-white px-2 py-1 font-semibold text-brand-900">{isAnalyzing ? 'เลือกอยู่' : 'กำลังแก้ไข'}</span>}
           {isExpanded && (
             <fieldset
               disabled={isAnalyzing}
@@ -233,7 +232,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 }
                 className={`video-control px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   spot.decision === 'generate'
-                    ? 'bg-emerald-700 text-white'
+                    ? 'bg-brand-700 text-white'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -262,14 +261,14 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
             </fieldset>
           )}
           {(!isExpanded || spot.decision === 'pending') && (
-            <span className={`inline-flex items-center gap-1 ${spot.decision === 'pending' ? 'text-amber-800' : spot.decision === 'generate' ? 'text-emerald-800' : 'text-slate-600'}`}>
+            <span className={`inline-flex items-center gap-1 ${spot.decision === 'pending' ? isSelected ? 'rounded bg-amber-100 px-2 py-1 text-amber-900' : 'text-amber-800' : spot.decision === 'generate' ? 'text-brand-800' : 'text-slate-600'}`}>
               {isBatchProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : spot.decision === 'pending' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : spot.decision === 'generate' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <MinusCircle className="h-3.5 w-3.5" aria-hidden="true" />}
               {statusLabel}
             </span>
           )}
-          {isOverDurationWarning && <span className="inline-flex items-center gap-1 font-medium text-amber-800"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />ข้อความเกินเวลา</span>}
-          {spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
-          {isPlayingNow && <span className="font-medium text-emerald-800">ตำแหน่งวิดีโอ</span>}
+          {isOverDurationWarning && <span className={`inline-flex items-center gap-1 font-medium ${isSelected ? 'text-amber-100' : 'text-amber-800'}`}><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />ข้อความเกินเวลา</span>}
+          {spot.is_edited && <span className={isSelected ? 'text-brand-100' : 'text-slate-600'}>แก้ไขแล้ว</span>}
+          {isPlayingNow && !isSelected && <span className="font-medium text-brand-800">ตำแหน่งวิดีโอ</span>}
         </div>
       </div>
 
@@ -285,7 +284,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           <div className="flex flex-wrap items-center gap-1.5">
             {/* Start Time + Nudge */}
             <div className="flex items-center gap-1">
-              <span className="text-slate-500">เริ่ม</span>
+              <span className="text-slate-600">เริ่ม</span>
               <button
                 type="button"
                 onClick={() => nudgeStartMs(-200)}
@@ -304,7 +303,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleStartBlur();
                 }}
-                className="video-control w-[126px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
+                className="video-control w-32 px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-600 text-center"
               />
               <button
                 type="button"
@@ -321,7 +320,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
 
             {/* End Time + Nudge */}
             <div className="flex items-center gap-1">
-              <span className="text-slate-500">จบ</span>
+              <span className="text-slate-600">จบ</span>
               <button
                 type="button"
                 onClick={() => nudgeEndMs(-200)}
@@ -340,7 +339,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleEndBlur();
                 }}
-                className="video-control w-[126px] px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 text-center"
+                className="video-control w-32 px-1.5 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-600 text-center"
               />
               <button
                 type="button"
@@ -355,7 +354,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           </div>
 
           {/* Gap Bounds & Reset */}
-          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-500">
+          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600">
             {isTimestampsModified && (
               <button
                 type="button"
@@ -387,7 +386,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           {spot.decision === 'generate' ? (
             <div className="space-y-2">
               <textarea
-                rows={2}
+                rows={3}
                 aria-label={`บทบรรยายที่ ${spotOrder}`}
                 value={spot.text}
                 onChange={(e) =>
@@ -398,10 +397,10 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   })
                 }
                 placeholder="เขียนบทบรรยายภาพ"
-                className={`w-full px-2.5 py-1.5 text-sm rounded border bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 leading-relaxed disabled:bg-slate-50 disabled:cursor-not-allowed ${
+                className={`w-full px-2.5 py-1.5 font-script text-script font-normal tracking-normal rounded border bg-white text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:cursor-not-allowed ${
                   isOverDurationWarning
                     ? 'border-amber-400 focus:ring-amber-600'
-                    : 'border-slate-300 focus:ring-slate-900'
+                    : 'border-slate-300 focus:ring-brand-600'
                 }`}
               />
 
@@ -414,7 +413,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                         ? 'bg-red-600'
                         : speechRatio > 0.85
                         ? 'bg-amber-500'
-                        : 'bg-emerald-600'
+                        : 'bg-brand-600'
                     }`}
                     style={{
                       width: `${Math.min(100, Math.max(0, Math.round(speechRatio * 100)))}%`,
@@ -422,7 +421,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-mono tabular-nums">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 tabular-nums">
                   {isTimestampsModified && (
                     <span>
                       ช่วงว่างต้นทาง: {formatTimestampDisplay(spot.original_start_ms)} –{' '}
@@ -430,7 +429,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                     </span>
                   )}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span>
                       {spot.text.trim().length} / ≤{recommendedMaxChars} ตัวอักษร
                     </span>
@@ -472,7 +471,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               )}
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-1 text-xs text-slate-500">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-1 text-xs text-slate-600">
               <div>
                   <span className="text-slate-700">
                   {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
@@ -484,7 +483,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
         </fieldset>}
       </>}
       {!isExpanded && spot.decision !== 'pending' && (
-        <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-slate-700">
+        <p className={`line-clamp-2 ${spot.decision === 'generate' ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-800' : 'text-sm leading-relaxed text-slate-600'}`}>
           {spot.decision === 'generate' ? (spot.text || 'ยังไม่มีข้อความบรรยาย') : (spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงนี้')}
         </p>
       )}
@@ -579,78 +578,68 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   return (
     <section
       aria-label="บทบรรยาย"
-      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
+      className="flex flex-col lg:h-full min-h-0 bg-white lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden"
     >
-      {/* 1. Sticky Editor Command Header */}
-      <div className="px-4 py-3 border-b border-slate-200 bg-white space-y-2.5 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-base font-semibold text-slate-900">
-              บทบรรยาย
-            </h1>
-          </div>
-
-          {spots.length > 0 && <div className="flex flex-wrap items-center gap-1.5 max-w-full">
-            <button
-              type="button"
-              onClick={onExportJson}
-              disabled={spots.length === 0}
-              className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>ส่งออก JSON</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onExportSrt}
-              disabled={generatedCount === 0}
-              title={generatedCount === 0 ? 'เพิ่มบทบรรยายก่อนส่งออก' : undefined}
-              className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>ส่งออก SRT</span>
-            </button>
-          </div>}
-        </div>
-
-        {/* Filter Bar & Live Search */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-3 py-2.5">
+        <h1 className="workspace-pane-heading text-base font-semibold text-slate-900">บทบรรยาย</h1>
         {spots.length > 0 && (
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <label htmlFor="spot-filter" className="text-sm text-slate-600 shrink-0">แสดง</label>
-              <select
-                id="spot-filter"
-                value={filterMode}
-                onChange={(event) => setFilterMode(event.target.value as FilterMode)}
-                className="min-w-0 flex-1 px-3 py-2 text-sm border border-slate-300 rounded bg-white text-slate-900"
-              >
-                <option value="all">ทั้งหมด ({spots.length})</option>
-                <option value="generate">มีบทบรรยาย ({generatedCount})</option>
-                <option value="pending">รอสร้าง ({pendingCount})</option>
-                <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
-                <option value="edited">แก้ไขแล้ว ({editedCount})</option>
-                <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
-              </select>
-            </div>
-
-            <div className="relative w-full xl:w-56">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <div className="flex min-w-0 grow basis-[32rem] flex-wrap items-center gap-2">
+            <label htmlFor="spot-filter" className="sr-only">แสดง</label>
+            <select
+              id="spot-filter"
+              value={filterMode}
+              onChange={(event) => setFilterMode(event.target.value as FilterMode)}
+              className="w-40 max-w-full shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+            >
+              <option value="all">ทั้งหมด ({spots.length})</option>
+              <option value="generate">มีบทบรรยาย ({generatedCount})</option>
+              <option value="pending">รอสร้าง ({pendingCount})</option>
+              <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
+              <option value="edited">แก้ไขแล้ว ({editedCount})</option>
+              <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
+            </select>
+            <div className="relative min-w-32 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" aria-hidden="true" />
               <input
-                type="text"
+                type="search"
                 aria-label="ค้นหาบทบรรยายหรือเวลา"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ค้นหาบทบรรยายหรือเวลา..."
-                className="w-full pl-8 pr-2.5 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-900"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="ค้นหาบทหรือเวลา…"
+                className="w-full rounded border border-slate-300 bg-white py-1 pl-8 pr-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-700"
               />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onExportJson}
+                aria-label="ส่งออก JSON"
+                title="ส่งออก JSON"
+                disabled={spots.length === 0}
+                className="px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>JSON</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onExportSrt}
+                disabled={generatedCount === 0}
+                title={generatedCount === 0 ? 'เพิ่มบทบรรยายก่อนส่งออก' : undefined}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>ส่งออก SRT</span>
+              </button>
             </div>
           </div>
         )}
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col">
       {/* 2. Scrollable spot editor list */}
-      <div className="flex-1 min-h-0 lg:overflow-y-auto">
+      <div className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
             {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
@@ -660,7 +649,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
               {emptyState === 'preparing' ? 'ระบบกำลังตรวจช่วงเสียงพูดบนเครื่องของคุณ รายการบทบรรยายจะแสดงที่นี่เมื่อพร้อม' : emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
             </p>
-            {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
+            {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
             {emptyState === 'failed' && errorMessage && (
               <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
                 <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
@@ -674,7 +663,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <button type="button" onClick={() => { setFilterMode('all'); setSearchQuery(''); }} className="px-3 py-2 border border-slate-300 rounded font-medium hover:bg-slate-50 cursor-pointer">ล้างตัวกรองและคำค้นหา</button>
           </div>
         ) : (
-          <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-slate-200">
+          <div role="list" aria-label="รายการช่วงบรรยาย" className="space-y-2 p-3">
             {filteredSpots.map((spot) => {
               const globalIdx = spots.findIndex((s) => s.spot_id === spot.spot_id) + 1;
               const isPlayingNow =
@@ -709,6 +698,10 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุด
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-red-700' : ''}`}>
+          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-700" aria-hidden="true" />
+            : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
+            : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           <span>
             {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้ · ส่งออก JSON เพื่อเก็บงาน'
               : saveStatus === 'saving' ? 'กำลังบันทึกการแก้ไข…'
@@ -722,6 +715,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           )}
         </div>
       </div>}
+      </div>
     </section>
   );
 };

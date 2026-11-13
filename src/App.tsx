@@ -840,9 +840,9 @@ export default function App() {
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
 
   return (
-    <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-canvas text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
-      <header className="min-h-16 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center py-3">
+      <header className="min-h-16 shrink-0 bg-white border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
           <div
             className="inline-flex min-w-0 items-center gap-2.5 text-base font-bold tracking-tight text-slate-900"
@@ -900,10 +900,10 @@ export default function App() {
         errorMessage={errorMessage}
       />
 
-      {/* Full-Screen Split-Pane NLE Workstation */}
-      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
+      {/* Shared header row keeps both panes aligned when editor controls wrap. */}
+      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Transport & Multi-Track Timeline (6 cols) */}
-        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
+        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden">
           <VideoPreviewTimeline
             videoUrl={videoUrl}
             videoMetadata={videoMetadata}
@@ -920,7 +920,7 @@ export default function App() {
         </div>
 
         {/* Right Pane: Full-Height Scrollable AD Script Editor (6 cols) */}
-        <div className={`lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
+        <div className={`lg:col-span-6 min-h-0 flex flex-col lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
           <AdScriptEditor
             spots={spots}
             batches={batches}

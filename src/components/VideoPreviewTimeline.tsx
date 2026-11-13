@@ -23,7 +23,7 @@ import {
 } from '../utils/formatters';
 
 const controlBase = 'video-control inline-flex shrink-0 items-center justify-center gap-1 rounded px-1.5 text-xs transition-colors disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer';
-const transportControl = `${controlBase} text-slate-300 hover:bg-slate-800 hover:text-white`;
+const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover:text-brand-900`;
 const timelineControl = `${controlBase} text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
 const decisionLabels = { generate: 'มีบทบรรยาย', pending: 'รอสร้าง', skip: 'ข้าม' };
 const monitorTime = (ms: number) => formatTimestampDisplay(ms).replace(/^00:/, '');
@@ -184,12 +184,13 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       : 0;
 
   return (
-    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-3 py-2">
-        <h2 className="text-sm font-semibold text-slate-900">วิดีโอ</h2>
-        {videoMetadata && <span className="text-xs text-slate-500 tabular-nums">{videoMetadata.width} × {videoMetadata.height}</span>}
+    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden">
+      <div className="flex shrink-0 items-start justify-between border-b border-slate-200 bg-white px-3 py-2.5">
+        <h2 className="workspace-pane-heading text-base font-semibold text-slate-900">วิดีโอ</h2>
+        {videoMetadata && <span className="workspace-pane-heading text-xs text-slate-600 tabular-nums">{videoMetadata.width} × {videoMetadata.height}</span>}
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-col bg-slate-950 lg:flex-1">
         <div className="relative aspect-video min-h-0 max-h-[38vh] w-full overflow-hidden lg:aspect-auto lg:max-h-none lg:flex-1">
           {videoUrl ? (
@@ -230,26 +231,26 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-800 bg-slate-900 px-3 py-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-brand-100 bg-brand-50 px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
             <button type="button" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} title="ย้อนกลับ 5 วินาที" aria-label="ย้อนกลับ 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>−5s</button>
             <button type="button" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} title="ย้อนกลับ 1 วินาที" aria-label="ย้อนกลับ 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>−1s</button>
-            <button type="button" onClick={togglePlayPause} disabled={!videoUrl} title={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} className={`${controlBase} bg-emerald-700 text-white hover:bg-emerald-800`}>
+            <button type="button" onClick={togglePlayPause} disabled={!videoUrl} title={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} className={`${controlBase} bg-brand-700 text-white hover:bg-brand-800`}>
               {isPlaying ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
             </button>
             <button type="button" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} title="เดินหน้า 1 วินาที" aria-label="เดินหน้า 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>+1s</button>
             <button type="button" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} title="เดินหน้า 5 วินาที" aria-label="เดินหน้า 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>+5s</button>
           </div>
-          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-slate-700 pl-2">
+          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-brand-200 pl-2">
             <button type="button" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} title="ช่วงก่อนหน้า (Alt + ↑)" aria-label="ช่วงบรรยายก่อนหน้า" className={transportControl}><SkipBack className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} title="ช่วงถัดไป (Alt + ↓)" aria-label="ช่วงบรรยายถัดไป" className={transportControl}><SkipForward className="h-4 w-4" aria-hidden="true" /></button>
           </div>
-          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 border-l border-slate-700 pl-2">
-            <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-emerald-700 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={transportControl}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
+          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 border-l border-brand-200 pl-2">
+            <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-700 text-white hover:bg-brand-800' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
           </div>
-          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-400" title={`${formatTimestampDisplay(currentTimeMs)} / ${formatTimestampDisplay(videoUrl ? effectiveDurationMs : 0)}`}>
-            <span className="font-semibold text-white">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
+          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600" title={`${formatTimestampDisplay(currentTimeMs)} / ${formatTimestampDisplay(videoUrl ? effectiveDurationMs : 0)}`}>
+            <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
           </div>
         </div>
       </div>
@@ -259,16 +260,16 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <span className="font-semibold text-slate-900" aria-label={`ช่วงที่เลือก ${selectedSpotIndex + 1} จาก ${spots.length}`}>ช่วง {selectedSpotIndex + 1}/{spots.length}</span>
             <span className="whitespace-nowrap font-mono tabular-nums text-slate-600" title={`${formatTimestampDisplay(selectedSpot.start_ms)} – ${formatTimestampDisplay(selectedSpot.end_ms)}`}>{monitorTime(selectedSpot.start_ms)} – {monitorTime(selectedSpot.end_ms)}</span>
-            <span className="whitespace-nowrap tabular-nums text-slate-500">{(selectedSpot.duration_ms / 1000).toFixed(1)}s</span>
+            <span className="whitespace-nowrap tabular-nums text-slate-600">{(selectedSpot.duration_ms / 1000).toFixed(1)}s</span>
             {selectedSpot.decision === 'generate' ? (
-              <span className="flex items-center gap-1 text-emerald-800" title="เวลาพูดโดยประมาณ"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />อ่าน ~{(selectedSpotSpeechMs / 1000).toFixed(1)}s</span>
+              <span className="flex items-center gap-1 text-brand-800" title="เวลาพูดโดยประมาณ"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />อ่าน ~{(selectedSpotSpeechMs / 1000).toFixed(1)}s</span>
             ) : selectedSpot.decision === 'pending' ? (
               <span className="flex items-center gap-1 text-amber-800"><Clock className="h-3.5 w-3.5" aria-hidden="true" />รอสร้าง</span>
             ) : (
               <span className="flex items-center gap-1 text-slate-600"><MinusCircle className="h-3.5 w-3.5" aria-hidden="true" />ข้าม</span>
             )}
           </div>
-        ) : <p className="min-w-0 grow basis-80 text-xs text-slate-500">เลือกช่วงบรรยายบนไทม์ไลน์เพื่อดูเวลา</p>}
+        ) : <p className="min-w-0 grow basis-80 text-xs text-slate-600">เลือกช่วงบรรยายบนไทม์ไลน์เพื่อดูเวลา</p>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {selectedSpot && (
             <button type="button" disabled={!videoUrl} onClick={() => {
@@ -290,7 +291,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       <div className="flex shrink-0 flex-col gap-2 bg-white px-3 py-3">
         <div className="flex min-w-0 overflow-hidden rounded-md border border-slate-200">
           <div className="w-24 sm:w-28 shrink-0 whitespace-nowrap border-r border-slate-200 bg-slate-50 text-xs">
-            <div className="flex h-8 items-center border-b border-slate-200 px-3 font-medium text-slate-500">แทร็ก</div>
+            <div className="flex h-8 items-center border-b border-slate-200 px-3 font-medium text-slate-600">แทร็ก</div>
             {batches.length > 0 && <div className="flex h-9 items-center justify-between gap-2 border-b border-slate-200 px-3 text-slate-600"><span>วิเคราะห์</span><span className="hidden shrink-0 sm:inline tabular-nums">{batches.length}</span></div>}
             <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums">{speechSegments.length}</span></div>
             <div className="flex h-16 items-center justify-between gap-2 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums">{spots.length}</span></div>
@@ -307,19 +308,19 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     : event.key === 'Home' ? 0 : event.key === 'End' ? durationMs : null;
                   if (nextTime !== null && videoUrl) { event.preventDefault(); seekToMs(nextTime); }
                 }}
-                className="relative h-8 border-b border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-700"
+                className="relative h-8 border-b border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
               >
                 {ticks.map((tickMs, idx) => (
                   <div key={idx} style={{ left: `${tickMs / effectiveDurationMs * 100}%` }} className="pointer-events-none absolute top-0 bottom-0 w-0">
                     <div className="h-1.5 w-px bg-slate-300" />
-                    <span className={`absolute bottom-1 whitespace-nowrap font-mono text-xs text-slate-500 tabular-nums ${idx === 0 ? 'translate-x-2' : idx === ticks.length - 1 ? '-translate-x-full pr-2' : '-translate-x-1/2'}`}>{formatCompactTime(tickMs)}</span>
+                    <span className={`absolute bottom-1 whitespace-nowrap font-mono text-xs text-slate-600 tabular-nums ${idx === 0 ? 'translate-x-2' : idx === ticks.length - 1 ? '-translate-x-full pr-2' : '-translate-x-1/2'}`}>{formatCompactTime(tickMs)}</span>
                   </div>
                 ))}
               </div>
               {batches.length > 0 && (
                 <div className="relative h-9 border-b border-slate-200 bg-slate-50/60">
                   {batches.map((b) => (
-                    <div key={b.batch_id} style={{ left: `${Math.max(0, b.batch_start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.5, (b.batch_end_ms - b.batch_start_ms) / effectiveDurationMs * 100)}%` }} className={`pointer-events-none absolute top-0.5 bottom-0.5 flex items-center justify-between overflow-hidden border-r border-slate-200 px-1.5 text-xs ${b.status === 'processing' ? 'bg-amber-100 text-slate-900' : b.status === 'completed' ? 'bg-emerald-50 text-emerald-800' : b.status === 'failed' ? 'bg-red-50 text-red-800' : 'bg-slate-100 text-slate-500'}`}>
+                    <div key={b.batch_id} style={{ left: `${Math.max(0, b.batch_start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.5, (b.batch_end_ms - b.batch_start_ms) / effectiveDurationMs * 100)}%` }} className={`pointer-events-none absolute top-0.5 bottom-0.5 flex items-center justify-between overflow-hidden border-r border-slate-200 px-1.5 text-xs ${b.status === 'processing' ? 'bg-amber-100 text-slate-900' : b.status === 'completed' ? 'bg-brand-50 text-brand-800' : b.status === 'failed' ? 'bg-red-50 text-red-800' : 'bg-slate-100 text-slate-600'}`}>
                       <span className="truncate">ชุด {b.batch_index}</span>{b.status === 'processing' && <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
                     </div>
                   ))}
@@ -336,14 +337,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   const widthPct = Math.max(0.4, (spot.end_ms - spot.start_ms) / effectiveDurationMs * 100);
                   const isSelected = spot.spot_id === selectedSpotId;
                   const colorClasses = spot.decision === 'generate'
-                    ? 'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-800'
+                    ? 'bg-brand-700 hover:bg-brand-800 text-white border-brand-800'
                     : spot.decision === 'skip'
                     ? 'bg-slate-300 hover:bg-slate-400 text-slate-800 border-slate-400'
-                    : 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-amber-600';
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-400';
                   return (
                     <button key={spot.spot_id} type="button" aria-pressed={isSelected} aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} · ${decisionLabels[spot.decision]}`} onClick={(event) => {
                       event.stopPropagation(); onSelectSpot(spot.spot_id, true); seekToMs(spot.start_ms);
-                    }} style={{ left: `${leftPct}%`, width: `${widthPct}%` }} title={`${spot.spot_id} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`absolute top-1 bottom-1 flex min-h-0 min-w-0 cursor-pointer items-center justify-center overflow-hidden rounded-xs border px-1 transition-colors ${colorClasses} ${isSelected ? 'z-20 ring-2 ring-slate-900 ring-offset-1' : 'z-10'}`}>
+                    }} style={{ left: `${leftPct}%`, width: `${widthPct}%` }} title={`${spot.spot_id} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`absolute top-1 bottom-1 flex min-h-0 min-w-0 cursor-pointer items-center justify-center overflow-hidden rounded-xs border px-1 transition-colors ${colorClasses} ${isSelected ? 'z-20 ring-2 ring-brand-950 ring-offset-1' : 'z-10'}`}>
                       {timelineViewportWidth * zoomLevel * widthPct / 100 >= 36 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{spot.spot_id.replace('spot_', '#')}</span>}
                     </button>
                   );
@@ -354,11 +355,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-slate-600" aria-label="สถานะช่วงบรรยาย">
-          <span className="mr-auto hidden sm:inline font-mono tabular-nums text-slate-500" title="ตำแหน่งเมาส์" aria-hidden="true">{hoverTimeMs !== null ? monitorTime(hoverTimeMs) : '\u00a0'}</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-emerald-700" aria-hidden="true" />มีบทบรรยาย</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-400" aria-hidden="true" />รอสร้าง</span>
+          <span className="mr-auto hidden sm:inline font-mono tabular-nums text-slate-600" title="ตำแหน่งเมาส์" aria-hidden="true">{hoverTimeMs !== null ? monitorTime(hoverTimeMs) : '\u00a0'}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-brand-700" aria-hidden="true" />มีบทบรรยาย</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-200" aria-hidden="true" />รอสร้าง</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-slate-300" aria-hidden="true" />ข้าม</span>
         </div>
+      </div>
       </div>
     </section>
   );
