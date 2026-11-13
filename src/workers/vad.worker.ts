@@ -279,6 +279,23 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       const frameProbabilities: number[] = [];
       const frameRmsValues: number[] = [];
 
+      let totalDurationMs = 0;
+      let lastProgressReportAt = 0;
+      const reportVadProgress = () => {
+        const now = performance.now();
+        if (now - lastProgressReportAt < 200) return;
+        lastProgressReportAt = now;
+        const processedMs = Math.round(frameProbabilities.length * VAD_FRAME_SAMPLES / TARGET_SAMPLE_RATE * 1000);
+        const ratio = totalDurationMs > 0 ? Math.min(1, processedMs / totalDurationMs) : 0;
+        self.postMessage({
+          type: 'PROGRESS',
+          stage: 'กำลังตรวจช่วงเสียงพูดในวิดีโอ...',
+          percent: Math.min(94, Math.round(12 + ratio * 82)),
+          processedMs,
+          totalMs: totalDurationMs,
+        });
+      };
+
       const appendPcm16k = (chunk16k: Float32Array) => {
         if (chunk16k.length === 0) return;
         const combined = new Float32Array(pendingPcm.length + chunk16k.length);
@@ -336,6 +353,8 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
           }
 
           pendingPcm = pendingPcm.slice(VAD_FRAME_SAMPLES);
+          // Report inside inference so highly compressed files do not wait for a whole file chunk.
+          if (frameProbabilities.length % 32 === 0) reportVadProgress();
         }
       };
 
@@ -348,8 +367,6 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       const mp4boxfile = createFile();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let audioTrackInfo: any = null;
-      let totalDurationMs = 0;
-      let totalSamplesCount = 0;
       let decodedSamplesCount = 0;
       let decoderError: Error | null = null;
       let resampler: StreamingResampler16k | null = null;
@@ -379,7 +396,6 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
             ? audioTrack.duration / audioTrack.timescale
             : 0;
         totalDurationMs = Math.round(durationSec * 1000);
-        totalSamplesCount = audioTrack.nb_samples || 0;
 
         const sourceSampleRate = audioTrack.audio?.sample_rate || 44100;
         const numberOfChannels = audioTrack.audio?.channel_count || 2;
@@ -469,7 +485,6 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       // Stream file in 2 MB chunks to keep memory footprint minimal even for 2 GB videos
       const CHUNK_SIZE = 2 * 1024 * 1024;
       let offset = 0;
-      let lastReportedPercent = 10;
 
       while (offset < file.size) {
         if (decoderError) {
@@ -515,22 +530,7 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
 
         await runPendingVadFrames();
 
-        const progressRatio = totalSamplesCount > 0
-          ? Math.min(1, decodedSamplesCount / totalSamplesCount)
-          : Math.min(1, end / file.size);
-        const currentPercent = Math.min(94, Math.round(12 + progressRatio * 82));
-
-        if (currentPercent >= lastReportedPercent + 2) {
-          lastReportedPercent = currentPercent;
-          const processedMs = Math.round((frameProbabilities.length * VAD_FRAME_SAMPLES / TARGET_SAMPLE_RATE) * 1000);
-          self.postMessage({
-            type: 'PROGRESS',
-            stage: 'กำลังถอดรหัส AAC เป็น PCM 16kHz และวิเคราะห์ด้วย Silero VAD...',
-            percent: currentPercent,
-            processedMs,
-            totalMs: totalDurationMs,
-          });
-        }
+        reportVadProgress();
 
         if (typeof nextOffset === 'number' && nextOffset > offset && nextOffset < file.size) {
           offset = nextOffset;

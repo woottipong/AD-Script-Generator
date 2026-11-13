@@ -30,7 +30,7 @@ Returns fixed server thresholds, models, and active job existence.
     "maxUploadSizeMb": 2000,
     "vadThreshold": 0.5,
     "minAdGapMs": 3000,
-    "analysisBatchSeconds": 120,
+    "analysisBatchSeconds": 240,
     "contextBeforeSeconds": 20,
     "contextAfterSeconds": 10
   },
@@ -181,7 +181,7 @@ Appends a binary slice to `source_video.mp4`. Recommended chunk size is 8 MB. Ma
 
 ### 7. Initialize job and start analysis
 
-Registers a job with metadata and VAD output, builds 120-second timeline batches, and triggers background Gemini analysis.
+Registers a job with metadata and VAD output, builds 240-second timeline batches, and triggers background Gemini analysis.
 
 - Method: `POST`
 - Path: `/api/jobs/init`

@@ -1,5 +1,7 @@
 import { ADSpot, AnalysisBatch, CandidateSpot, SpeechSegment, VADConfig, VideoMetadata } from '../types/ad';
 
+export const DEFAULT_ANALYSIS_BATCH_SECONDS = 240;
+
 /**
  * Formats milliseconds into HH:MM:SS.mmm for UI display
  */
@@ -127,14 +129,14 @@ export function validateSpotTimestampEdit(
 
 /**
  * Builds Analysis Batches according to Section 06:
- * - Splits timeline into 120-second intervals (e.g., 00:00-02:00, 02:00-04:00)
+ * - Splits timeline into 240-second intervals by default
  * - Each Candidate Spot belongs to exactly one primary batch (by start_ms)
  * - Expands reading window by Context Before (20s) and Context After (10s), clamped to [0, duration_ms]
  */
 export function buildAnalysisBatches(
   candidateSpots: CandidateSpot[],
   durationMs: number,
-  batchSeconds = 120,
+  batchSeconds = DEFAULT_ANALYSIS_BATCH_SECONDS,
   contextBeforeSeconds = 20,
   contextAfterSeconds = 10
 ): AnalysisBatch[] {

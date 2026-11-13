@@ -16,6 +16,8 @@ import {
   Search,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, SpeechSegment } from '../types/ad';
+import { VideoProcessingStatus } from './VideoProcessingStatus';
+import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   estimateThaiSpeechDurationMs,
   formatTimestampDisplay,
@@ -29,6 +31,9 @@ interface AdScriptEditorProps {
   batches: AnalysisBatch[];
   isAnalyzing: boolean;
   emptyState: 'preparing' | 'no-gaps' | 'failed';
+  processingFeedback: ProcessingFeedback | null;
+  errorMessage: string | null;
+  onRetryVad: () => void;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
   selectedSpotId: string | null;
@@ -566,6 +571,9 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   batches,
   isAnalyzing,
   emptyState,
+  processingFeedback,
+  errorMessage,
+  onRetryVad,
   speechSegments,
   videoDurationMs,
   selectedSpotId,
@@ -667,9 +675,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 
   return (
     <section
-      id="section-script-editor"
-      tabIndex={-1}
-      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
+      aria-label="บทบรรยาย"
+      className={`${processingFeedback && spots.length === 0 ? 'hidden lg:flex' : 'flex'} flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden`}
     >
       {/* 1. Sticky Editor Command Header */}
       <div className="px-4 py-3 border-b border-slate-200 bg-white space-y-2.5 shrink-0">
@@ -680,7 +687,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             </h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+          {spots.length > 0 && <div className="flex flex-wrap items-center gap-1.5 max-w-full">
             <button
               type="button"
               onClick={() => setShowSrtPreview((prev) => !prev)}
@@ -715,14 +722,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               <FileText className="w-3.5 h-3.5" />
               <span>ส่งออก SRT</span>
             </button>
-          </div>
+          </div>}
         </div>
-
-        {isAnalyzing && (
-          <p role="status" className="text-sm text-slate-700">
-            ดูผลได้ระหว่างวิเคราะห์ · แก้ไขได้เมื่อการวิเคราะห์สิ้นสุด
-          </p>
-        )}
 
         {/* Filter Bar & Live Search */}
         {!showSrtPreview && spots.length > 0 && (
@@ -759,8 +760,14 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
         )}
       </div>
 
+      {processingFeedback && (
+        <div className={`hidden lg:flex px-6 py-6 ${spots.length === 0 ? 'flex-1 min-h-0 items-center' : 'shrink-0 border-b border-slate-200'}`}>
+          <VideoProcessingStatus feedback={processingFeedback} />
+        </div>
+      )}
+
       {/* 2. Scrollable Body: Either Live SRT Preview OR Spot Block Editor List */}
-      <div className="flex-1 min-h-0 lg:overflow-y-auto">
+      {!(processingFeedback && spots.length === 0) && <div className="flex-1 min-h-0 lg:overflow-y-auto">
         {showSrtPreview ? (
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -800,14 +807,21 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             )}
           </div>
         ) : spots.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center py-16 px-6 text-center">
-            <Maximize2 className="w-7 h-7 text-slate-300 mb-2" />
-            <p className="text-base font-medium text-slate-700">
+          <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
+            {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
+            <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-slate-900">
               {emptyState === 'preparing' ? 'กำลังหาช่วงสำหรับบรรยาย…' : emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
             </p>
             <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
-              {emptyState === 'preparing' ? 'ระบบกำลังตรวจช่วงเสียงพูดบนเครื่องของคุณ รายการบทบรรยายจะแสดงที่นี่เมื่อพร้อม' : emptyState === 'failed' ? 'ดูข้อความแจ้งปัญหาด้านบน แล้วลองสแกนเสียงใหม่หรือเลือกวิดีโออื่น' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+              {emptyState === 'preparing' ? 'ระบบกำลังตรวจช่วงเสียงพูดบนเครื่องของคุณ รายการบทบรรยายจะแสดงที่นี่เมื่อพร้อม' : emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
             </p>
+            {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
+            {emptyState === 'failed' && errorMessage && (
+              <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
+                <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
+                <p className="mt-2 rounded-md bg-slate-50 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+              </details>
+            )}
           </div>
         ) : filteredSpots.length === 0 ? (
           <div className="py-12 px-6 text-center text-sm text-slate-600 space-y-3">
@@ -841,7 +855,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* 3. Compact Editor Shortcut Footer */}
       {spots.length > 0 && <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 shrink-0">

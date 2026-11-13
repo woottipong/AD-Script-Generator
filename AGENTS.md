@@ -9,7 +9,7 @@ AD Script Generator is an automated Thai Audio Description (AD) script authoring
 1. Client demuxes and decodes audio locally using `mp4box.js` and `WebCodecs AudioDecoder`.
 2. Client runs Silero VAD v5 via ONNX Runtime Web inside a dedicated Web Worker to identify non-speech gaps.
 3. Server receives candidate spots and uploads the video file to the Gemini Files API.
-4. Server analyses 120-second timeline batches sequentially using `gemini-3.8-flash` (with fallback to `gemini-3.5-flash-lite`).
+4. Server analyses 240-second timeline batches sequentially using `gemini-3.8-flash` (with fallback to `gemini-3.5-flash-lite`).
 5. Client renders an NLE workstation timeline and script editor for review, time adjustment, and export to SRT or JSON.
 
 ## Development workflow
@@ -56,7 +56,7 @@ Batching and Gemini interaction run in `server.ts` and `src/utils/formatters.ts`
 
 - Primary model: `gemini-3.8-flash` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
 - Fallback model: `gemini-3.5-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.
-- Batch interval: 120 seconds of video timeline per batch.
+- Batch interval: 240 seconds of video timeline per batch.
 - Batch context window: Includes 20 seconds before batch start and 10 seconds after batch end, clamped to [0, duration].
 - Narration pace standard: 11.5 base Thai characters per second.
 - Safety breathing margin: 250 ms subtracted from spot start and spot end before calculating maximum allowable Thai text length.

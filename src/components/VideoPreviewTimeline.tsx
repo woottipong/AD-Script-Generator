@@ -181,9 +181,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
   return (
     <section
-      id="section-preview-timeline"
       aria-label="วิดีโอและไทม์ไลน์"
-      tabIndex={-1}
       className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
     >
       <div className="px-4 py-3 bg-white border-b border-slate-200 text-base font-semibold text-slate-900 shrink-0">

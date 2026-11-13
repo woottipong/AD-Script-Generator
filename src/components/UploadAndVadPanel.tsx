@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { VideoProcessingStatus } from './VideoProcessingStatus';
+import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
   CheckCircle2,
@@ -29,6 +31,8 @@ import {
 
 interface UploadAndVadPanelProps {
   headerActionsElement: HTMLDivElement | null;
+  checkingFileName: string | null;
+  processingFeedback: ProcessingFeedback | null;
   status: JobStatus;
   videoFile: File | null;
   videoMetadata: VideoMetadata | null;
@@ -53,6 +57,8 @@ interface UploadAndVadPanelProps {
 
 export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   headerActionsElement,
+  checkingFileName,
+  processingFeedback,
   status,
   videoFile,
   videoMetadata,
@@ -75,18 +81,20 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const statusButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isWideHeader, setIsWideHeader] = useState(false);
 
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
-  const isBusy = isDetecting || isAnalyzing;
+  const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
 
-  // Progress stays visible; detailed queue information is disclosed on demand.
   useEffect(() => {
-    if (videoMetadata && (status === 'FAILED' || errorMessage)) {
-      setIsQueueExpanded(true);
-    }
-  }, [status, errorMessage, videoMetadata]);
+    // Match keyboard order to the header layout without duplicating its controls.
+    const query = window.matchMedia('(min-width: 1024px)');
+    const updateLayout = () => setIsWideHeader(query.matches);
+    updateLayout();
+    query.addEventListener('change', updateLayout);
+    return () => query.removeEventListener('change', updateLayout);
+  }, []);
 
   useEffect(() => {
     const dismissDisclosures = (event: PointerEvent | KeyboardEvent) => {
@@ -106,19 +114,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       document.removeEventListener('keydown', dismissDisclosures);
     };
   }, []);
-
-  // Live elapsed timer during active jobs so the editor sees real-time activity
-  useEffect(() => {
-    if (!isBusy) {
-      setElapsedSeconds(0);
-      return;
-    }
-    const startTs = Date.now();
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTs) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isBusy]);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -169,23 +164,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     (s) => s.decision === 'generate' && s.text.trim().length > 0
   ).length;
 
-  const formatElapsed = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
-  };
-
-  // Determine current pipeline stage for the 4-stage visual stepper
-  const stageText = vadProgress?.stage || '';
-  const isUploadingStage = isAnalyzing && stageText.includes('อัปโหลดวิดีโอ');
-  const isIndexingStage =
-    isAnalyzing &&
-    (stageText.includes('Files API') ||
-      stageText.includes('เตรียมไฟล์วิดีโอ') ||
-      stageText.includes('เริ่มต้นงานวิเคราะห์'));
-  const isBatchingStage =
-    isAnalyzing && !isUploadingStage && !isIndexingStage;
-
   const canShowGenerate = Boolean(vadOutput?.candidate_spots.length) &&
     Boolean(videoFile || completedBatchesCount < batches.length);
   const needsResume = failedBatchesCount > 0 ||
@@ -194,14 +172,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
   const fileName = videoMetadata?.fileName || videoFile?.name || 'วิดีโอโปรเจกต์';
-  const statusText = isDetecting
-    ? `กำลังสแกนเสียง ${vadProgress?.percent ?? 0}%`
-    : isAnalyzing
-    ? isUploadingStage
-      ? `กำลังส่งวิดีโอ ${vadProgress?.percent ?? 0}%`
-      : isIndexingStage
-      ? `กำลังเตรียมวิดีโอ ${vadProgress?.percent ?? 0}%`
-      : `กำลังวิเคราะห์ ${vadProgress?.percent ?? 0}%`
+  const statusText = processingFeedback
+    ? `${processingFeedback.title}${processingFeedback.percent !== undefined ? ` ${processingFeedback.percent}%` : ''}`
     : errorMessage || failedBatchesCount > 0
     ? 'ต้องตรวจสอบการทำงาน'
     : status === 'READY'
@@ -220,14 +192,14 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   if (!hasLoadedProject) {
     return (
       <section
-        id="section-upload-vad"
-        tabIndex={-1}
         className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
       >
         <input
           ref={fileInputRef}
           type="file"
           accept="video/mp4,.mp4"
+          aria-invalid={hasBlockingErrors}
+          disabled={Boolean(checkingFileName)}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -237,9 +209,13 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">ระบบหาช่วงว่างบนเครื่องของคุณ</p>
         </div>
         <div className="flex flex-col gap-7">
-          {/* Dropzone (7 cols) */}
           <div>
-            <div
+            {checkingFileName ? (
+              <div className="w-full max-w-lg mx-auto">
+                <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-slate-700">{checkingFileName}</p>
+                <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
+              </div>
+            ) : <div
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -267,12 +243,29 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </div>
 
               <div className="flex flex-wrap justify-center items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby="upload-requirements" className="px-6 py-3 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md flex items-center gap-2 cursor-pointer">
+                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="px-6 py-3 text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md flex items-center gap-2 cursor-pointer">
                   <Upload className="w-4 h-4" aria-hidden="true" />
                   เลือกวิดีโอ
                 </button>
               </div>
-            </div>
+            </div>}
+
+            {(errorMessage || hasBlockingErrors) && (
+              <div id="upload-feedback" role="alert" className="mt-3 p-3 rounded-md border border-red-200 bg-red-50 text-red-800 text-sm flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-semibold">{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</p>
+                  {errorMessage ? <p className="mt-1">{errorMessage}</p> : (
+                    <ul className="mt-1 list-disc pl-5 space-y-1">
+                      {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
+                        <li key={`${issue.field}-${index}`}>{issue.message}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="text-sm leading-relaxed text-slate-600">
@@ -280,31 +273,69 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           </div>
         </div>
 
-        {(errorMessage || hasBlockingErrors) && (
-          <div role="alert" className="mt-3 p-3 rounded border border-red-200 bg-red-50 text-red-800 text-sm flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
-            <div className="min-w-0">
-              <p className="font-semibold">{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</p>
-              {errorMessage ? <p className="mt-1">{errorMessage}</p> : (
-                <ul className="mt-1 list-disc pl-5 space-y-1">
-                  {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
-                    <li key={`${issue.field}-${index}`}>{issue.message}</li>
-                  ))}
-                </ul>
-              )}
-              {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
-            </div>
-          </div>
-        )}
       </section>
     );
   }
 
+  const projectControls = (
+    <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
+      <details ref={videoDetailsRef} name="project-header" className="relative min-w-0 flex-1 basis-36 lg:max-w-xs">
+        <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+          <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span className="truncate font-medium">{fileName}</span>
+          <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        </summary>
+        <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-lg lg:left-auto lg:right-0">
+          <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
+          {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
+            <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
+            <dt>ความยาว</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(totalDurationMs)}</dd>
+            {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-slate-900">{formatFileSize(videoMetadata.fileSize)}</dd></>}
+          </dl>}
+        </div>
+      </details>
+
+      <button
+        ref={statusButtonRef}
+        type="button"
+        onClick={() => setIsQueueExpanded((prev) => !prev)}
+        aria-expanded={isQueueExpanded}
+        aria-controls="analysis-details"
+        aria-label={`${statusText} · ดูรายละเอียดการทำงาน`}
+        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'}`}
+      >
+        {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden="true" /> : <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+        <span role={processingFeedback ? undefined : 'status'} className="min-w-0 text-left">{statusText}</span>
+        {isQueueExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+      </button>
+
+      {canShowGenerate && !isBusy && !isRegenerating && (
+        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer sm:grow-0">
+          <Sparkles className="w-4 h-4" aria-hidden="true" />
+          {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+        </button>
+      )}
+    </div>
+  );
+
+  const managementMenu = (
+    <details key="project-management" ref={managementRef} name="project-header" className="relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+        จัดการ <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+      </summary>
+      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
+        {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
+        {videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>
+        <div className="my-1 border-t border-slate-200" />
+        <button type="button" onClick={onResetJob} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
+      </div>
+    </details>
+  );
+
   // Keep project controls in the header and processing details beside the workspace.
   return (
     <section
-      id="section-upload-vad"
-      tabIndex={-1}
       className="shrink-0"
     >
       <input
@@ -316,66 +347,15 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       />
 
       {headerActionsElement && createPortal(
-        <>
-          <div className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:justify-end">
-            <details ref={videoDetailsRef} name="project-header" className="relative min-w-0 flex-1 basis-36 xl:max-w-xs">
-              <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-                <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span className="truncate font-medium">{fileName}</span>
-                <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              </summary>
-              <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-lg xl:left-auto xl:right-0">
-                <p className="break-all font-semibold text-slate-900">{fileName}</p>
-                {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
-                  <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
-                  <dt>ความยาว</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(totalDurationMs)}</dd>
-                  {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-slate-900">{formatFileSize(videoMetadata.fileSize)}</dd></>}
-                </dl>}
-              </div>
-            </details>
-
-            <button
-              ref={statusButtonRef}
-              type="button"
-              onClick={() => setIsQueueExpanded((prev) => !prev)}
-              aria-expanded={isQueueExpanded}
-              aria-controls="analysis-details"
-              aria-label={`${statusText} · ดูรายละเอียดการทำงาน`}
-              className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'}`}
-            >
-              {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden="true" /> : <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-              <span aria-live="polite" aria-atomic="true" className="min-w-0 text-left">{statusText}</span>
-              {isQueueExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-            </button>
-
-            {canShowGenerate && !isBusy && !isRegenerating && (
-              <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40 cursor-pointer sm:grow-0">
-                <Sparkles className="w-4 h-4" aria-hidden="true" />
-                {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
-              </button>
-            )}
-          </div>
-
-          <details ref={managementRef} name="project-header" className="relative col-start-2 row-start-1 justify-self-end xl:col-start-3">
-            <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-              จัดการ <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-            </summary>
-            <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
-              {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
-              {videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>
-              <div className="my-1 border-t border-slate-200" />
-              <button type="button" onClick={onResetJob} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
-            </div>
-          </details>
-        </>, headerActionsElement
+        isWideHeader ? [projectControls, managementMenu] : [managementMenu, projectControls],
+        headerActionsElement
       )}
 
       {/* Validation Issues or Error Banner */}
-      {(validationIssues.length > 0 || errorMessage) && (
-        <div role="alert" className="px-4 py-3 bg-red-50 border-t border-red-200 flex flex-wrap items-center justify-between gap-2 text-sm text-red-800">
+      {(validationIssues.length > 0 || errorMessage) && !(status === 'FAILED' && !vadOutput) && (
+        <div role={errorMessage || hasBlockingErrors ? 'alert' : 'status'} className={`px-4 py-3 border-t flex flex-wrap items-center justify-between gap-2 text-sm ${errorMessage || hasBlockingErrors ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
             <span>
               {errorMessage ||
                 validationIssues.map((i) => i.message).join(' · ')}
@@ -391,29 +371,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             <h2 className="text-sm font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
             <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} className="px-2 text-xs text-slate-600 hover:text-slate-900 underline cursor-pointer">ปิดรายละเอียด</button>
           </div>
-          {/* Active progress stays available inside the details drawer. */}
-          {vadProgress && (
-            <div role="status" className="px-4 py-3 bg-slate-900 text-white border-t border-slate-800 flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-4 text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 shrink-0" />
-                  <span className="font-medium">{vadProgress.stage}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 font-mono tabular-nums text-slate-300">
-                  {isBusy && (
-                    <span>เวลาที่ใช้: {formatElapsed(elapsedSeconds)}</span>
-                  )}
-                  <span className="text-white font-semibold">{vadProgress.percent}%</span>
-                </div>
-              </div>
-              <div role="progressbar" aria-label={isDetecting ? 'หาช่วงเสียงพูด' : 'สร้างบทบรรยาย'} aria-valuenow={Math.round(vadProgress.percent)} aria-valuemin={0} aria-valuemax={100} className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 transition-transform duration-200 origin-left"
-                  style={{ transform: `scaleX(${Math.max(0.02, vadProgress.percent / 100)})` }}
-                />
-              </div>
-            </div>
-          )}
+          {processingFeedback && <p className="text-sm text-slate-600">{processingFeedback.detail || processingFeedback.title}</p>}
           {vadOutput && (
             <div className="space-y-2 text-xs text-slate-600">
               <p>เสียงพูด {vadOutput.speech_segments.length} ช่วง ({speechPercent}%) · ช่วงว่าง {vadOutput.candidate_spots.length} ช่วง ({formatCompactTime(nonSpeechDurationMs)})</p>
@@ -422,91 +380,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               )}
             </div>
           )}
-          {/* 4-Stage Pipeline Tracker */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
-            {/* Step 1: Silero VAD */}
-            <div
-              className={`px-3 py-2 rounded border flex items-center justify-between ${
-                isDetecting
-                  ? 'border-slate-900 bg-white text-slate-900 font-semibold'
-                  : vadOutput
-                  ? 'border-slate-200 bg-white text-slate-700'
-                  : 'border-slate-200 bg-slate-100/60 text-slate-400'
-              }`}
-            >
-              <span>1. หาช่วงที่ไม่มีเสียงพูด</span>
-              {isDetecting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900 shrink-0" />
-              ) : vadOutput ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-              )}
-            </div>
-
-            {/* Step 2: Chunked Video Upload */}
-            <div
-              className={`px-3 py-2 rounded border flex items-center justify-between ${
-                isUploadingStage
-                  ? 'border-slate-900 bg-white text-slate-900 font-semibold'
-                  : completedBatchesCount > 0 || isIndexingStage || isBatchingStage
-                  ? 'border-slate-200 bg-white text-slate-700'
-                  : 'border-slate-200 bg-slate-100/60 text-slate-400'
-              }`}
-            >
-              <span>2. ส่งวิดีโอเพื่อวิเคราะห์</span>
-              {isUploadingStage ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900 shrink-0" />
-              ) : completedBatchesCount > 0 || isIndexingStage || isBatchingStage ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-              )}
-            </div>
-
-            {/* Step 3: Gemini Files API Indexing */}
-            <div
-              className={`px-3 py-2 rounded border flex items-center justify-between ${
-                isIndexingStage
-                  ? 'border-slate-900 bg-white text-slate-900 font-semibold'
-                  : completedBatchesCount > 0 || isBatchingStage
-                  ? 'border-slate-200 bg-white text-slate-700'
-                  : 'border-slate-200 bg-slate-100/60 text-slate-400'
-              }`}
-            >
-              <span>3. เตรียมวิเคราะห์ภาพ</span>
-              {isIndexingStage ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900 shrink-0" />
-              ) : completedBatchesCount > 0 || isBatchingStage ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-              )}
-            </div>
-
-            {/* Step 4: Batch Generation */}
-            <div
-              className={`px-3 py-2 rounded border flex items-center justify-between ${
-                isBatchingStage
-                  ? 'border-slate-900 bg-white text-slate-900 font-semibold'
-                  : batches.length > 0 && completedBatchesCount === batches.length
-                  ? 'border-slate-200 bg-white text-emerald-700 font-semibold'
-                  : 'border-slate-200 bg-slate-100/60 text-slate-400'
-              }`}
-            >
-              <span className="truncate">
-                4. สร้างบทบรรยาย ({completedBatchesCount}/{batches.length} ชุด)
-              </span>
-              {isBatchingStage ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-900 shrink-0" />
-              ) : batches.length > 0 && completedBatchesCount === batches.length ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-              )}
-            </div>
-          </div>
-
           {/* Batch Queue Grid (Click any batch to jump to its first spot) */}
           {batches.length > 0 && (
             <div className="space-y-1.5">

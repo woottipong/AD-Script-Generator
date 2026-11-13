@@ -17,6 +17,7 @@ import {
   validateAndInspectMp4File,
 } from './utils/videoValidator';
 import {
+  DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
   generateJsonExportContent,
   generateSrtContent,
@@ -24,10 +25,11 @@ import {
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
+import { VideoProcessingStatus } from './components/VideoProcessingStatus';
+import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
 
 const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
 const FIXED_MAX_UPLOAD_SIZE_MB = 2000;         // 2 GB
-const FIXED_ANALYSIS_BATCH_SECONDS = 120;      // 120s per batch
 const FIXED_CONTEXT_BEFORE_SECONDS = 20;       // 20s context before
 const FIXED_CONTEXT_AFTER_SECONDS = 10;        // 10s context after
 
@@ -40,14 +42,10 @@ export default function App() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
+  const [checkingFileName, setCheckingFileName] = useState<string | null>(null);
 
   const [vadOutput, setVadOutput] = useState<VADOutput | null>(null);
-  const [vadProgress, setVadProgress] = useState<{
-    stage: string;
-    percent: number;
-    processedMs?: number;
-    totalMs?: number;
-  } | null>(null);
+  const [vadProgress, setVadProgress] = useState<ProcessingProgress | null>(null);
 
   const [batches, setBatches] = useState<AnalysisBatch[]>([]);
   const [spots, setSpots] = useState<ADSpot[]>([]);
@@ -58,6 +56,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
@@ -115,7 +114,7 @@ export default function App() {
         const computedBatches = buildAnalysisBatches(
           output.candidate_spots,
           output.duration_ms,
-          FIXED_ANALYSIS_BATCH_SECONDS,
+          DEFAULT_ANALYSIS_BATCH_SECONDS,
           FIXED_CONTEXT_BEFORE_SECONDS,
           FIXED_CONTEXT_AFTER_SECONDS
         );
@@ -289,6 +288,13 @@ export default function App() {
 
   // 1. Check Browser Compatibility & Active Persisted Job on Mount
   useEffect(() => {
+    const clearLegacyHash = () => {
+      if (['#main-workspace', '#section-upload-vad', '#section-preview-timeline', '#section-script-editor'].includes(window.location.hash)) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+      }
+    };
+    clearLegacyHash();
+    window.addEventListener('hashchange', clearLegacyHash);
     let mounted = true;
     const restoreToken = { aborted: false };
     pollAbortRef.current = restoreToken;
@@ -339,6 +345,7 @@ export default function App() {
       .catch(() => {});
 
     return () => {
+      window.removeEventListener('hashchange', clearLegacyHash);
       mounted = false;
       pollAbortRef.current.aborted = true;
       if (workerRef.current) {
@@ -381,6 +388,7 @@ export default function App() {
         objectUrlRef.current = null;
       }
 
+      setCheckingFileName(file.name);
       setVideoFile(null);
       setVideoMetadata(null);
       setVideoUrl(null);
@@ -394,6 +402,7 @@ export default function App() {
       });
       if (selectionToken.aborted) return;
 
+      setCheckingFileName(null);
       setValidationIssues(validation.issues);
 
       if (validation.valid && validation.metadata) {
@@ -594,6 +603,8 @@ export default function App() {
       setVadProgress({
         stage: 'กำลังเตรียมส่งข้อมูลวิดีโอไปยังเซิร์ฟเวอร์...',
         percent: 0,
+        loadedBytes: 0,
+        totalBytes: videoFile.size,
       });
 
       const uploadId = await uploadVideoInChunks(videoFile, (percent, loadedBytes, totalBytes) => {
@@ -601,7 +612,9 @@ export default function App() {
         const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
         setVadProgress({
           stage: `กำลังอัปโหลดวิดีโอ (${loadedMb} / ${totalMb} MB, ${percent}%)...`,
-          percent: Math.min(95, percent),
+          percent,
+          loadedBytes,
+          totalBytes,
         });
       });
 
@@ -825,19 +838,19 @@ export default function App() {
   };
 
   const hasProject = Boolean(videoMetadata);
+  const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
 
   return (
     <div className={`min-h-screen flex flex-col bg-slate-100 text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
-      <a href="#main-workspace" className="skip-link">ข้ามไปยังพื้นที่ทำงาน</a>
+      <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="min-h-16 shrink-0 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center py-3">
-        <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <a
-            href={hasProject ? '#main-workspace' : '#section-upload-vad'}
-            className="inline-flex items-center gap-2.5 text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0"
+        <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <div
+            className="inline-flex min-w-0 items-center gap-2.5 text-base font-bold tracking-tight text-slate-900"
           >
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
-            AD Script Studio
-          </a>
+            <span className="leading-tight">AD Script Generator</span>
+          </div>
 
           <div ref={setHeaderActionsElement} className="contents" />
         </div>
@@ -856,7 +869,7 @@ export default function App() {
         </div>
       )}
 
-      <main id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
+      <main ref={workspaceRef} id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
       {/* Restored Incomplete Job Resume Banner */}
       {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
         <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
@@ -869,6 +882,8 @@ export default function App() {
       {/* Top Studio Project & Queue Command Bar */}
       <UploadAndVadPanel
         headerActionsElement={headerActionsElement}
+        checkingFileName={checkingFileName}
+        processingFeedback={processingFeedback}
         status={status}
         videoFile={videoFile}
         videoMetadata={videoMetadata}
@@ -885,6 +900,12 @@ export default function App() {
         onSelectSpot={handleSelectSpot}
         errorMessage={errorMessage}
       />
+
+      {hasProject && processingFeedback && (
+        <div className="lg:hidden px-4 py-5 border-b border-slate-200 bg-white">
+          <VideoProcessingStatus feedback={processingFeedback} />
+        </div>
+      )}
 
       {/* Full-Screen Split-Pane NLE Workstation */}
       {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
@@ -906,11 +927,14 @@ export default function App() {
         </div>
 
         {/* Right Pane: Full-Height Scrollable AD Script Editor & SRT Preview (6 cols) */}
-        <div className="lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden">
+        <div className={`lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
           <AdScriptEditor
             spots={spots}
             batches={batches}
             isAnalyzing={status === 'ANALYZING'}
+            processingFeedback={processingFeedback}
+            errorMessage={errorMessage}
+            onRetryVad={handleRunVad}
             emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}
             speechSegments={vadOutput?.speech_segments || []}
             videoDurationMs={vadOutput?.duration_ms || videoMetadata?.durationMs || 0}

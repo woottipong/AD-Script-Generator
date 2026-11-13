@@ -7,7 +7,7 @@ import path from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, MediaResolution, ThinkingLevel, Type } from '@google/genai';
+import { GoogleGenAI, MediaProcessing, MediaResolution, ThinkingLevel, Type } from '@google/genai';
 import {
   ADAnalysisSettings,
   ADSpot,
@@ -21,6 +21,7 @@ import {
   VideoMetadata,
 } from './src/types/ad';
 import {
+  DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
   formatTimestampDisplay,
   validateSpotTimestampEdit,
@@ -38,7 +39,7 @@ const FIXED_SERVER_CONFIG: ServerConfig = {
   maxUploadSizeMb: 2000,
   vadThreshold: 0.5,
   minAdGapMs: 3000,
-  analysisBatchSeconds: 120,
+  analysisBatchSeconds: DEFAULT_ANALYSIS_BATCH_SECONDS,
   contextBeforeSeconds: 20,
   contextAfterSeconds: 10,
 };
@@ -485,6 +486,7 @@ ${candidateListDescription}
                   fileUri,
                   mimeType,
                 },
+                mediaProcessing: MediaProcessing.STATIC,
                 videoMetadata: {
                   startOffset: `${startOffsetSeconds}s`,
                   endOffset: `${endOffsetSeconds}s`,
