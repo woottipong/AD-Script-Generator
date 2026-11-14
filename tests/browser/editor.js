@@ -13,6 +13,8 @@ async page => {
   const list=page.getByRole('list',{name:'รายการช่วงบรรยาย'}); await list.waitFor();
   const listNames=async()=>await list.getByRole('listitem').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')));
   const assert=(x,message)=>{if(!x) throw new Error(message)};
+  assert(await page.getByRole('button',{name:'ส่งออก JSON'}).count()===0,'JSON export should not be available');
+  assert(await page.getByRole('button',{name:'ส่งออก SRT'}).isEnabled(),'SRT export should be available');
   assert(JSON.stringify(await listNames())===JSON.stringify(['ช่วงบรรยายที่ 1','ช่วงบรรยายที่ 2','ช่วงบรรยายที่ 3','ช่วงบรรยายที่ 4']),'Initial global order incorrect');
   const filter=page.locator('#spot-filter'); await filter.selectOption('skip');
   assert(JSON.stringify(await listNames())===JSON.stringify(['ช่วงบรรยายที่ 2']),'Skip global order incorrect');

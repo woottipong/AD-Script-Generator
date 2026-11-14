@@ -24,7 +24,7 @@ AD Script Generator is an automated Thai Audio Description (AD) script authoring
 2. Client runs Silero VAD v5 via ONNX Runtime Web inside a dedicated Web Worker to identify non-speech gaps.
 3. Server receives candidate spots and uploads the video file to the Gemini Files API.
 4. Server analyses 240-second timeline batches sequentially using `gemini-3.8-flash` (with fallback to `gemini-3.5-flash-lite`).
-5. Client renders an NLE workstation timeline and script editor for review, time adjustment, and export to SRT or JSON.
+5. Client renders an NLE workstation timeline and script editor for review, time adjustment, and export to SRT.
 
 ## Development workflow
 

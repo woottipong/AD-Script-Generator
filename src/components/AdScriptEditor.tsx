@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Download,
   FileText,
   Loader2,
   Maximize2,
@@ -34,7 +33,6 @@ interface AdScriptEditorProps {
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onUpdateSpot: (updatedSpot: ADSpot) => void;
   onExportSrt: () => void;
-  onExportJson: () => void;
   saveStatus: 'local' | 'saving' | 'saved' | 'error';
   onRetrySave: () => void;
 }
@@ -500,7 +498,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   onSelectSpot,
   onUpdateSpot,
   onExportSrt,
-  onExportJson,
   saveStatus,
   onRetrySave,
 }) => {
@@ -616,18 +613,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
-                onClick={onExportJson}
-                aria-label="ส่งออก JSON"
-                title="ส่งออก JSON"
-                disabled={spots.length === 0}
-                className="px-2 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>JSON</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={onExportSrt}
                 disabled={generatedCount === 0}
                 title={generatedCount === 0 ? 'เพิ่มบทบรรยายก่อนส่งออก' : undefined}
@@ -712,7 +697,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           <span>
-            {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้ · ส่งออก JSON เพื่อเก็บงาน'
+            {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้เท่านั้น'
               : saveStatus === 'saving' ? 'กำลังบันทึกการแก้ไข…'
               : saveStatus === 'error' ? 'บันทึกไม่สำเร็จ · งานที่แก้ยังอยู่ในหน้านี้'
               : 'บันทึกบนเซิร์ฟเวอร์แล้ว'}

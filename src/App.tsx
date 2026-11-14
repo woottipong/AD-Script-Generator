@@ -19,7 +19,6 @@ import {
 import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
-  generateJsonExportContent,
   generateSrtContent,
 } from './utils/formatters';
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
@@ -714,7 +713,7 @@ export default function App() {
     setStatus('IDLE');
   };
 
-  // 9. Export SRT & JSON
+  // 9. Export SRT
   const handleExportSrt = () => {
     const srtContent = generateSrtContent(spots);
     if (!srtContent) return;
@@ -724,31 +723,6 @@ export default function App() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${baseName}_thai_ad.srt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportJson = () => {
-    if (!videoMetadata) return;
-    const durationMs = vadOutput?.duration_ms || videoMetadata.durationMs || 0;
-    const effectiveVadConfig =
-      vadOutput?.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG;
-    const jsonContent = generateJsonExportContent({
-      videoMetadata,
-      vadConfig: effectiveVadConfig,
-      durationMs,
-      speechSegments: vadOutput?.speech_segments || [],
-      candidateSpots: vadOutput?.candidate_spots || [],
-      spots,
-    });
-    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const baseName = (videoMetadata.fileName || 'video').replace(/\.mp4$/i, '');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${baseName}_ad_result.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -853,7 +827,6 @@ export default function App() {
             onSelectSpot={handleSelectSpot}
             onUpdateSpot={handleUpdateSpot}
             onExportSrt={handleExportSrt}
-            onExportJson={handleExportJson}
             saveStatus={jobId ? saveStatus : 'local'}
             onRetrySave={() => { if (jobId) saveQueue.save(jobId, spots); }}
           />

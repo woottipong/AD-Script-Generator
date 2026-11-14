@@ -67,4 +67,4 @@ When editing candidate spots in the UI or via `PATCH /api/jobs/:jobId/spots`:
 - Timestamps must remain within the spot's original non-speech gap boundaries (`original_start_ms` and `original_end_ms`).
 - Timestamps must never overlap any detected speech segment from `vad_output.speech_segments`.
 - Spot duration must be at least 500 ms.
-- Export formats: SubRip (`.srt`) includes only spots where `decision === 'generate'` with non-empty text. JSON export includes full metadata, speech segments, candidate spots, generated spots, and skipped spots.
+- SubRip (`.srt`) export includes only spots where `decision === 'generate'` with non-empty text.

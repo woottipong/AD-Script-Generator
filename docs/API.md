@@ -323,10 +323,6 @@ Example for an unmatched route:
 
 ## Export formats
 
-SRT and JSON downloads are produced in the browser by [src/utils/formatters.ts](../src/utils/formatters.ts). There are no export API routes.
+SRT downloads are produced in the browser by [src/utils/formatters.ts](../src/utils/formatters.ts). There are no export API routes.
 
 - SRT includes only `generate` spots with nonblank text, sorted by start time.
-- JSON has `schema_version: "1.1"` and includes `video_metadata`, `vad_configuration`, `speech_segments`, `candidate_spots`, `spots`, `generated_script`, `skipped_spots`, and `edited_timestamps`.
-- `skipped_spots` also includes `generate` spots whose text is blank. The full `spots` array retains each spot's actual decision and text.
-- `edited_timestamps` compares original times with the current edited times. It is not a history of every edit.
-- The application currently has no JSON import route or UI.
