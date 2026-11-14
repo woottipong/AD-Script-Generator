@@ -77,6 +77,10 @@ Reads `.data/jobs/active_job.json` and returns the referenced job as `{ job, isR
 
 The pointer contains `active_job_id` and `updated_at`. A job's full metadata is stored in `.data/jobs/<jobId>/job.json`.
 
+### GET /api/jobs
+
+Returns `{ jobs }` for readable saved jobs and recognizable unfinished uploads. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, `is_active`, and `is_processing`. An active upload has both `is_upload` and `is_processing` set. An unreadable active pointer returns HTTP 500.
+
 ### GET /api/jobs/:jobId
 
 Returns HTTP 200 with `{ job, isRunning }`. The browser polls this route during background analysis.
@@ -124,17 +128,18 @@ HTTP 200 example, with an illustrative ID:
 }
 ```
 
-`fileName` defaults to `video.mp4`. Characters outside `[a-zA-Z0-9._-]` become `_` in the response. `fileSize` defaults to `0` and is not an enforced upload quota. The handler ignores `totalChunks`. Initialization failures return HTTP 500.
+`fileName` defaults to `video.mp4`. Characters outside `[a-zA-Z0-9._-]` become `_` in the response. `fileSize` must be a positive integer no larger than 2,000 MiB. The handler ignores `totalChunks`. Invalid input returns HTTP 400; initialization failures return HTTP 500.
 
 ### POST /api/upload/chunk
 
-Appends raw bytes to the upload's source file. The browser sends chunks sequentially at 8 MiB each. The request limit is 25 MiB.
+Writes raw bytes at the requested byte offset. The browser sends chunks sequentially at 8 MiB each. The request limit is 25 MiB and the total file limit is 2,000 MiB.
 
 - Query parameter `uploadId` identifies the upload. Header `x-upload-id` is the fallback when the query parameter is absent.
+- Query parameter `offset` is the nonnegative byte offset of the chunk.
 - `Content-Type` must be `application/octet-stream`.
 - The body contains binary bytes.
-- The handler ignores `chunkIndex` and `totalChunks`. It does not check order, offsets, checksums, total size, or duplicate chunks.
-- Every accepted request appends bytes. Repeating a request can duplicate data. A lost response does not prove that the append failed.
+- The handler ignores `chunkIndex` and `totalChunks`. It rejects offsets beyond the current file and checks bytes that overlap existing data. Repeating an identical chunk is safe, including after a partial write. Conflicting bytes return HTTP 409.
+- The route rejects writes to an upload that already has a saved job.
 
 HTTP 200 example after an 8 MiB chunk:
 
@@ -149,10 +154,15 @@ HTTP 200 example after an 8 MiB chunk:
 |---|---|
 | 400 | Missing upload ID, empty body, or body not parsed as a binary buffer |
 | 404 | Upload directory not found |
-| 413 | Body exceeds the parser limit |
+| 409 | Offset skips ahead, bytes conflict, or a job already exists |
+| 413 | Body or total file size exceeds the limit |
 | 500 | File write failure |
 
-There is no upload-finalize endpoint. Job initialization uses the accumulated file. There is no API to resume an upload at a confirmed offset or discard an unfinished upload directory.
+Job initialization uses the accumulated file. An unfinished upload can be removed through the storage API after its session is abandoned.
+
+### POST /api/upload/:uploadId/abandon
+
+Marks an upload session as no longer active without deleting its files. The browser sends this after completion, failure, or cancellation when it knows the upload ID. Sessions exist in server memory and are cleared on restart. A lost initialization response or browser termination can leave a session marked active until the server restarts.
 
 ### POST /api/jobs/init
 
@@ -282,13 +292,13 @@ The route checks that `spots` is an array and calls `validateSpotTimestampEdit` 
 - Times within the submitted `original_start_ms` and `original_end_ms`, with 1 ms tolerance.
 - No overlap with speech segments in the persisted VAD output.
 
-The route does not validate the full `ADSpot` schema, compare submitted original boundaries with stored boundaries, or recompute `duration_ms`. Clients must preserve original IDs and bounds, keep `duration_ms` consistent, and send every spot. HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. An invalid array or failed timestamp check returns HTTP 400 with `error`.
+The route validates each spot's fields, requires the same set of unique IDs as the saved job, checks original boundaries against stored values, and requires `duration_ms` to match the submitted times. HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. Invalid spots or failed timestamp checks return HTTP 400 with `error`.
 
 The browser serializes saves and shows success only after receiving an acknowledgement for the job. When a user changes `skip` to `generate`, the editor keeps existing text. If that text is blank, it uses `reason` as the starting text. Changing back to `skip` retains the text. This text selection happens in the browser, not in this endpoint.
 
 ### DELETE /api/jobs/:jobId
 
-Removes `.data/jobs/active_job.json` only when its `active_job_id` matches `jobId`. The route does not delete job directories or source video, cancel a background task, or delete a Gemini file. A later background save can recreate the active pointer.
+Removes `.data/jobs/active_job.json` only when its `active_job_id` matches `jobId`. The route does not delete job directories or source video, cancel a background task, or delete a Gemini file. Background progress no longer recreates a cleared pointer.
 
 The route returns HTTP 200 even when the pointer does not match, is missing, or an exception is caught:
 
@@ -298,13 +308,15 @@ The route returns HTTP 200 even when the pointer does not match, is missing, or 
 }
 ```
 
-There is no endpoint to list all saved jobs or automatically remove old job files.
+### DELETE /api/jobs/:jobId/files
+
+Permanently deletes a saved job directory and its video, or a recognizable unfinished upload. HTTP 200 returns `{ ok: true }`. The route returns HTTP 404 for an unknown or unsafe path, HTTP 409 for the active or processing job or active upload, and HTTP 500 if storage or the active pointer cannot be read. There is no automatic deletion.
 
 ## Validation boundaries
 
 The browser checks MP4 structure, H.264 codec, an audio codec with an `mp4a` prefix, 480-pixel height, a maximum duration of 1,800 seconds, and a file size of at most `2000 × 1024 × 1024` bytes. Its WebCodecs support check uses the track codec for `mp4a.40.*` and substitutes `mp4a.40.2` for other `mp4a` values. A width other than 854 produces a warning when the height is 480.
 
-The chunked-upload API checks that the accumulated source file exists and is not empty before registering a job. It does not repeat the browser's video validation or enforce a total chunked-upload size. Multipart upload enforces its file-size limit. Incoming metadata and VAD output do not pass through a full request Zod schema.
+Job initialization validates the declared video metadata, file size, VAD settings, speech segments, and candidate spots. It checks candidate IDs, durations, ranges, and speech overlaps. It checks the uploaded byte count against the declared size and limits uploads to 2,000 MiB. The server does not inspect the uploaded MP4 to verify its declared codecs or dimensions; browser validation remains necessary.
 
 Gemini output passes through `GeminiBatchResponseSchema`. Every expected spot must be present. A `generate` result must contain nonblank text. Results with unknown spot IDs are ignored. A `skip` result can contain a reason, and returned text is retained if present. The prompt currently requests empty text for skipped spots.
 

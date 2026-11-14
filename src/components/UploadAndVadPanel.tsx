@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
+import { JobStorageManager } from './JobStorageManager';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
@@ -223,6 +224,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <section
         className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
       >
+        {headerActionsElement && createPortal(
+          <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
+          headerActionsElement
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -352,12 +357,13 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-700 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
         จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
-      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
+      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
         {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
         {videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>
         <div className="my-1 border-t border-slate-200" />
-        <button type="button" onClick={onResetJob} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
+        <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
+        <div data-job-storage><JobStorageManager /></div>
       </div>
     </details>
   );

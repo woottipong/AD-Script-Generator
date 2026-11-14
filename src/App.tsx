@@ -381,6 +381,8 @@ export default function App() {
   // Upload large MP4 videos in 8MB chunks to stay well below Cloud Run's 32MB request body limit
   const uploadVideoInChunks = async (
     file: File,
+    token: { aborted: boolean },
+    onInitialized: (uploadId: string) => void,
     onProgress: (percent: number, loadedBytes: number, totalBytes: number) => void
   ): Promise<string> => {
     const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB per chunk
@@ -401,6 +403,8 @@ export default function App() {
       throw new Error(initData?.error || 'ไม่สามารถเริ่มต้นเซสชันอัปโหลดไฟล์วิดีโอได้');
     }
     const uploadId: string = initData.uploadId;
+    onInitialized(uploadId);
+    if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
 
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
@@ -413,9 +417,10 @@ export default function App() {
       let lastErr: any = null;
 
       while (attempts < 3 && !success) {
+        if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
         try {
           const chunkRes = await fetch(
-            `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}`,
+            `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&offset=${start}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/octet-stream' },
@@ -424,11 +429,13 @@ export default function App() {
           );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const chunkData = await parseResponseJson<any>(chunkRes);
+          if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
           if (!chunkRes.ok || !chunkData?.ok) {
             throw new Error(chunkData?.error || `อัปโหลดส่วนที่ ${i + 1}/${totalChunks} ล้มเหลว`);
           }
           success = true;
         } catch (err) {
+          if (token.aborted) throw err;
           lastErr = err;
           attempts++;
           if (attempts < 3) {
@@ -442,6 +449,7 @@ export default function App() {
       }
 
       const loaded = end;
+      if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
       const percent = Math.round((loaded / file.size) * 100);
       onProgress(percent, loaded, file.size);
     }
@@ -489,14 +497,20 @@ export default function App() {
         }
         startedJob = startData.job;
       } catch {
-        if (token.aborted) return;
+        if (token.aborted) {
+          saveQueue.leave(existingJobId);
+          return;
+        }
         const polling = pollJobUntilComplete(existingJobId, startError);
         setVadProgress(null);
         setErrorMessage('ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กำลังตรวจสถานะอีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         await polling;
         return;
       }
-      if (token.aborted) return;
+      if (token.aborted) {
+        saveQueue.leave(existingJobId);
+        return;
+      }
 
       setBatches(startedJob.batches);
       setSpots(startedJob.spots);
@@ -534,6 +548,10 @@ export default function App() {
 
     if (spots.some((spot) => spot.text.trim()) && !window.confirm('สร้างบทบรรยายใหม่? ข้อความและเวลาที่แก้ไว้อาจถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
 
+    pollAbortRef.current.aborted = true;
+    const token = { aborted: false };
+    pollAbortRef.current = token;
+    let uploadId: string | undefined;
     try {
       setStatus('ANALYZING');
       setErrorMessage(null);
@@ -548,7 +566,7 @@ export default function App() {
         totalBytes: videoFile.size,
       });
 
-      const uploadId = await uploadVideoInChunks(videoFile, (percent, loadedBytes, totalBytes) => {
+      uploadId = await uploadVideoInChunks(videoFile, token, (id) => { uploadId = id; }, (percent, loadedBytes, totalBytes) => {
         const loadedMb = (loadedBytes / (1024 * 1024)).toFixed(1);
         const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
         setVadProgress({
@@ -558,6 +576,7 @@ export default function App() {
           totalBytes,
         });
       });
+      if (token.aborted) return;
 
       setVadProgress({
         stage: 'กำลังเริ่มต้นงานวิเคราะห์บนเซิร์ฟเวอร์...',
@@ -565,6 +584,7 @@ export default function App() {
       });
 
       await saveQueue.wait();
+      if (token.aborted) return;
       const initRes = await fetch('/api/jobs/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -579,6 +599,12 @@ export default function App() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const initData = await parseResponseJson<any>(initRes);
+      if (token.aborted) {
+        if (initData?.job?.job_id) {
+          void fetch(`/api/jobs/${encodeURIComponent(initData.job.job_id)}`, { method: 'DELETE' }).catch(() => {});
+        }
+        return;
+      }
       if (!initRes.ok || !initData?.job) {
         setVadProgress(null);
         setStatus('FAILED');
@@ -601,6 +627,10 @@ export default function App() {
 
       await pollJobUntilComplete(initializedJob.job_id);
     } catch (err) {
+      if (token.aborted) {
+        if (uploadId) saveQueue.leave(uploadId);
+        return;
+      }
       setVadProgress(null);
       setStatus('FAILED');
       setErrorMessage(
@@ -608,6 +638,10 @@ export default function App() {
           err instanceof Error ? err.message : String(err)
         }`
       );
+    } finally {
+      if (uploadId) {
+        void fetch(`/api/upload/${encodeURIComponent(uploadId)}/abandon`, { method: 'POST', keepalive: true }).catch(() => {});
+      }
     }
   };
 

@@ -103,6 +103,8 @@
 - งานที่สร้างบนเซิร์ฟเวอร์บันทึกข้อความ สถานะ และเวลาให้อัตโนมัติ ข้อความ **บันทึกบนเซิร์ฟเวอร์แล้ว** แสดงหลังเซิร์ฟเวอร์ตอบรับ หากบันทึกไม่สำเร็จ ระบบเก็บสิ่งที่แก้ในหน้านั้นและมีปุ่มลองบันทึกอีกครั้ง
 - งานที่ยังไม่สร้างบนเซิร์ฟเวอร์อยู่ในหน้านี้เท่านั้น เมื่อปิดหรือโหลดหน้าใหม่ ข้อมูลที่ยังไม่บันทึกบนเซิร์ฟเวอร์จะหายไป
 - เมนู **จัดการ** ใช้เปลี่ยนวิดีโอ เริ่มงานใหม่ หรือสแกนเสียงใหม่เมื่อยังมีไฟล์ต้นทางในหน้านั้น การสแกนใหม่หรือสร้างบทใหม่อาจแทนข้อความและเวลาที่แก้ไว้
+- เมนู **จัดการพื้นที่จัดเก็บ** แสดงขนาดงานที่บันทึกไว้และไฟล์อัปโหลดที่ยังไม่เสร็จ พร้อมให้เลือกลบหลังยืนยัน การลบย้อนกลับไม่ได้ งานปัจจุบัน งานที่กำลังประมวลผล และไฟล์ที่กำลังอัปโหลดจะลบไม่ได้
+- หากเปลี่ยนวิดีโอหรือเริ่มงานใหม่ระหว่างอัปโหลด ผลตอบกลับของงานเดิมจะไม่เปลี่ยนหน้าจองานใหม่ หากเซิร์ฟเวอร์เริ่มประมวลผลแล้ว งานนั้นอาจทำต่อจนเสร็จ
 
 ### คีย์ลัดบนหน้าตัดต่อ
 
@@ -246,7 +248,7 @@ NODE_ENV=production npx tsx server.ts
 
 การโหลดหน้าซ้ำเรียก `/api/jobs/current` และเล่นวิดีโอจากเซิร์ฟเวอร์ได้ หลังรีสตาร์ต backend ระบบกู้เฉพาะงานที่ active pointer อ้างถึง โดยเปลี่ยนชุดที่ค้าง `processing` เป็น `pending` และเปลี่ยนงาน `ANALYZING` เป็น `VAD_READY` โดยยังไม่เรียก Gemini จนกว่าจะเริ่มงานต่อ
 
-การเริ่มงานใหม่ล้างเฉพาะ active pointer ไม่ลบโฟลเดอร์งานหรือวิดีโอ และไม่ใช่คำสั่งยกเลิกงานเบื้องหลัง ไม่มีระบบลบไฟล์เก่าอัตโนมัติหรือ API สำหรับแสดงประวัติงานทั้งหมด งานและ lock ใช้ร่วมกันภายในเซิร์ฟเวอร์หนึ่ง process
+การเริ่มงานใหม่ล้างเฉพาะ active pointer ไม่ลบโฟลเดอร์งานหรือวิดีโอ และไม่ใช่คำสั่งยกเลิกงานเบื้องหลัง ผู้ใช้สามารถดูและลบงานเก่าผ่านเมนูจัดการพื้นที่จัดเก็บได้ ไม่มีการลบไฟล์เก่าอัตโนมัติ งานและ lock ใช้ร่วมกันภายในเซิร์ฟเวอร์หนึ่ง process
 
 ---
 
@@ -258,15 +260,18 @@ NODE_ENV=production npx tsx server.ts
 |---|---|---|
 | `GET` | `/api/config` | อ่านค่าคอนฟิกเซิร์ฟเวอร์และตรวจสอบสถานะงานคงค้าง |
 | `GET` | `/api/jobs/current` | อ่านสถานะงานล่าสุดจาก pointer |
+| `GET` | `/api/jobs` | แสดงงานที่จัดเก็บและขนาดไฟล์ |
 | `GET` | `/api/jobs/:jobId` | ดึงสถานะงานตาม ID สำหรับ client polling |
 | `GET` | `/api/jobs/:jobId/video` | สตรีมไฟล์ MP4 รองรับ Range Request (HTTP 206) |
 | `POST` | `/api/upload/init` | เริ่มเซสชันอัปโหลดแบบแบ่งชิ้น (Chunked Upload) |
-| `POST` | `/api/upload/chunk` | ต่อข้อมูลไบนารีเข้าท้ายไฟล์ จำกัด 25 MiB ต่อ request |
+| `POST` | `/api/upload/:uploadId/abandon` | จบเซสชันอัปโหลดเพื่อให้จัดการไฟล์ที่ค้างได้ |
+| `POST` | `/api/upload/chunk` | เขียนข้อมูลไบนารีตาม byte offset จำกัด 25 MiB ต่อ request |
 | `POST` | `/api/jobs/init` | ลงทะเบียนงานและเริ่มวิเคราะห์ Gemini เบื้องหลัง |
 | `POST` | `/api/jobs/:jobId/start` | เริ่มหรือทำงานต่อจากชุดที่ค้างอยู่แบบ Asynchronous |
 | `POST` | `/api/jobs/:jobId/analyze-batch` | วิเคราะห์ชุดข้อมูลทีละชุดแบบ Synchronous |
 | `PATCH` | `/api/jobs/:jobId/spots` | แทนรายการบทบรรยายทั้งชุด พร้อมตรวจเวลา |
 | `DELETE` | `/api/jobs/:jobId` | ล้าง active pointer หาก ID ตรงกัน โดยเก็บไฟล์งานไว้ |
+| `DELETE` | `/api/jobs/:jobId/files` | ลบไฟล์งานที่ไม่ใช่งานปัจจุบันหรือกำลังประมวลผล |
 
 อ่านรายละเอียดโครงสร้าง request, response และข้อจำกัดของ API ได้ที่ [docs/API.md](docs/API.md)
 
@@ -306,6 +311,8 @@ bun run preview --host 127.0.0.1 --port 4173 --strictPort
 npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0.0.1:4173/
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-storage.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check close
 ```
 

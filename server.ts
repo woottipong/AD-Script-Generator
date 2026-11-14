@@ -24,9 +24,9 @@ import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
   formatTimestampDisplay,
-  validateSpotTimestampEdit,
 } from './src/utils/formatters';
 import { mergeProcessingState } from './src/utils/jobProcessing';
+import { validateEditedSpots, validateJobInitialization } from './src/utils/jobValidation';
 
 const PORT = 3000;
 const DATA_DIR = path.resolve(process.cwd(), '.data', 'jobs');
@@ -88,24 +88,26 @@ function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
 
 // Local JSON Persistence Helpers
 function getJobDir(jobId: string): string {
-  const safeId = jobId.replace(/[^a-zA-Z0-9_-]/g, '');
-  return path.join(DATA_DIR, safeId);
+  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) throw new Error('Invalid job ID');
+  return path.join(DATA_DIR, jobId);
 }
 
 function getJobFilePath(jobId: string): string {
   return path.join(getJobDir(jobId), 'job.json');
 }
 
-function saveJobState(job: PersistedJobState): void {
+function saveJobState(job: PersistedJobState, activate = true): void {
   const jobDir = getJobDir(job.job_id);
   fs.mkdirSync(jobDir, { recursive: true });
   job.updated_at = new Date().toISOString();
   fs.writeFileSync(getJobFilePath(job.job_id), JSON.stringify(job, null, 2), 'utf-8');
-  fs.writeFileSync(
-    ACTIVE_JOB_POINTER,
-    JSON.stringify({ active_job_id: job.job_id, updated_at: job.updated_at }, null, 2),
-    'utf-8'
-  );
+  if (activate) {
+    fs.writeFileSync(
+      ACTIVE_JOB_POINTER,
+      JSON.stringify({ active_job_id: job.job_id, updated_at: job.updated_at }, null, 2),
+      'utf-8'
+    );
+  }
 }
 
 function loadJobState(jobId: string): PersistedJobState | null {
@@ -126,7 +128,7 @@ function saveProcessingState(
   const latest = loadJobState(job.job_id);
   if (!latest) throw new Error('ไม่สามารถอ่านสถานะงานล่าสุดได้');
   job.spots = mergeProcessingState(job, latest, results).spots;
-  saveJobState(job);
+  saveJobState(job, false);
 }
 
 function loadCurrentActiveJob(): PersistedJobState | null {
@@ -147,6 +149,7 @@ type ProcessingLock = {
   release: () => void;
 };
 let activeProcessingLock: ProcessingLock | null = null;
+const activeUploads = new Set<string>();
 
 function createProcessingLock(jobId: string): ProcessingLock {
   let release!: () => void;
@@ -157,6 +160,59 @@ function createProcessingLock(jobId: string): ProcessingLock {
 function releaseProcessingLock(lock: ProcessingLock): void {
   if (activeProcessingLock === lock) activeProcessingLock = null;
   lock.release();
+}
+
+function getStoragePointer(): string | null {
+  try {
+    const pointer = JSON.parse(fs.readFileSync(ACTIVE_JOB_POINTER, 'utf8'));
+    if (typeof pointer.active_job_id !== 'string') throw new Error('Invalid active pointer');
+    return pointer.active_job_id;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+function getStoredJob(jobId: string): { dir: string; job: PersistedJobState } | null {
+  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) return null;
+  const dir = path.join(DATA_DIR, jobId);
+  try {
+    if (!fs.lstatSync(dir).isDirectory()) return null;
+    if (path.dirname(fs.realpathSync(dir)) !== fs.realpathSync(DATA_DIR)) return null;
+    const file = path.join(dir, 'job.json');
+    if (!fs.lstatSync(file).isFile()) return null;
+    const job = JSON.parse(fs.readFileSync(file, 'utf8')) as PersistedJobState;
+    if (job.job_id !== jobId || !job.video_metadata || typeof job.video_metadata.fileName !== 'string') return null;
+    return { dir, job };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT' || err instanceof SyntaxError) return null;
+    throw err;
+  }
+}
+
+function getUnfinishedUpload(jobId: string): { dir: string; updatedAt: string } | null {
+  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) return null;
+  const dir = path.join(DATA_DIR, jobId);
+  try {
+    if (!fs.lstatSync(dir).isDirectory() || path.dirname(fs.realpathSync(dir)) !== fs.realpathSync(DATA_DIR)) return null;
+    const entries = fs.readdirSync(dir);
+    if (entries.length !== 1 || entries[0] !== 'source_video.mp4') return null;
+    const stat = fs.lstatSync(path.join(dir, 'source_video.mp4'));
+    return stat.isFile() ? { dir, updatedAt: stat.mtime.toISOString() } : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+function storageSize(dir: string): number {
+  let total = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) total += storageSize(file);
+    else if (entry.isFile()) total += fs.lstatSync(file).size;
+  }
+  return total;
 }
 
 // Multer disk storage for streaming large MP4 uploads (up to 2 GB) directly to temporary disk
@@ -824,6 +880,43 @@ async function startServer() {
     res.json({ job, isRunning });
   });
 
+  app.get('/api/jobs', (_req: Request, res: Response) => {
+    try {
+      const activeId = getStoragePointer();
+      const jobs = fs.readdirSync(DATA_DIR, { withFileTypes: true }).filter((entry) => entry.isDirectory()).flatMap((entry) => {
+        const stored = getStoredJob(entry.name);
+        if (!stored) {
+          const upload = getUnfinishedUpload(entry.name);
+          if (!upload) return [];
+          return [{ job_id: entry.name, file_name: `อัปโหลดไม่เสร็จ (${entry.name})`,
+            updated_at: upload.updatedAt, size_bytes: storageSize(upload.dir), is_upload: true,
+            is_active: entry.name === activeId, is_processing: activeUploads.has(entry.name) }];
+        }
+        return [{ job_id: entry.name, file_name: stored.job.video_metadata.fileName,
+          updated_at: stored.job.updated_at, size_bytes: storageSize(stored.dir), is_upload: false,
+          is_active: entry.name === activeId, is_processing: entry.name === activeProcessingLock?.jobId }];
+      });
+      res.json({ jobs });
+    } catch {
+      res.status(500).json({ error: 'ไม่สามารถอ่านรายการงานได้' });
+    }
+  });
+
+  app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
+    try {
+      const activeId = getStoragePointer();
+      const stored = getStoredJob(req.params.jobId) || getUnfinishedUpload(req.params.jobId);
+      if (!stored) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
+      if (req.params.jobId === activeId || req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
+        res.status(409).json({ error: 'ไม่สามารถลบงานปัจจุบันหรืองานที่กำลังประมวลผล' }); return;
+      }
+      fs.rmSync(stored.dir, { recursive: true });
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
+    }
+  });
+
   // 3. GET /api/jobs/:jobId — Fetch specific job state (used by fast client polling)
   app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
     const job = loadJobState(req.params.jobId);
@@ -875,7 +968,11 @@ async function startServer() {
   // 5a. POST /api/upload/init — Initialize chunked upload session for large video files
   app.post('/api/upload/init', (req: Request, res: Response) => {
     try {
-      const { fileName, fileSize } = req.body as { fileName?: string; fileSize?: number };
+      const { fileName, fileSize } = (req.body || {}) as { fileName?: string; fileSize?: number };
+      if ((fileName !== undefined && typeof fileName !== 'string') || !Number.isSafeInteger(fileSize) || !fileSize || fileSize < 1 || fileSize > FIXED_SERVER_CONFIG.maxUploadSizeMb * 1024 * 1024) {
+        res.status(400).json({ error: 'ชื่อหรือขนาดไฟล์ไม่ถูกต้อง' });
+        return;
+      }
       const safeFileName = (fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
       const uploadId = `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
       const jobDir = getJobDir(uploadId);
@@ -883,33 +980,54 @@ async function startServer() {
 
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
       fs.writeFileSync(targetFilePath, Buffer.alloc(0));
+      activeUploads.add(uploadId);
 
       res.json({
         uploadId,
         fileName: safeFileName,
         fileSize: fileSize || 0,
       });
-    } catch (err) {
-      res.status(500).json({ error: `ไม่สามารถเริ่มต้นอัปโหลดได้: ${String(err)}` });
+    } catch {
+      res.status(500).json({ error: 'ไม่สามารถเริ่มต้นอัปโหลดได้' });
     }
   });
 
-  // 5b. POST /api/upload/chunk — Receive binary chunk (<= 20MB) and append to source_video.mp4
+  app.post('/api/upload/:uploadId/abandon', (req: Request, res: Response) => {
+    if (!/^job_[a-zA-Z0-9_-]+$/.test(req.params.uploadId)) {
+      res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
+      return;
+    }
+    activeUploads.delete(req.params.uploadId);
+    res.json({ ok: true });
+  });
+
+  // 5b. POST /api/upload/chunk — Write a chunk at its confirmed byte offset
   app.post(
     '/api/upload/chunk',
     express.raw({ type: 'application/octet-stream', limit: '25mb' }),
     (req: Request, res: Response) => {
       try {
         const uploadId = String(req.query.uploadId || req.headers['x-upload-id'] || '');
-        if (!uploadId) {
+        if (!/^job_[a-zA-Z0-9_-]+$/.test(uploadId)) {
           res.status(400).json({ error: 'ไม่พบ uploadId' });
           return;
         }
+
+        const offsetParam = req.query.offset;
+        if (typeof offsetParam !== 'string' || !/^(0|[1-9]\d*)$/.test(offsetParam) || !Number.isSafeInteger(Number(offsetParam))) {
+          res.status(400).json({ error: 'ตำแหน่งอัปโหลดไม่ถูกต้อง' });
+          return;
+        }
+        const offset = Number(offsetParam);
 
         const jobDir = getJobDir(uploadId);
         const targetFilePath = path.join(jobDir, 'source_video.mp4');
         if (!fs.existsSync(jobDir)) {
           res.status(404).json({ error: 'ไม่พบโฟลเดอร์สำหรับ uploadId นี้' });
+          return;
+        }
+        if (!fs.lstatSync(jobDir).isDirectory() || fs.existsSync(path.join(jobDir, 'job.json'))) {
+          res.status(409).json({ error: 'ไม่สามารถอัปโหลดลงในงานนี้ได้' });
           return;
         }
 
@@ -919,12 +1037,44 @@ async function startServer() {
           return;
         }
 
-        fs.appendFileSync(targetFilePath, chunkBuffer);
-
-        const currentSize = fs.statSync(targetFilePath).size;
+        if (!fs.existsSync(targetFilePath)) {
+          res.status(404).json({ error: 'ไม่พบไฟล์อัปโหลด' });
+          return;
+        }
+        if (offset + chunkBuffer.length > FIXED_SERVER_CONFIG.maxUploadSizeMb * 1024 * 1024) {
+          res.status(413).json({ error: 'ไฟล์มีขนาดเกินกำหนด' });
+          return;
+        }
+        const fd = fs.openSync(targetFilePath, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
+        let currentSize: number;
+        try {
+          currentSize = fs.fstatSync(fd).size;
+          if (offset > currentSize) {
+            res.status(409).json({ error: 'ตำแหน่งอัปโหลดไม่ตรงกับไฟล์' });
+            return;
+          }
+          const overlap = Math.min(currentSize - offset, chunkBuffer.length);
+          if (overlap > 0) {
+            const existing = Buffer.alloc(overlap);
+            const bytesRead = fs.readSync(fd, existing, 0, overlap, offset);
+            if (bytesRead !== overlap || !existing.equals(chunkBuffer.subarray(0, overlap))) {
+              res.status(409).json({ error: 'ข้อมูล Chunk ไม่ตรงกับไฟล์ที่อัปโหลดแล้ว' });
+              return;
+            }
+          }
+          let written = overlap;
+          while (written < chunkBuffer.length) {
+            const count = fs.writeSync(fd, chunkBuffer, written, chunkBuffer.length - written, offset + written);
+            if (count === 0) throw new Error('Chunk write made no progress');
+            written += count;
+          }
+          currentSize = fs.fstatSync(fd).size;
+        } finally {
+          fs.closeSync(fd);
+        }
         res.json({ ok: true, currentSize });
-      } catch (err) {
-        res.status(500).json({ error: `ไม่สามารถเขียนไฟล์ Chunk ได้: ${String(err)}` });
+      } catch {
+        res.status(500).json({ error: 'ไม่สามารถเขียนไฟล์ Chunk ได้' });
       }
     }
   );
@@ -956,9 +1106,13 @@ async function startServer() {
 
       if (req.body && req.body.uploadId) {
         jobId = req.body.uploadId;
+        if (typeof jobId !== 'string' || !/^job_[a-zA-Z0-9_-]+$/.test(jobId)) {
+          res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
+          return;
+        }
         const jobDir = getJobDir(jobId);
         localFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(localFilePath) || fs.statSync(localFilePath).size === 0) {
+        if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || fs.existsSync(path.join(jobDir, 'job.json'))) {
           res.status(400).json({ error: 'ไม่พบไฟล์วิดีโอที่อัปโหลด หรือไฟล์มีขนาดเป็น 0' });
           return;
         }
@@ -996,6 +1150,13 @@ async function startServer() {
           ? JSON.parse(req.body.vad_output)
           : req.body.vad_output;
       }
+
+      const validated = validateJobInitialization({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings });
+      if (!validated.success || fs.statSync(localFilePath).size !== validated.data.video_metadata.fileSize) {
+        res.status(400).json({ error: 'ข้อมูลวิดีโอหรือผลตรวจเสียงไม่ถูกต้อง' });
+        return;
+      }
+      ({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings } = validated.data);
 
       const serverConfig = getServerConfig();
 
@@ -1045,6 +1206,7 @@ async function startServer() {
       }
 
       saveJobState(jobState);
+      activeUploads.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
       if (batches.length === 0) {
@@ -1056,6 +1218,10 @@ async function startServer() {
       void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
       res.json({ job: jobState, isRunning: true });
     } catch (err) {
+      if (err instanceof SyntaxError) {
+        res.status(400).json({ error: 'ข้อมูลคำขอไม่ใช่ JSON ที่ถูกต้อง' });
+        return;
+      }
       const parsed = parseGeminiError(err);
       res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
         error: parsed.userMessage,
@@ -1166,7 +1332,7 @@ async function startServer() {
     job.status = 'ANALYZING';
     job.error_message = undefined;
     try {
-      saveProcessingState(job);
+      saveJobState(job);
       const uploadAi = getGeminiClient({ fastFail: false });
       const fastAi = getGeminiClient({ fastFail: true });
       const serverConfig = getServerConfig();
@@ -1215,7 +1381,7 @@ async function startServer() {
   // 7. PATCH /api/jobs/:jobId/spots — Save user edits (text, decision skip->generate, timestamp edits) to local server JSON
   app.patch('/api/jobs/:jobId/spots', (req: Request, res: Response) => {
     const { jobId } = req.params;
-    const { spots } = req.body as { spots?: ADSpot[] };
+    const { spots } = (req.body || {}) as { spots?: ADSpot[] };
 
     const job = loadJobState(jobId);
     if (!job) {
@@ -1223,29 +1389,13 @@ async function startServer() {
       return;
     }
 
-    if (!Array.isArray(spots)) {
-      res.status(400).json({ error: 'ข้อมูลรายการ AD Spots ไม่ถูกต้อง' });
+    const checked = validateEditedSpots(spots, job);
+    if (!checked.success) {
+      res.status(400).json({ error: checked.error });
       return;
     }
 
-    // Validate timestamp edits against original non-speech gaps and speech segments
-    for (const updatedSpot of spots) {
-      const check = validateSpotTimestampEdit(
-        updatedSpot,
-        updatedSpot.start_ms,
-        updatedSpot.end_ms,
-        job.vad_output.speech_segments,
-        job.vad_output.duration_ms
-      );
-      if (!check.valid) {
-        res.status(400).json({
-          error: `Spot ${updatedSpot.spot_id}: ${check.error}`,
-        });
-        return;
-      }
-    }
-
-    job.spots = spots;
+    job.spots = checked.spots;
     saveJobState(job);
     res.json({ job });
   });
