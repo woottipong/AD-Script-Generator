@@ -26,6 +26,7 @@ import {
   formatTimestampDisplay,
   validateSpotTimestampEdit,
 } from './src/utils/formatters';
+import { mergeProcessingState } from './src/utils/jobProcessing';
 
 const PORT = 3000;
 const DATA_DIR = path.resolve(process.cwd(), '.data', 'jobs');
@@ -118,6 +119,16 @@ function loadJobState(jobId: string): PersistedJobState | null {
   }
 }
 
+function saveProcessingState(
+  job: PersistedJobState,
+  results?: ReadonlyMap<string, { decision: 'generate' | 'skip'; text: string; reason?: string }>,
+): void {
+  const latest = loadJobState(job.job_id);
+  if (!latest) throw new Error('ไม่สามารถอ่านสถานะงานล่าสุดได้');
+  job.spots = mergeProcessingState(job, latest, results).spots;
+  saveJobState(job);
+}
+
 function loadCurrentActiveJob(): PersistedJobState | null {
   try {
     if (!fs.existsSync(ACTIVE_JOB_POINTER)) return null;
@@ -130,7 +141,23 @@ function loadCurrentActiveJob(): PersistedJobState | null {
 }
 
 // Single-job concurrency lock (MVP rule: process 1 Gemini job at a time)
-let activeProcessingLock: { jobId: string; batchId: string; startedAt: number } | null = null;
+type ProcessingLock = {
+  jobId: string;
+  finished: Promise<void>;
+  release: () => void;
+};
+let activeProcessingLock: ProcessingLock | null = null;
+
+function createProcessingLock(jobId: string): ProcessingLock {
+  let release!: () => void;
+  const finished = new Promise<void>((resolve) => { release = resolve; });
+  return { jobId, finished, release };
+}
+
+function releaseProcessingLock(lock: ProcessingLock): void {
+  if (activeProcessingLock === lock) activeProcessingLock = null;
+  lock.release();
+}
 
 // Multer disk storage for streaming large MP4 uploads (up to 2 GB) directly to temporary disk
 const storage = multer.diskStorage({
@@ -266,7 +293,7 @@ async function ensureActiveGeminiFileUri(
   job.gemini_file_name = freshUpload.name;
   job.gemini_file_mime_type = freshUpload.mimeType;
   job.gemini_file_expires_at = freshUpload.expiresAt;
-  saveJobState(job);
+  saveProcessingState(job);
 
   return {
     uri: freshUpload.uri,
@@ -630,8 +657,7 @@ ${candidateListDescription}
 async function runJobInBackground(jobId: string): Promise<void> {
   if (
     activeProcessingLock &&
-    activeProcessingLock.jobId === jobId &&
-    Date.now() - activeProcessingLock.startedAt < 3 * 60 * 1000
+    activeProcessingLock.jobId === jobId
   ) {
     return;
   }
@@ -643,11 +669,12 @@ async function runJobInBackground(jobId: string): Promise<void> {
     job.status = 'READY';
     job.progress_stage = undefined;
     job.progress_percent = 100;
-    saveJobState(job);
+    saveProcessingState(job);
     return;
   }
 
-  activeProcessingLock = { jobId, batchId: 'init', startedAt: Date.now() };
+  const lock = createProcessingLock(jobId);
+  activeProcessingLock = lock;
 
   try {
     const uploadAi = getGeminiClient({ fastFail: false });
@@ -661,16 +688,13 @@ async function runJobInBackground(jobId: string): Promise<void> {
         ? { ...b, status: 'pending', error: undefined }
         : b
     );
-    saveJobState(job);
+    saveProcessingState(job);
 
     // Step 1: Ensure video is uploaded & ACTIVE on Gemini Files API
     await ensureActiveGeminiFileUri(uploadAi, job, (stage) => {
-      if (activeProcessingLock?.jobId === jobId) {
-        activeProcessingLock.startedAt = Date.now();
-      }
       job.progress_stage = stage;
       job.progress_percent = 12;
-      saveJobState(job);
+      saveProcessingState(job);
     });
 
     // Step 2: Process incomplete batches sequentially
@@ -689,7 +713,6 @@ async function runJobInBackground(jobId: string): Promise<void> {
       // Preserve any manual spot edits made while batches were running
       job.spots = latestPointerExists.spots;
 
-      activeProcessingLock = { jobId, batchId: batch.batch_id, startedAt: Date.now() };
       batch.status = 'processing';
       batch.error = undefined;
       const completedSoFar = job.batches.filter((b) => b.status === 'completed').length;
@@ -698,7 +721,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
         Math.round(15 + (completedSoFar / totalBatches) * 80)
       );
       job.progress_stage = `กำลังวิเคราะห์ภาพและเสียง ชุดที่ ${batch.batch_index}/${totalBatches}...`;
-      saveJobState(job);
+      saveProcessingState(job);
 
       const spotResults = await analyzeBatchWithGemini(
         fastAi,
@@ -707,46 +730,25 @@ async function runJobInBackground(jobId: string): Promise<void> {
         batch,
         serverConfig,
         (stage, activeModel) => {
-          if (activeProcessingLock?.jobId === jobId) {
-            activeProcessingLock.startedAt = Date.now();
-          }
           job.progress_stage = stage;
           job.active_model = activeModel;
-          saveJobState(job);
+          saveProcessingState(job);
         }
       );
-
-      // Re-load latest spots in case user edited earlier completed spots in UI
-      const freshState = loadJobState(jobId);
-      const currentSpots = freshState ? freshState.spots : job.spots;
-
-      job.spots = currentSpots.map((existingSpot) => {
-        const matched = spotResults.get(existingSpot.spot_id);
-        if (!matched) return existingSpot;
-        return {
-          ...existingSpot,
-          start_ms: existingSpot.original_start_ms,
-          end_ms: existingSpot.original_end_ms,
-          duration_ms: existingSpot.original_end_ms - existingSpot.original_start_ms,
-          decision: matched.decision,
-          text: matched.text,
-          reason: matched.reason,
-        };
-      });
 
       batch.status = 'completed';
       batch.error = undefined;
 
       const doneCount = job.batches.filter((b) => b.status === 'completed').length;
       job.progress_percent = Math.min(99, Math.round(15 + (doneCount / totalBatches) * 84));
-      saveJobState(job);
+      saveProcessingState(job, spotResults);
     }
 
     job.status = 'READY';
     job.progress_stage = undefined;
     job.progress_percent = 100;
     job.error_message = undefined;
-    saveJobState(job);
+    saveProcessingState(job);
   } catch (err) {
     const parsed = parseGeminiError(err);
     const stuckBatch = job.batches.find((b) => b.status === 'processing');
@@ -757,11 +759,13 @@ async function runJobInBackground(jobId: string): Promise<void> {
     job.status = 'FAILED';
     job.progress_stage = undefined;
     job.error_message = parsed.userMessage;
-    saveJobState(job);
-  } finally {
-    if (activeProcessingLock?.jobId === jobId) {
-      activeProcessingLock = null;
+    try {
+      saveProcessingState(job);
+    } catch {
+      console.error('Failed to persist job processing failure');
     }
+  } finally {
+    releaseProcessingLock(lock);
   }
 }
 
@@ -815,9 +819,7 @@ async function startServer() {
       return;
     }
     const isRunning = Boolean(
-      activeProcessingLock &&
-        activeProcessingLock.jobId === job.job_id &&
-        Date.now() - activeProcessingLock.startedAt < 3 * 60 * 1000
+      activeProcessingLock && activeProcessingLock.jobId === job.job_id
     );
     res.json({ job, isRunning });
   });
@@ -830,9 +832,7 @@ async function startServer() {
       return;
     }
     const isRunning = Boolean(
-      activeProcessingLock &&
-        activeProcessingLock.jobId === job.job_id &&
-        Date.now() - activeProcessingLock.startedAt < 3 * 60 * 1000
+      activeProcessingLock && activeProcessingLock.jobId === job.job_id
     );
     res.json({ job, isRunning });
   });
@@ -937,10 +937,8 @@ async function startServer() {
       next();
     }
   }, async (req: Request, res: Response) => {
-    // Check concurrency lock (clear stale locks older than 5 minutes)
     if (
-      activeProcessingLock &&
-      Date.now() - activeProcessingLock.startedAt < 5 * 60 * 1000
+      activeProcessingLock
     ) {
       res.status(409).json({
         error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
@@ -1055,7 +1053,7 @@ async function startServer() {
       }
 
       // Kick off upload + sequential batch analysis asynchronously so HTTP responds in <50ms
-      void runJobInBackground(jobId);
+      void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
       res.json({ job: jobState, isRunning: true });
     } catch (err) {
       const parsed = parseGeminiError(err);
@@ -1072,8 +1070,7 @@ async function startServer() {
 
     if (
       activeProcessingLock &&
-      activeProcessingLock.jobId !== jobId &&
-      Date.now() - activeProcessingLock.startedAt < 3 * 60 * 1000
+      activeProcessingLock.jobId !== jobId
     ) {
       res.status(409).json({
         error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
@@ -1084,6 +1081,11 @@ async function startServer() {
     const job = loadJobState(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+      return;
+    }
+
+    if (activeProcessingLock?.jobId === jobId) {
+      res.json({ job, isRunning: true });
       return;
     }
 
@@ -1111,7 +1113,7 @@ async function startServer() {
     job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
     saveJobState(job);
 
-    void runJobInBackground(jobId);
+    void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
     res.json({ job, isRunning: true });
   });
 
@@ -1120,10 +1122,14 @@ async function startServer() {
     const { jobId } = req.params;
     const { batch_id } = req.body as { batch_id?: string };
 
+    while (activeProcessingLock?.jobId === jobId) {
+      await activeProcessingLock.finished;
+      if (res.destroyed) return;
+    }
+
     if (
       activeProcessingLock &&
-      activeProcessingLock.jobId !== jobId &&
-      Date.now() - activeProcessingLock.startedAt < 3 * 60 * 1000
+      activeProcessingLock.jobId !== jobId
     ) {
       res.status(409).json({
         error: 'ระบบจำกัดการประมวลผล Gemini ได้ทีละหนึ่งงานใน MVP กรุณารอให้งานที่กำลังรันอยู่เสร็จสิ้น',
@@ -1153,14 +1159,14 @@ async function startServer() {
       return;
     }
 
-    activeProcessingLock = { jobId, batchId: batch.batch_id, startedAt: Date.now() };
+    const lock = createProcessingLock(jobId);
+    activeProcessingLock = lock;
     batch.status = 'processing';
     batch.error = undefined;
     job.status = 'ANALYZING';
     job.error_message = undefined;
-    saveJobState(job);
-
     try {
+      saveProcessingState(job);
       const uploadAi = getGeminiClient({ fastFail: false });
       const fastAi = getGeminiClient({ fastFail: true });
       const serverConfig = getServerConfig();
@@ -1172,20 +1178,6 @@ async function startServer() {
         serverConfig
       );
 
-      job.spots = job.spots.map((existingSpot) => {
-        const matched = spotResults.get(existingSpot.spot_id);
-        if (!matched) return existingSpot;
-        return {
-          ...existingSpot,
-          start_ms: existingSpot.original_start_ms,
-          end_ms: existingSpot.original_end_ms,
-          duration_ms: existingSpot.original_end_ms - existingSpot.original_start_ms,
-          decision: matched.decision,
-          text: matched.text,
-          reason: matched.reason,
-        };
-      });
-
       batch.status = 'completed';
       batch.error = undefined;
 
@@ -1194,7 +1186,7 @@ async function startServer() {
         job.status = 'READY';
       }
 
-      saveJobState(job);
+      saveProcessingState(job, spotResults);
       res.json({ job, batch });
     } catch (err) {
       const parsed = parseGeminiError(err);
@@ -1202,7 +1194,12 @@ async function startServer() {
       batch.error = parsed.userMessage;
       job.status = 'FAILED';
       job.error_message = parsed.userMessage;
-      saveJobState(job);
+      try {
+        saveProcessingState(job);
+      } catch {
+        res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
+        return;
+      }
 
       res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
         error: parsed.userMessage,
@@ -1211,7 +1208,7 @@ async function startServer() {
         batch,
       });
     } finally {
-      activeProcessingLock = null;
+      releaseProcessingLock(lock);
     }
   });
 
