@@ -122,7 +122,7 @@
 |---|---|
 | `GEMINI_API_KEY` | จำเป็นเมื่อเรียก Gemini เซิร์ฟเวอร์อ่านจาก environment หรือ `.env` ผ่าน `dotenv` ค่าว่างและ `MY_GEMINI_API_KEY` ใช้งานไม่ได้ |
 | `NODE_ENV` | ค่า `production` ให้เซิร์ฟเวอร์ใช้ไฟล์ใน `dist` ค่าอื่นใช้ Vite middleware |
-| `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ |
+| `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ โดย Docker Compose ตั้งเป็น `true` |
 | `CHOKIDAR_USEPOLLING`, `CHOKIDAR_INTERVAL` | Docker Compose ส่งค่า `true` และ `300` ให้ file watcher ของเครื่องมือพัฒนา |
 | `APP_URL` | มีใน `.env.example` แต่โค้ดแอปปัจจุบันไม่อ่านค่านี้ |
 | `PORT` | Dockerfile กำหนดไว้ที่ `3000` แต่ `server.ts` ใช้ค่าคงที่ `3000` การเปลี่ยน environment นี้ไม่เปลี่ยนพอร์ตที่แอปฟัง |
@@ -171,7 +171,7 @@ npm run dev
 
 ### รันด้วย Docker Compose สำหรับพัฒนา
 
-ใช้ [Dockerfile.Dev](Dockerfile.Dev) และ [docker-compose.yml](docker-compose.yml) ซึ่งรองรับ Hot Module Replacement (HMR) และรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติ:
+ใช้ [Dockerfile.Dev](Dockerfile.Dev) และ [docker-compose.yml](docker-compose.yml) โดยปิด Hot Module Replacement (HMR) และรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติเมื่อแก้ backend:
 
 ```bash
 docker compose up --build -d
@@ -180,9 +180,8 @@ docker compose up --build -d
 รายละเอียดระบบ:
 
 - พอร์ต `3000`: เว็บแอปพลิเคชันและ Express API
-- พอร์ต `24678`: Vite HMR WebSocket
 - โฟลเดอร์โปรเจกต์ mount เข้า `/app` ในคอนเทนเนอร์
-- แก้ไขไฟล์ React หรือ CSS หน้าระบบจะอัปเดตผ่าน HMR ทันที
+- แก้ไขไฟล์ React หรือ CSS แล้วรีเฟรชหน้าเว็บเพื่อดูการเปลี่ยนแปลง
 - แก้ไข `server.ts` เครื่องมือ `tsx watch` จะรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติ
 - ข้อมูลงานและวิดีโอบันทึกลงไดเรกทอรี `.data/jobs/` บนเครื่องจริง
 

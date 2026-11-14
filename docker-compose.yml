@@ -6,10 +6,9 @@ services:
     init: true
     ports:
       - "3000:3000"
-      - "24678:24678"
     environment:
       - NODE_ENV=development
-      - DISABLE_HMR=false
+      - DISABLE_HMR=true
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=300
       - GEMINI_API_KEY=${GEMINI_API_KEY}

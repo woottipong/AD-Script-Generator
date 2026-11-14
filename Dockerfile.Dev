@@ -13,7 +13,6 @@ RUN mkdir -p /app/.data/jobs
 ENV NODE_ENV=development
 ENV PORT=3000
 
-# Vite uses a separate WebSocket port when running as Express middleware.
-EXPOSE 3000 24678
+EXPOSE 3000
 
 CMD ["./node_modules/.bin/tsx", "watch", "--clear-screen=false", "server.ts"]
