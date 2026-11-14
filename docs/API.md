@@ -8,7 +8,7 @@ This reference describes the routes in [server.ts](../server.ts). Request and re
 - JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
 - Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
 - The application has no HTTP authentication or per-user job isolation. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
-- A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. Initialization rejects a lock younger than five minutes. Start, polling, and batch processing use a three-minute threshold, with route-specific checks for the same job.
+- A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. The server holds it until the running operation finishes and releases it.
 - A lock belonging to another running job can produce HTTP 409. An accepted background request does not mean that Gemini analysis has succeeded. Poll the job for its result.
 - API handlers set `Cache-Control: no-store, no-cache, must-revalidate`.
 - Error handling remaps HTTP 403 to 401 and HTTP 502, 503, and 504 to 500. This preserves the application's JSON error response through the proxy setup this server targets. Errors from an external proxy can still arrive outside this contract.
@@ -36,7 +36,7 @@ An analysis batch contains `batch_index`, `batch_id`, `batch_start_ms`, `batch_e
 
 An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `is_edited`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
 
-`isRunning` is calculated from the matching process-local lock and its age. It is not a persisted job field. `progress_percent` is stage-based progress, not a prediction of remaining time.
+`isRunning` indicates whether the process-local lock belongs to the job. It is not a persisted job field. `progress_percent` is stage-based progress, not a prediction of remaining time.
 
 ## Endpoints
 
@@ -224,9 +224,10 @@ The server checks for `GEMINI_API_KEY` before saving a job with candidate spots.
 Starts or resumes background processing. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
 
 - HTTP 200 returns `{ job, isRunning: true }` when background work starts.
+- If the same job already holds the lock, HTTP 200 returns its current state with `isRunning: true` without starting another runner.
 - If all batches are completed, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first.
 - HTTP 404 means that the job was not found.
-- HTTP 409 means that another job holds a lock within the route's lock-age threshold.
+- HTTP 409 means that another job holds the lock.
 - Classified client errors return HTTP 401, 429, or 500 with `error`.
 
 On backend restart, recovery applies only to the job referenced by the active pointer. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
@@ -243,11 +244,11 @@ Optional JSON body:
 }
 ```
 
-If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch. The existing `is_edited` flag is retained.
+If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch. The existing `is_edited` flag is retained.
 
 If no batch matches, including an unknown explicit `batch_id`, the route sets the job status to `READY` and returns HTTP 200 with `{ job }`.
 
-HTTP 404 means that the job was not found. HTTP 409 means that another job holds an active lock. Analysis failures return HTTP 401, 429, or 500 with `error`, `isRateLimit`, `job`, and `batch` after persisting the failed state.
+HTTP 404 means that the job was not found. HTTP 409 means that another job holds an active lock. Analysis failures return HTTP 401, 429, or 500 with `error`, `isRateLimit`, `job`, and `batch` after persisting the failed state. If the failed state cannot be saved, the route returns HTTP 500 with `error` only.
 
 ### PATCH /api/jobs/:jobId/spots
 

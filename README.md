@@ -1,12 +1,36 @@
 # AD Script Generator
 
-เว็บแอปพลิเคชันสร้างบทบรรยายภาพภาษาไทย (Audio Description หรือ AD) จากวิดีโอ MP4 ความละเอียด 480p โดยอัตโนมัติ ทำงานร่วมกันสองส่วน:
+เว็บแอปสร้างบทบรรยายภาพภาษาไทย (Audio Description หรือ AD) จากวิดีโอ MP4 ความละเอียด 480p โดยทำงานสองขั้นตอน:
 
 1. ตรวจจับเสียงพูดบนเบราว์เซอร์ด้วย Silero VAD v5 (ONNX Runtime Web และ WebCodecs AudioDecoder) ใน Web Worker เพื่อระบุช่วงว่างไร้เสียงพูด (Candidate AD Spots)
-2. วิเคราะห์ภาพและเสียงช่วงว่างบนเซิร์ฟเวอร์ด้วย Gemini Files API (`gemini-3.8-flash` เป็นหลัก และสลับไป `gemini-3.5-flash-lite` เมื่อเกิดข้อผิดพลาดชั่วคราว) เพื่อสร้างบทบรรยายภาษาไทยที่มีความยาวและจังหวะเหมาะสม
+2. ส่งวิดีโอไปยัง Gemini Files API เพื่อวิเคราะห์ภาพและเสียงในช่วงว่าง แล้วสร้างบทบรรยายภาษาไทย เซิร์ฟเวอร์ใช้ `gemini-3.8-flash` เป็นหลัก และสลับไป `gemini-3.5-flash-lite` เมื่อเกิดข้อผิดพลาดชั่วคราว
+
+ตรวจและแก้บทกับเวลาในไทม์ไลน์ก่อนส่งออกเป็น SRT หรือ JSON ตรวจผลกับวิดีโอต้นฉบับก่อนนำไปใช้งาน
+
+## เริ่มต้นใช้งาน
+
+1. เตรียม Node.js 22.12 ขึ้นไปและ Bun 1.4 ขึ้นไป หรือใช้ Docker Compose
+2. คัดลอก `.env.example` เป็น `.env` แล้วตั้งค่า `GEMINI_API_KEY` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม
+3. ติดตั้งและเริ่มแอปด้วย `bun install --frozen-lockfile` แล้ว `bun run dev`
+4. เปิด [แอปบนเครื่อง](http://localhost:3000) เลือกวิดีโอ MP4 480p แล้วทำตามขั้นตอนบนหน้าจอ
+
+ดูขั้นตอนโดยละเอียดและทางเลือก Docker ได้ที่ [การรันโปรเจกต์](#การรันโปรเจกต์) การตรวจเสียงทำในเบราว์เซอร์ ส่วนการสร้างบทส่งวิดีโอไปยังเซิร์ฟเวอร์และ Gemini Files API
+
+## สถาปัตยกรรม
+
+| ส่วน | หน้าที่ |
+|---|---|
+| React และ Vite | หน้ารับวิดีโอ ไทม์ไลน์ และตัวแก้บทใน [src/App.tsx](src/App.tsx) และ [src/components](src/components) |
+| Web Worker | ถอดรหัสเสียงและตรวจเสียงพูดด้วย Silero VAD ใน [vad.worker.ts](src/workers/vad.worker.ts) |
+| Express และ Gemini | จัดการอัปโหลด สถานะงาน และวิเคราะห์วิดีโอใน [server.ts](server.ts) |
+| ไฟล์ในเครื่อง | เก็บสถานะและวิดีโองานไว้ใต้ `.data/jobs/` โดยไม่มีฐานข้อมูลแยก |
+
+การตรวจไฟล์และ VAD ทำบนเครื่องผู้ใช้ เมื่อเริ่มสร้างบท เบราว์เซอร์ส่งวิดีโอและช่วงว่างไปยังเซิร์ฟเวอร์ เซิร์ฟเวอร์จึงอัปโหลดวิดีโอให้ Gemini และประมวลผลทีละชุด อ่านรายละเอียด endpoint ได้ใน [API reference](docs/API.md)
 
 ## เอกสาร
 
+- [เริ่มต้นใช้งาน](#เริ่มต้นใช้งาน)
+- [สถาปัตยกรรม](#สถาปัตยกรรม)
 - [ข้อกำหนดระบบและไฟล์](#ข้อกำหนดระบบและไฟล์)
 - [ค่าพารามิเตอร์เริ่มต้น](#ค่าพารามิเตอร์เริ่มต้น)
 - [วิธีใช้งานและคีย์ลัด](#วิธีใช้งานและคีย์ลัด)
@@ -114,7 +138,7 @@
 ก่อนรันครั้งแรก คัดลอกไฟล์ตัวอย่างแล้วตั้ง `GEMINI_API_KEY` ใน `.env` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม:
 
 ```bash
-cp .env.example .env
+test -e .env || cp .env.example .env
 ```
 
 ตัวอย่างค่าที่ต้องแทนด้วย key ของคุณ:
@@ -244,7 +268,7 @@ NODE_ENV=production npx tsx server.ts
 | `PATCH` | `/api/jobs/:jobId/spots` | แทนรายการบทบรรยายทั้งชุด พร้อมตรวจเวลา |
 | `DELETE` | `/api/jobs/:jobId` | ล้าง active pointer หาก ID ตรงกัน โดยเก็บไฟล์งานไว้ |
 
-อ่านรายละเอียดโครงสร้าง request, response และข้อจำกัดของ APIได้ที่ [docs/API.md](docs/API.md)
+อ่านรายละเอียดโครงสร้าง request, response และข้อจำกัดของ API ได้ที่ [docs/API.md](docs/API.md)
 
 ---
 
@@ -259,7 +283,7 @@ NODE_ENV=production npx tsx server.ts
 
 ## คำสั่งตรวจสอบโค้ด
 
-คำสั่ง `lint` รัน `tsc --noEmit` โดยไม่สร้างไฟล์ `bun test` รัน unit tests ใน `src/utils` ส่วน `build` สร้างหน้าเว็บ และ `docker compose config --quiet` ตรวจรูปแบบ Compose:
+คำสั่ง `lint` ตรวจชนิดข้อมูลด้วย `tsc --noEmit` ส่วน `bun test` รัน unit tests และ integration tests ใน `src/utils` โดย integration tests ใช้ข้อมูลและ Gemini จำลอง `build` สร้างหน้าเว็บ และ `docker compose config --quiet` ตรวจรูปแบบ Compose:
 
 ```bash
 bun run lint
@@ -267,6 +291,57 @@ bun test
 bun run build
 docker compose config --quiet
 ```
+
+### ตรวจหน้าจอด้วยข้อมูลจำลอง
+
+ต้องมี Node.js, npm และ Chromium ที่ Playwright ใช้งานได้ คำสั่ง `npx` อาจดาวน์โหลด Playwright CLI เมื่อยังไม่มีในเครื่อง การตรวจนี้จำลอง API ทุก endpoint และไม่ใช้ข้อมูลงานจริง หากยังไม่มี browser ที่ Playwright รองรับ ให้ติดตั้งตามคำแนะนำของ Playwright CLI
+
+เริ่ม preview ใน terminal หนึ่ง:
+
+```bash
+bun run build
+bun run preview --host 127.0.0.1 --port 4173 --strictPort
+```
+
+ในอีก terminal รัน:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0.0.1:4173/
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check close
+```
+
+ตรวจผล `Result` และข้อผิดพลาดของแต่ละคำสั่ง จากนั้นหยุด preview ใน terminal แรก การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
+
+### วัดการเล่นวิดีโอในหน้ารายการบท
+
+สร้าง production build ของรุ่นก่อนและรุ่นหลังแยกกัน เช่น build รุ่นก่อนจาก checkout อื่นแล้วคัดลอกเนื้อหา `dist` ไปไว้ที่ `/tmp/ad-baseline` จากนั้นรัน `bun run build` ใน checkout ปัจจุบันเพื่อสร้าง `dist` สำหรับรุ่นหลัง
+
+เตรียมไฟล์ MP4 H.264 ที่เล่นได้อย่างน้อย 4 วินาทีไว้ที่ `/tmp/ad-benchmark.mp4` หากมี FFmpeg ที่รองรับ `libx264` สามารถสร้างไฟล์จำลองได้ดังนี้:
+
+```bash
+ffmpeg -f lavfi -i color=c=black:s=854x480:r=25 -t 10 -c:v libx264 -pix_fmt yuv420p -movflags +faststart /tmp/ad-benchmark.mp4
+```
+
+ตัววัดใช้ Job จำลอง 300 ช่วงและไม่เปิดข้อมูลงานจริง
+
+เริ่ม fixture server สองตัวใน terminal แยกกัน:
+
+```bash
+node tests/performance/fixture-server.cjs /tmp/ad-baseline /tmp/ad-benchmark.mp4 4174
+node tests/performance/fixture-server.cjs dist /tmp/ad-benchmark.mp4 4175
+```
+
+ใน terminal ที่สาม เปิด Chromium ผ่าน Playwright CLI แล้วรันตัววัด:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli -s=ad-perf open http://127.0.0.1:4174/
+npx --yes --package @playwright/cli playwright-cli -s=ad-perf run-code --filename tests/performance/editor-playback.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-perf close
+```
+
+ตัววัดสลับ baseline กับ candidate อย่างละ 5 รอบ และตรวจจำนวนช่วงกับการเล่นจริง ผลเป็นเวลางาน main thread และ script ของทั้งหน้า ไม่ใช่เวลาเฉพาะรายการบท ตรวจช่วงค่า ภาระเครื่อง และ CPU profile ก่อนสรุปความแตกต่าง หยุด fixture server ทั้งสองเมื่อเสร็จ
 
 ## แก้ปัญหาการติดตั้งและการรัน
 
