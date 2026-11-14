@@ -529,46 +529,55 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return map;
   }, [batches]);
 
-  const generatedCount = spots.filter(
-    (s) => s.decision === 'generate' && s.text.trim().length > 0
-  ).length;
-  const pendingCount = spots.filter((s) => s.decision === 'pending').length;
-  const skippedCount = spots.filter((s) => s.decision === 'skip').length;
-  const editedCount = spots.filter((s) => s.is_edited).length;
-  const overDurationCount = spots.filter(
-    (s) =>
-      s.decision === 'generate' &&
-      s.text.trim().length > 0 &&
-      estimateThaiSpeechDurationMs(s.text) > s.duration_ms
-  ).length;
+  const { generatedCount, pendingCount, skippedCount, editedCount, overDurationCount, spotOrder } = React.useMemo(() => {
+    let generatedCount = 0;
+    let pendingCount = 0;
+    let skippedCount = 0;
+    let editedCount = 0;
+    let overDurationCount = 0;
+    const spotOrder = new Map<string, number>();
+    spots.forEach((spot, index) => {
+      if (!spotOrder.has(spot.spot_id)) spotOrder.set(spot.spot_id, index + 1);
+      if (spot.decision === 'generate' && spot.text.trim().length > 0) {
+        generatedCount++;
+        if (estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms) overDurationCount++;
+      }
+      if (spot.decision === 'pending') pendingCount++;
+      if (spot.decision === 'skip') skippedCount++;
+      if (spot.is_edited) editedCount++;
+    });
+    return { generatedCount, pendingCount, skippedCount, editedCount, overDurationCount, spotOrder };
+  }, [spots]);
 
-  const filteredSpots = spots.filter((spot) => {
-    if (filterMode === 'generate' && spot.decision !== 'generate') return false;
-    if (filterMode === 'pending' && spot.decision !== 'pending') return false;
-    if (filterMode === 'skip' && spot.decision !== 'skip') return false;
-    if (filterMode === 'edited' && !spot.is_edited) return false;
-    if (
-      filterMode === 'over_duration' &&
-      !(
-        spot.decision === 'generate' &&
-        spot.text.trim().length > 0 &&
-        estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms
-      )
-    ) {
-      return false;
-    }
+  const filteredSpots = React.useMemo(() => {
+    return spots.filter((spot) => {
+      if (filterMode === 'generate' && spot.decision !== 'generate') return false;
+      if (filterMode === 'pending' && spot.decision !== 'pending') return false;
+      if (filterMode === 'skip' && spot.decision !== 'skip') return false;
+      if (filterMode === 'edited' && !spot.is_edited) return false;
+      if (
+        filterMode === 'over_duration' &&
+        !(
+          spot.decision === 'generate' &&
+          spot.text.trim().length > 0 &&
+          estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms
+        )
+      ) {
+        return false;
+      }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchId = spot.spot_id.toLowerCase().includes(q);
-      const matchText = spot.text.toLowerCase().includes(q);
-      const matchReason = (spot.reason || '').toLowerCase().includes(q);
-      const matchTime = formatTimestampDisplay(spot.start_ms).includes(q);
-      return matchId || matchText || matchReason || matchTime;
-    }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchId = spot.spot_id.toLowerCase().includes(q);
+        const matchText = spot.text.toLowerCase().includes(q);
+        const matchReason = (spot.reason || '').toLowerCase().includes(q);
+        const matchTime = formatTimestampDisplay(spot.start_ms).includes(q);
+        return matchId || matchText || matchReason || matchTime;
+      }
 
-    return true;
-  });
+      return true;
+    });
+  }, [spots, filterMode, searchQuery]);
 
   return (
     <section
@@ -660,7 +669,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
         ) : (
           <div role="list" aria-label="รายการช่วงบรรยาย" className="space-y-2 p-3">
             {filteredSpots.map((spot) => {
-              const globalIdx = spots.findIndex((s) => s.spot_id === spot.spot_id) + 1;
+              const globalIdx = spotOrder.get(spot.spot_id)!;
               const isPlayingNow =
                 currentTimeMs >= spot.start_ms && currentTimeMs <= spot.end_ms;
               return (

@@ -26,6 +26,8 @@ import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
+import { createJobSaveQueue } from './utils/jobSaveQueue';
+import { pollJob } from './utils/jobPolling';
 
 const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
 const FIXED_MAX_UPLOAD_SIZE_MB = 2000;         // 2 GB
@@ -59,20 +61,12 @@ export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
-  const saveQueueRef = useRef<Promise<boolean | void>>(Promise.resolve());
-  const saveRequestRef = useRef(0);
-
-  const leaveServerJob = useCallback((activeJobId: string) => {
-    saveRequestRef.current++;
-    saveQueueRef.current = saveQueueRef.current.then(async () => {
-      await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}`, { method: 'DELETE' }).catch(() => {});
-    });
-  }, []);
+  const [saveQueue] = useState(() => createJobSaveQueue(setSaveStatus));
 
   useEffect(() => {
-    saveRequestRef.current++;
+    saveQueue.invalidate();
     setSaveStatus('saved');
-  }, [jobId]);
+  }, [jobId, saveQueue]);
 
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
@@ -190,99 +184,48 @@ export default function App() {
     throw new Error(`รูปแบบข้อมูลที่ได้รับจากเซิร์ฟเวอร์ไม่ถูกต้อง: ${text.slice(0, 100)}`);
   };
 
-  // Poll Server Background Job Until Complete (no long-held HTTP connections)
   const pollJobUntilComplete = useCallback(async (activeJobId: string, startError?: string) => {
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
     pollAbortRef.current = token;
-
     setStatus('ANALYZING');
     setErrorMessage(null);
 
-    let consecutiveErrors = 0;
-    let idlePollsWithoutRunner = 0;
-    let autoResumedOnce = false;
-
-    while (!token.aborted) {
-      await new Promise((r) => setTimeout(r, 1400));
-      if (token.aborted) return;
-
-      try {
-        const res = await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}`);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data = await parseResponseJson<any>(res);
-        if (token.aborted) return;
-
-        if (!res.ok || data?.job?.job_id !== activeJobId || !Array.isArray(data.job.batches) || !Array.isArray(data.job.spots)) {
-          throw new Error(data?.error || 'ไม่พบสถานะงานประมวลผลบนเซิร์ฟเวอร์');
+    await pollJob({
+      jobId: activeJobId,
+      token,
+      parseResponse: parseResponseJson,
+      startError,
+      onEvent: (event) => {
+        switch (event.type) {
+          case 'snapshot':
+            setErrorMessage(null);
+            setBatches(event.job.batches);
+            setSpots(event.job.spots);
+            if (event.job.progress_stage) {
+              setVadProgress({ stage: event.job.progress_stage, percent: event.job.progress_percent ?? 20 });
+            }
+            break;
+          case 'ready':
+            setVadProgress(null);
+            setRestoredIncompleteJob(false);
+            setStatus('READY');
+            setErrorMessage(null);
+            break;
+          case 'failed':
+            setVadProgress(null);
+            setStatus('FAILED');
+            setErrorMessage(event.message);
+            break;
+          case 'start-unconfirmed':
+            setErrorMessage(event.message);
+            break;
+          case 'disconnected':
+            setVadProgress(null);
+            setErrorMessage('ตรวจสถานะการวิเคราะห์ไม่ได้ กำลังลองเชื่อมต่ออีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         }
-
-        consecutiveErrors = 0;
-        setErrorMessage(null);
-        const liveJob: PersistedJobState = data.job;
-        const isRunning = Boolean(data.isRunning);
-        if (isRunning) startError = undefined;
-
-        setBatches(liveJob.batches);
-        setSpots(liveJob.spots);
-
-        if (liveJob.progress_stage) {
-          setVadProgress({
-            stage: liveJob.progress_stage,
-            percent: liveJob.progress_percent ?? 20,
-          });
-        }
-
-        const allDone =
-          liveJob.status === 'READY' ||
-          (liveJob.batches.length > 0 &&
-            liveJob.batches.every((b) => b.status === 'completed'));
-
-        if (allDone) {
-          setVadProgress(null);
-          setRestoredIncompleteJob(false);
-          setStatus('READY');
-          setErrorMessage(null);
-          return;
-        }
-
-        if (liveJob.status === 'FAILED') {
-          setVadProgress(null);
-          setStatus('FAILED');
-          setErrorMessage(
-            startError || liveJob.error_message || 'เกิดข้อผิดพลาดระหว่างการวิเคราะห์วิดีโอด้วย Gemini'
-          );
-          return;
-        }
-
-        if (!isRunning && startError) {
-          setErrorMessage(`${startError} กำลังตรวจสถานะงานอีกครั้ง`);
-        }
-
-        // If server restarted mid-job and is no longer actively running, auto-resume once
-        if (!isRunning) {
-          idlePollsWithoutRunner++;
-          if (idlePollsWithoutRunner >= 2 && !autoResumedOnce) {
-            autoResumedOnce = true;
-            idlePollsWithoutRunner = 0;
-            await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}/start`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            }).catch(() => {});
-          }
-        } else {
-          idlePollsWithoutRunner = 0;
-        }
-      } catch {
-        if (token.aborted) return;
-        consecutiveErrors++;
-        if (consecutiveErrors === 6) {
-          setVadProgress(null);
-          setErrorMessage('ตรวจสถานะการวิเคราะห์ไม่ได้ กำลังลองเชื่อมต่ออีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
-        }
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    }
+      },
+    });
   }, []);
 
   // 1. Check Browser Compatibility & Active Persisted Job on Mount
@@ -378,7 +321,7 @@ export default function App() {
       setRestoredIncompleteJob(false);
 
       if (jobId) {
-        leaveServerJob(jobId);
+        saveQueue.leave(jobId);
         setJobId(null);
       }
 
@@ -418,7 +361,7 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [jobId, videoMetadata, startVadForFile, leaveServerJob]
+    [jobId, videoMetadata, startVadForFile, saveQueue]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
@@ -426,7 +369,7 @@ export default function App() {
     if (!videoFile || !videoMetadata) return;
     if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !window.confirm('สแกนเสียงใหม่? บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
     pollAbortRef.current.aborted = true;
-    if (jobId) leaveServerJob(jobId);
+    if (jobId) saveQueue.leave(jobId);
     setJobId(null);
     setVadOutput(null);
     setBatches([]);
@@ -517,7 +460,7 @@ export default function App() {
         percent: 15,
       });
 
-      const saved = await saveQueueRef.current;
+      const saved = await saveQueue.wait();
       if (token.aborted) return;
       if (saved === false) {
         setVadProgress(null);
@@ -622,7 +565,7 @@ export default function App() {
         percent: 8,
       });
 
-      await saveQueueRef.current;
+      await saveQueue.wait();
       const initRes = await fetch('/api/jobs/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -732,30 +675,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [spots, selectedSpotId, handleSelectSpot]);
 
-  // Serialize saves so a slower earlier request cannot overwrite a later edit.
-  const persistSpots = useCallback((activeJobId: string, nextSpots: ADSpot[]) => {
-    const request = ++saveRequestRef.current;
-    setSaveStatus('saving');
-    saveQueueRef.current = saveQueueRef.current.then(async () => {
-      if (request !== saveRequestRef.current) return;
-      try {
-        const response = await fetch(`/api/jobs/${encodeURIComponent(activeJobId)}/spots`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spots: nextSpots }),
-        });
-        if (!response.ok) throw new Error('Save failed');
-        const data = await response.json() as { job?: PersistedJobState };
-        if (data.job?.job_id !== activeJobId) throw new Error('Save not acknowledged');
-        if (request === saveRequestRef.current) setSaveStatus('saved');
-        return true;
-      } catch {
-        if (request === saveRequestRef.current) setSaveStatus('error');
-        return false;
-      }
-    });
-  }, []);
-
   // 7. Update Spot & Persist to Server JSON
   const handleUpdateSpot = useCallback(
     (updatedSpot: ADSpot) => {
@@ -763,9 +682,9 @@ export default function App() {
         spot.spot_id === updatedSpot.spot_id ? updatedSpot : spot
       );
       setSpots(nextSpots);
-      if (jobId) persistSpots(jobId, nextSpots);
+      if (jobId) saveQueue.save(jobId, nextSpots);
     },
-    [jobId, spots, persistSpots]
+    [jobId, spots, saveQueue]
   );
 
   // 8. Reset Job
@@ -773,7 +692,7 @@ export default function App() {
     if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
     pollAbortRef.current.aborted = true;
     if (jobId) {
-      leaveServerJob(jobId);
+      saveQueue.leave(jobId);
     }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
@@ -937,7 +856,7 @@ export default function App() {
             onExportSrt={handleExportSrt}
             onExportJson={handleExportJson}
             saveStatus={jobId ? saveStatus : 'local'}
-            onRetrySave={() => { if (jobId) persistSpots(jobId, spots); }}
+            onRetrySave={() => { if (jobId) saveQueue.save(jobId, spots); }}
           />
         </div>
       </section>}
