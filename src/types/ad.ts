@@ -28,64 +28,6 @@ export const DEFAULT_VAD_CONFIG: VADConfig = {
   minAdGapMs: 3000,
 };
 
-export interface VADPreset {
-  id: string;
-  name: string;
-  description: string;
-  config: VADConfig;
-}
-
-export const VAD_PRESETS: VADPreset[] = [
-  {
-    id: 'optimal_standard',
-    name: 'มาตรฐานบรรยายภาพไทย (Optimal Default)',
-    description: 'สมดุลที่สุดสำหรับวิดีโอทั่วไป ตรวจจับเสียงพูดแม่นยำ เว้นระยะขอบเสียง 200ms และคัดช่องว่าง ≥ 3.0 วินาที',
-    config: {
-      speechThreshold: 0.5,
-      minSpeechDurationMs: 250,
-      minSilenceDurationMs: 400,
-      speechPaddingMs: 200,
-      minAdGapMs: 3000,
-    },
-  },
-  {
-    id: 'drama_bgm',
-    name: 'ละคร / ภาพยนตร์ที่มีดนตรีคลอ (Drama & BGM)',
-    description: 'เพิ่ม Threshold เป็น 0.55 และ Padding 250ms เพื่อลดการเข้าใจผิดว่าเสียงดนตรีประกอบเป็นเสียงพูด',
-    config: {
-      speechThreshold: 0.55,
-      minSpeechDurationMs: 260,
-      minSilenceDurationMs: 420,
-      speechPaddingMs: 250,
-      minAdGapMs: 3000,
-    },
-  },
-  {
-    id: 'documentary_clear',
-    name: 'สารคดี / เสียงบรรยายชัดเจน (Documentary)',
-    description: 'ไวต่อเสียงพูดที่นุ่มหรือเบา (Threshold 0.45) เหมาะกับสารคดีหรือสื่อการสอนที่ห้องอัดเงียบ',
-    config: {
-      speechThreshold: 0.45,
-      minSpeechDurationMs: 220,
-      minSilenceDurationMs: 380,
-      speechPaddingMs: 200,
-      minAdGapMs: 3000,
-    },
-  },
-  {
-    id: 'action_sfx',
-    name: 'ฉากแอ็กชัน / เสียงเอฟเฟกต์ดัง (Action & SFX)',
-    description: 'คัดเฉพาะเสียงพูดที่ชัดเจน (Threshold 0.58) และเว้นช่องว่างขั้นต่ำ 3.2 วินาทีเพื่อหลบเสียงเอฟเฟกต์สั้นๆ',
-    config: {
-      speechThreshold: 0.58,
-      minSpeechDurationMs: 280,
-      minSilenceDurationMs: 450,
-      speechPaddingMs: 250,
-      minAdGapMs: 3200,
-    },
-  },
-];
-
 export type ADContentGenre = 'auto_cinema' | 'drama_series' | 'documentary' | 'action_thriller';
 
 export interface ADAnalysisSettings {
@@ -225,6 +167,3 @@ export const GeminiSpotResultSchema = z.object({
 export const GeminiBatchResponseSchema = z.object({
   spots: z.array(GeminiSpotResultSchema),
 });
-
-export type GeminiSpotResult = z.infer<typeof GeminiSpotResultSchema>;
-export type GeminiBatchResponse = z.infer<typeof GeminiBatchResponseSchema>;

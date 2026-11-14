@@ -66,12 +66,6 @@ interface UploadAndVadPanelProps {
   videoMetadata: VideoMetadata | null;
   validationIssues: VideoValidationIssue[];
   vadOutput: VADOutput | null;
-  vadProgress: {
-    stage: string;
-    percent: number;
-    processedMs?: number;
-    totalMs?: number;
-  } | null;
   batches: AnalysisBatch[];
   spots: ADSpot[];
   onSelectFile: (file: File) => void;
@@ -92,7 +86,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   videoMetadata,
   validationIssues,
   vadOutput,
-  vadProgress,
   batches,
   spots,
   onSelectFile,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertOctagon } from 'lucide-react';
 import {
   ADSpot,
@@ -807,7 +807,6 @@ export default function App() {
         videoMetadata={videoMetadata}
         validationIssues={validationIssues}
         vadOutput={vadOutput}
-        vadProgress={vadProgress}
         batches={batches}
         spots={spots}
         onSelectFile={handleSelectFile}
