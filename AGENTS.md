@@ -2,6 +2,20 @@
 
 Guidance for automated agents working on the AD Script Generator repository.
 
+## Agent skills
+
+### Issue tracker
+
+For specs, tickets, and wayfinding, use local Markdown in `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+For triage, use the standard status vocabulary in `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Before exploring a domain, read the single-context glossary and relevant ADRs as described in `docs/agents/domain.md`.
+
 ## Project overview
 
 AD Script Generator is an automated Thai Audio Description (AD) script authoring application. It processes 480p MP4 videos through a two-tier architecture: client-side Voice Activity Detection (VAD) and server-side video understanding with Google Gemini.

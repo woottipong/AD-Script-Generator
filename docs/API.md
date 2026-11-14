@@ -1,26 +1,50 @@
 # AD Script Generator API reference
 
-This document describes the HTTP REST API exposed by the AD Script Generator backend in `server.ts`.
+This reference describes the routes in [server.ts](../server.ts). Request and response types are defined in [src/types/ad.ts](../src/types/ad.ts). Installation and startup commands are in the [README](../README.md#การรันโปรเจกต์).
 
 ## Base configuration and conventions
 
-- Default base URL: `http://localhost:3000/api`
-- Content type: `application/json` (except `/api/jobs/:jobId/video` for MP4 streaming and `/api/upload/chunk` for binary chunk uploads)
-- Concurrency model: Single-job processing lock (`activeProcessingLock`). Only one Gemini analysis job runs at a time. Requests to start analysis while another job runs return HTTP 409.
-- Status code sanitization: To prevent Nginx or Cloud Run reverse proxies from intercepting error responses and replacing JSON bodies with HTML pages, the server remaps HTTP 403 to 401, and HTTP 502, 503, and 504 to 500.
+- The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`. The server does not read `PORT`.
+- JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
+- Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
+- The application has no HTTP authentication or per-user job isolation. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
+- A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. Initialization rejects a lock younger than five minutes. Start, polling, and batch processing use a three-minute threshold, with route-specific checks for the same job.
+- A lock belonging to another running job can produce HTTP 409. An accepted background request does not mean that Gemini analysis has succeeded. Poll the job for its result.
+- API handlers set `Cache-Control: no-store, no-cache, must-revalidate`.
+- Error handling remaps HTTP 403 to 401 and HTTP 502, 503, and 504 to 500. This preserves the application's JSON error response through the proxy setup this server targets. Errors from an external proxy can still arrive outside this contract.
 
----
+## Shared response types
+
+A job response contains a `job` object. The fields below describe the current TypeScript contract, not a complete runtime schema for incoming requests.
+
+| Field | Type or values |
+|---|---|
+| `job_id` | Opaque string ID |
+| `created_at`, `updated_at` | ISO timestamp strings |
+| `status` | `IDLE`, `VIDEO_READY`, `DETECTING`, `VAD_READY`, `ANALYZING`, `READY`, or `FAILED` |
+| `video_metadata` | File name, byte size, MIME type, width, height, duration, video codec, audio codec, and `hasAudioTrack`. Optional `sampleRate` and `channelCount` |
+| `vad_config` | `speechThreshold`, `minSpeechDurationMs`, `minSilenceDurationMs`, `speechPaddingMs`, and `minAdGapMs` |
+| `ad_settings` | Optional analysis settings. Defaults are listed under job initialization |
+| `vad_output` | `duration_ms`, `speech_segments`, and `candidate_spots`. Optional `signal_analysis` contains acoustic measurements and the recommended VAD configuration |
+| `batches` | Array of analysis batches |
+| `spots` | Array of `ADSpot` objects |
+| `local_file_path` | Optional server path to the uploaded MP4 |
+| `gemini_file_uri`, `gemini_file_name`, `gemini_file_mime_type`, `gemini_file_expires_at` | Optional Gemini Files API metadata |
+| `progress_stage`, `progress_percent`, `active_model`, `error_message` | Optional processing feedback |
+
+An analysis batch contains `batch_index`, `batch_id`, `batch_start_ms`, `batch_end_ms`, `window_start_ms`, `window_end_ms`, `candidate_spots`, `status`, and `retry_count`. Its status is `pending`, `processing`, `completed`, or `failed`. A failed batch can include `error`.
+
+An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `is_edited`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
+
+`isRunning` is calculated from the matching process-local lock and its age. It is not a persisted job field. `progress_percent` is stage-based progress, not a prediction of remaining time.
 
 ## Endpoints
 
-### 1. Get server configuration
+### GET /api/config
 
-Returns fixed server thresholds, models, and active job existence.
+Returns fixed server configuration and whether the active pointer resolves to a job. It does not validate the API key or contact Gemini.
 
-- Method: `GET`
-- Path: `/api/config`
-- Headers: None required
-- Success response (HTTP 200):
+HTTP 200 example:
 
 ```json
 {
@@ -38,43 +62,11 @@ Returns fixed server thresholds, models, and active job existence.
 }
 ```
 
----
+The fallback model is `gemini-3.5-flash-lite`. It is not returned by this endpoint.
 
-### 2. Get active job state
+### GET /api/jobs/current
 
-Returns the latest persisted job state stored in `.data/jobs/active_job.json`.
-
-- Method: `GET`
-- Path: `/api/jobs/current`
-- Headers: None required
-- Success response when active job exists (HTTP 200):
-
-```json
-{
-  "job": {
-    "job_id": "job_1794484155216_b24f1ab6",
-    "created_at": "2026-11-12T13:09:15.216Z",
-    "updated_at": "2026-11-12T13:12:40.100Z",
-    "status": "READY",
-    "video_metadata": {
-      "fileName": "video_480p.mp4",
-      "fileSize": 152978,
-      "mimeType": "video/mp4",
-      "width": 854,
-      "height": 480,
-      "durationMs": 15000,
-      "videoCodec": "avc1.64001f",
-      "audioCodec": "mp4a.40.2",
-      "hasAudioTrack": true
-    },
-    "batches": [],
-    "spots": []
-  },
-  "isRunning": false
-}
-```
-
-- Success response when no job exists (HTTP 200):
+Reads `.data/jobs/active_job.json` and returns the referenced job as `{ job, isRunning }`. With no readable active job, HTTP 200 contains:
 
 ```json
 {
@@ -83,25 +75,13 @@ Returns the latest persisted job state stored in `.data/jobs/active_job.json`.
 }
 ```
 
----
+The pointer contains `active_job_id` and `updated_at`. A job's full metadata is stored in `.data/jobs/<jobId>/job.json`.
 
-### 3. Get specific job state
+### GET /api/jobs/:jobId
 
-Returns state for a given `jobId`. Polled by the client while analysis runs.
+Returns HTTP 200 with `{ job, isRunning }`. The browser polls this route during background analysis.
 
-- Method: `GET`
-- Path: `/api/jobs/:jobId`
-- Headers: None required
-- Success response (HTTP 200):
-
-```json
-{
-  "job": { ... },
-  "isRunning": true
-}
-```
-
-- Error response (HTTP 404):
+An unknown or unreadable job returns HTTP 404:
 
 ```json
 {
@@ -109,61 +89,54 @@ Returns state for a given `jobId`. Polled by the client while analysis runs.
 }
 ```
 
----
+### GET /api/jobs/:jobId/video
 
-### 4. Stream source video
+Streams `job.local_file_path`, normally `.data/jobs/<jobId>/source_video.mp4`.
 
-Streams the local copy of the MP4 video stored in `.data/jobs/<jobId>/source_video.mp4`. Supports HTTP 206 partial content range requests for timeline seeking.
+| Request | Response |
+|---|---|
+| No `Range` header | HTTP 200, full file, `Content-Type: video/mp4`, and `Content-Length` |
+| Valid single range such as `Range: bytes=0-1023` or `Range: bytes=1024-` | HTTP 206 with `Content-Range`, `Accept-Ranges: bytes`, `Content-Length`, and `Content-Type: video/mp4` |
+| Missing job, local path, or source file | HTTP 404 with a JSON error |
 
-- Method: `GET`
-- Path: `/api/jobs/:jobId/video`
-- Headers: Optional `Range: bytes=start-end`
-- Response:
-  - HTTP 206: Returns binary video slice with `Content-Range`, `Accept-Ranges: bytes`, `Content-Length`, `Content-Type: video/mp4`.
-  - HTTP 200: Returns full video stream if no `Range` header provided.
-  - HTTP 404: Returns JSON error if video file is missing.
+The handler does not validate malformed ranges or implement a documented HTTP 416 response. Suffix ranges and multiple ranges are not supported by its parser.
 
----
+### POST /api/upload/init
 
-### 5. Initialize chunked upload
+Creates `.data/jobs/<uploadId>/source_video.mp4` as an empty file. This creates an upload directory, not a persisted job or active pointer.
 
-Creates a dedicated job directory under `.data/jobs/<uploadId>` and prepares an empty `source_video.mp4` file.
-
-- Method: `POST`
-- Path: `/api/upload/init`
-- Headers: `Content-Type: application/json`
-- Request body:
+JSON request example:
 
 ```json
 {
-  "fileName": "lecture_480p.mp4",
-  "fileSize": 154820000,
-  "totalChunks": 19
-}
-```
-
-- Success response (HTTP 200):
-
-```json
-{
-  "uploadId": "job_1794489000000_a1b2c3d4",
   "fileName": "lecture_480p.mp4",
   "fileSize": 154820000
 }
 ```
 
----
+HTTP 200 example, with an illustrative ID:
 
-### 6. Append upload chunk
+```json
+{
+  "uploadId": "job_demo",
+  "fileName": "lecture_480p.mp4",
+  "fileSize": 154820000
+}
+```
 
-Appends a binary slice to `source_video.mp4`. Recommended chunk size is 8 MB. Maximum payload limit is 25 MB.
+`fileName` defaults to `video.mp4`. Characters outside `[a-zA-Z0-9._-]` become `_` in the response. `fileSize` defaults to `0` and is not an enforced upload quota. The handler ignores `totalChunks`. Initialization failures return HTTP 500.
 
-- Method: `POST`
-- Path: `/api/upload/chunk?uploadId=<uploadId>`
-- Query parameter: `uploadId` (or header `x-upload-id`)
-- Headers: `Content-Type: application/octet-stream`
-- Request body: Raw binary bytes
-- Success response (HTTP 200):
+### POST /api/upload/chunk
+
+Appends raw bytes to the upload's source file. The browser sends chunks sequentially at 8 MiB each. The request limit is 25 MiB.
+
+- Query parameter `uploadId` identifies the upload. Header `x-upload-id` is the fallback when the query parameter is absent.
+- `Content-Type` must be `application/octet-stream`.
+- The body contains binary bytes.
+- The handler ignores `chunkIndex` and `totalChunks`. It does not check order, offsets, checksums, total size, or duplicate chunks.
+- Every accepted request appends bytes. Repeating a request can duplicate data. A lost response does not prove that the append failed.
+
+HTTP 200 example after an 8 MiB chunk:
 
 ```json
 {
@@ -172,25 +145,24 @@ Appends a binary slice to `source_video.mp4`. Recommended chunk size is 8 MB. Ma
 }
 ```
 
-- Error responses:
-  - HTTP 400: Missing `uploadId` or empty body.
-  - HTTP 404: Upload directory not found.
-  - HTTP 500: Disk write failure.
+| Status | Condition |
+|---|---|
+| 400 | Missing upload ID, empty body, or body not parsed as a binary buffer |
+| 404 | Upload directory not found |
+| 413 | Body exceeds the parser limit |
+| 500 | File write failure |
 
----
+There is no upload-finalize endpoint. Job initialization uses the accumulated file. There is no API to resume an upload at a confirmed offset or discard an unfinished upload directory.
 
-### 7. Initialize job and start analysis
+### POST /api/jobs/init
 
-Registers a job with metadata and VAD output, builds 240-second timeline batches, and triggers background Gemini analysis.
+Registers a job from an uploaded file and VAD output. Candidate spots become `pending` spots. The server groups them into 240-second timeline batches by spot start time and omits empty time buckets. Batch windows include 20 seconds before and 10 seconds after, extend to cover a spot crossing a batch boundary, and stay within the video duration.
 
-- Method: `POST`
-- Path: `/api/jobs/init`
-- Headers: `Content-Type: application/json`
-- Request body:
+The browser uses a JSON request with `uploadId`:
 
 ```json
 {
-  "uploadId": "job_1794489000000_a1b2c3d4",
+  "uploadId": "job_demo",
   "video_metadata": {
     "fileName": "scene.mp4",
     "fileSize": 52428800,
@@ -233,53 +205,37 @@ Registers a job with metadata and VAD output, builds 240-second timeline batches
 }
 ```
 
-- Success response (HTTP 200):
+`video_metadata`, `vad_config`, and `vad_output` are expected. Each can be a JSON object or a JSON-encoded string. `ad_settings` is optional and defaults to the values in the example. Supported `contentGenre` values are `auto_cinema`, `drama_series`, `documentary`, and `action_thriller`.
 
-```json
-{
-  "job": {
-    "job_id": "job_1794489000000_a1b2c3d4",
-    "status": "ANALYZING",
-    "batches": [ ... ],
-    "spots": [ ... ],
-    "progress_percent": 8,
-    "progress_stage": "กำลังเตรียมส่งไฟล์วิดีโอไปยัง Gemini Files API..."
-  },
-  "isRunning": true
-}
-```
+The route also accepts `multipart/form-data` with one file field named `video` and JSON-encoded text fields for the metadata, VAD configuration, VAD output, and optional analysis settings. Multer limits the file to 2,000 MiB. The browser's current workflow uses chunked upload instead.
 
-- Error response when another job is running (HTTP 409):
+| Status | Result |
+|---|---|
+| 200, candidates present | `{ job, isRunning: true }`. Initial job status is `ANALYZING`, progress is 8, and Gemini upload and sequential analysis start in the background |
+| 200, no candidates | `{ job, isRunning: false }`. Status is `READY`, progress is 100, and Gemini is not called |
+| 400 | No uploaded file or the chunked upload file is empty |
+| 409 | An active processing lock blocks initialization |
+| 401, 429, or 500 | Classified initialization or Gemini client errors, after status sanitization |
 
-```json
-{
-  "error": "ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (job_...) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน"
-}
-```
+The server checks for `GEMINI_API_KEY` before saving a job with candidate spots. A missing key currently returns HTTP 500. Background failures appear later in the persisted job's status and `error_message`. A failed initialization can leave uploaded files on disk.
 
----
+### POST /api/jobs/:jobId/start
 
-### 8. Resume incomplete job analysis
+Starts or resumes background processing. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
 
-Resumes unfinished batches for an existing job.
+- HTTP 200 returns `{ job, isRunning: true }` when background work starts.
+- If all batches are completed, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first.
+- HTTP 404 means that the job was not found.
+- HTTP 409 means that another job holds a lock within the route's lock-age threshold.
+- Classified client errors return HTTP 401, 429, or 500 with `error`.
 
-- Method: `POST`
-- Path: `/api/jobs/:jobId/start`
-- Headers: `Content-Type: application/json`
-- Success response (HTTP 200): Returns updated job state with `isRunning: true`.
-- Error response (HTTP 404): Job ID not found.
-- Error response (HTTP 409): Another job is currently being processed.
+On backend restart, recovery applies only to the job referenced by the active pointer. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
 
----
+### POST /api/jobs/:jobId/analyze-batch
 
-### 9. Analyze single batch synchronously
+Analyzes one batch synchronously. This is a fallback route. The current browser uses background processing and polling.
 
-Legacy or fallback endpoint to analyze a single batch synchronously.
-
-- Method: `POST`
-- Path: `/api/jobs/:jobId/analyze-batch`
-- Headers: `Content-Type: application/json`
-- Request body:
+Optional JSON body:
 
 ```json
 {
@@ -287,25 +243,17 @@ Legacy or fallback endpoint to analyze a single batch synchronously.
 }
 ```
 
-- Success response (HTTP 200):
+If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch. The existing `is_edited` flag is retained.
 
-```json
-{
-  "job": { ... },
-  "batch": { ... }
-}
-```
+If no batch matches, including an unknown explicit `batch_id`, the route sets the job status to `READY` and returns HTTP 200 with `{ job }`.
 
----
+HTTP 404 means that the job was not found. HTTP 409 means that another job holds an active lock. Analysis failures return HTTP 401, 429, or 500 with `error`, `isRateLimit`, `job`, and `batch` after persisting the failed state.
 
-### 10. Update spot scripts and timestamps
+### PATCH /api/jobs/:jobId/spots
 
-Saves user edits (script text, decision changes, or timestamp adjustments) to `.data/jobs/<jobId>/job.json`.
+Replaces the job's entire `spots` array and saves the job. This endpoint does not merge individual entries. A request that omits existing spots removes those entries from the saved array.
 
-- Method: `PATCH`
-- Path: `/api/jobs/:jobId/spots`
-- Headers: `Content-Type: application/json`
-- Request body:
+The following request represents the complete array for a job with one spot:
 
 ```json
 {
@@ -316,7 +264,7 @@ Saves user edits (script text, decision changes, or timestamp adjustments) to `.
       "end_ms": 12000,
       "duration_ms": 7000,
       "decision": "generate",
-      "text": "หญิงสาวเปิดประตูห้องสมุดแล้วก้าวเข้ามาอย่างช้าๆ",
+      "text": "หญิงสาวเปิดประตูห้องสมุดแล้วก้าวเข้ามา",
       "reason": "",
       "is_edited": true,
       "original_start_ms": 4700,
@@ -326,38 +274,58 @@ Saves user edits (script text, decision changes, or timestamp adjustments) to `.
 }
 ```
 
-- Validation rules enforced by the server:
-  - Adjusted `start_ms` and `end_ms` must remain within `original_start_ms` and `original_end_ms` (1 ms rounding tolerance).
-  - Adjusted interval must not overlap any speech segment in `vad_output.speech_segments`.
-  - Adjusted duration (`end_ms - start_ms`) must be at least 500 ms.
-- Success response (HTTP 200):
+The route checks that `spots` is an array and calls `validateSpotTimestampEdit` for every entry. The timestamp checks require:
 
-```json
-{
-  "job": { ... }
-}
-```
+- Start and end values that pass the helper's `isNaN` check and fall within the video duration, with a nonnegative start and an end after the start. This is not a strict numeric-type check.
+- A duration of at least 500 ms, calculated as `end_ms - start_ms`.
+- Times within the submitted `original_start_ms` and `original_end_ms`, with 1 ms tolerance.
+- No overlap with speech segments in the persisted VAD output.
 
-- Validation error response (HTTP 400):
+The route does not validate the full `ADSpot` schema, compare submitted original boundaries with stored boundaries, or recompute `duration_ms`. Clients must preserve original IDs and bounds, keep `duration_ms` consistent, and send every spot. HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. An invalid array or failed timestamp check returns HTTP 400 with `error`.
 
-```json
-{
-  "error": "Spot spot_001: เวลาทับซ้อนกับช่วงที่มีเสียงพูด (00:00:01.000 – 00:00:04.500)"
-}
-```
+The browser serializes saves and shows success only after receiving an acknowledgement for the job. When a user changes `skip` to `generate`, the editor keeps existing text. If that text is blank, it uses `reason` as the starting text. Changing back to `skip` retains the text. This text selection happens in the browser, not in this endpoint.
 
----
+### DELETE /api/jobs/:jobId
 
-### 11. Clear active job pointer
+Removes `.data/jobs/active_job.json` only when its `active_job_id` matches `jobId`. The route does not delete job directories or source video, cancel a background task, or delete a Gemini file. A later background save can recreate the active pointer.
 
-Removes `.data/jobs/active_job.json` if it matches the specified `jobId`. Does not delete the job folder itself.
-
-- Method: `DELETE`
-- Path: `/api/jobs/:jobId`
-- Success response (HTTP 200):
+The route returns HTTP 200 even when the pointer does not match, is missing, or an exception is caught:
 
 ```json
 {
   "ok": true
 }
 ```
+
+There is no endpoint to list all saved jobs or automatically remove old job files.
+
+## Validation boundaries
+
+The browser checks MP4 structure, H.264 codec, an audio codec with an `mp4a` prefix, 480-pixel height, a maximum duration of 1,800 seconds, and a file size of at most `2000 × 1024 × 1024` bytes. Its WebCodecs support check uses the track codec for `mp4a.40.*` and substitutes `mp4a.40.2` for other `mp4a` values. A width other than 854 produces a warning when the height is 480.
+
+The chunked-upload API checks that the accumulated source file exists and is not empty before registering a job. It does not repeat the browser's video validation or enforce a total chunked-upload size. Multipart upload enforces its file-size limit. Incoming metadata and VAD output do not pass through a full request Zod schema.
+
+Gemini output passes through `GeminiBatchResponseSchema`. Every expected spot must be present. A `generate` result must contain nonblank text. Results with unknown spot IDs are ignored. A `skip` result can contain a reason, and returned text is retained if present. The prompt currently requests empty text for skipped spots.
+
+## Errors
+
+Most errors return an object with `error`. Depending on the route, the object can also contain `isRateLimit`, `job`, or `batch`. The final Express error handler includes `code` when provided by the error, otherwise `SERVER_ERROR`. An unmatched API route returns HTTP 404 with `code: "NOT_FOUND"`.
+
+Example for an unmatched route:
+
+```json
+{
+  "error": "ไม่พบ API Endpoint (GET /api/unknown)",
+  "code": "NOT_FOUND"
+}
+```
+
+## Export formats
+
+SRT and JSON downloads are produced in the browser by [src/utils/formatters.ts](../src/utils/formatters.ts). There are no export API routes.
+
+- SRT includes only `generate` spots with nonblank text, sorted by start time.
+- JSON has `schema_version: "1.1"` and includes `video_metadata`, `vad_configuration`, `speech_segments`, `candidate_spots`, `spots`, `generated_script`, `skipped_spots`, and `edited_timestamps`.
+- `skipped_spots` also includes `generate` spots whose text is blank. The full `spots` array retains each spot's actual decision and text.
+- `edited_timestamps` compares original times with the current edited times. It is not a history of every edit.
+- The application currently has no JSON import route or UI.
