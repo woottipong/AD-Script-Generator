@@ -668,7 +668,7 @@ export default function App() {
     }
   }, []);
 
-  // Global Keyboard Shortcuts for Script Editors (Alt+Up/Down to step spots, Alt+P to play/pause selected spot)
+  // Keyboard navigation between script spots; playback shortcuts live with the player.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!e.altKey || spots.length === 0) return;
@@ -683,23 +683,6 @@ export default function App() {
         const targetSpot = spots[nextIdx];
         if (targetSpot) {
           handleSelectSpot(targetSpot.spot_id, true);
-        }
-      } else if (e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        const vid = videoRef.current;
-        if (!vid) return;
-        const targetSpot = spots.find((s) => s.spot_id === selectedSpotId);
-        if (vid.paused) {
-          if (
-            targetSpot &&
-            (vid.currentTime * 1000 < targetSpot.start_ms ||
-              vid.currentTime * 1000 >= targetSpot.end_ms)
-          ) {
-            vid.currentTime = targetSpot.start_ms / 1000;
-          }
-          vid.play().catch(() => {});
-        } else {
-          vid.pause();
         }
       }
     };

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Film,
@@ -27,6 +28,7 @@ const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover
 const timelineControl = `${controlBase} text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
 const decisionLabels = { generate: 'มีบทบรรยาย', pending: 'รอสร้าง', skip: 'ข้าม' };
 const monitorTime = (ms: number) => formatTimestampDisplay(ms).replace(/^00:/, '');
+const MAX_TIMELINE_ZOOM = 64;
 
 interface VideoPreviewTimelineProps {
   videoUrl: string | null;
@@ -59,6 +61,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [videoError, setVideoError] = useState<'load' | 'play' | null>(null);
+  const [isVideoLoading, setIsVideoLoading] = useState(Boolean(videoUrl));
   const [isMuted, setIsMuted] = useState(false);
   const [loopSelectedSpot, setLoopSelectedSpot] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -96,10 +100,50 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       : null;
 
   useEffect(() => {
+    setVideoError(null);
+    setIsVideoLoading(Boolean(videoUrl));
+    setIsPlaying(false);
+  }, [videoUrl]);
+
+  const playVideo = useCallback(() => {
+    videoRef.current?.play().catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setVideoError(videoRef.current?.error ? 'load' : 'play');
+      setIsVideoLoading(false);
+    });
+  }, [videoRef]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.key.toLowerCase() !== 'p' || !videoUrl) return;
+      const video = videoRef.current;
+      if (!video) return;
+      event.preventDefault();
+      if (video.paused) {
+        if (selectedSpot && (video.currentTime * 1000 < selectedSpot.start_ms || video.currentTime * 1000 >= selectedSpot.end_ms)) {
+          video.currentTime = selectedSpot.start_ms / 1000;
+        }
+        playVideo();
+      } else {
+        video.pause();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [videoUrl, videoRef, selectedSpot, playVideo]);
+
+  useEffect(() => {
+    const container = timelineScrollContainerRef.current;
+    if (!container || !selectedSpot) return;
+    const center = (selectedSpot.start_ms + selectedSpot.end_ms) / 2 / effectiveDurationMs;
+    container.scrollLeft = Math.max(0, center * container.scrollWidth - container.clientWidth / 2);
+  }, [selectedSpotId, selectedSpot?.start_ms, selectedSpot?.end_ms, zoomLevel, effectiveDurationMs, timelineViewportWidth]);
+
+  useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
 
-    const handlePlay = () => setIsPlaying(true);
+    const handlePlay = () => { setIsPlaying(true); setVideoError(null); };
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => setIsPlaying(false);
     const handleTimeUpdate = () => {
@@ -133,7 +177,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     const vid = videoRef.current;
     if (!vid || !videoUrl) return;
     if (vid.paused) {
-      vid.play().catch(() => {});
+      playVideo();
     } else {
       vid.pause();
     }
@@ -182,6 +226,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     selectedSpot && selectedSpot.decision === 'generate'
       ? estimateThaiSpeechDurationMs(selectedSpot.text)
       : 0;
+  const isSelectedOverDuration = Boolean(selectedSpot && selectedSpotSpeechMs > selectedSpot.duration_ms);
 
   return (
     <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden">
@@ -200,6 +245,9 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 src={videoUrl}
                 className="w-full h-full object-contain cursor-pointer"
                 playsInline
+                onLoadStart={() => { setIsVideoLoading(true); setVideoError(null); }}
+                onCanPlay={() => { setIsVideoLoading(false); setVideoError(null); }}
+                onError={() => { setVideoError('load'); setIsVideoLoading(false); setIsPlaying(false); }}
                 onClick={togglePlayPause}
                 tabIndex={0}
                 role="button"
@@ -211,12 +259,27 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   }
                 }}
               />
-              {currentWindowSpot && (
+              {(videoError || isVideoLoading) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 px-6 py-4 text-center text-white">
+                  {videoError ? <AlertTriangle className="h-6 w-6 text-amber-300" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
+                  <div role={videoError ? 'alert' : 'status'} className="max-w-sm space-y-2">
+                    <p className="text-sm font-semibold">{videoError === 'load' ? 'ยังเปิดวิดีโอไม่ได้' : videoError === 'play' ? 'ยังเล่นวิดีโอไม่ได้' : 'กำลังโหลดวิดีโอ'}</p>
+                    {videoError && <p className="text-xs leading-relaxed text-slate-300">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
+                  </div>
+                  {videoError && <button type="button" onClick={() => {
+                    if (videoError === 'play') { playVideo(); return; }
+                    setVideoError(null);
+                    setIsVideoLoading(true);
+                    videoRef.current?.load();
+                  }} className="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
+                </div>
+              )}
+              {currentWindowSpot && !videoError && !isVideoLoading && (
                 <div className="pointer-events-none absolute top-2 left-2 rounded bg-black/75 px-2 py-1 text-xs font-medium text-white">
                   ช่วง {spots.indexOf(currentWindowSpot) + 1}
                 </div>
               )}
-              {activeSubtitleSpot && (
+              {activeSubtitleSpot && !videoError && !isVideoLoading && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center bg-gradient-to-t from-black/90 via-black/55 to-transparent px-6 pt-10 pb-3 text-center">
                   <p className="max-w-2xl text-sm sm:text-base font-medium leading-relaxed text-white drop-shadow">{activeSubtitleSpot.text}</p>
                 </div>
@@ -262,7 +325,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <span className="whitespace-nowrap font-mono tabular-nums text-slate-600" title={`${formatTimestampDisplay(selectedSpot.start_ms)} – ${formatTimestampDisplay(selectedSpot.end_ms)}`}>{monitorTime(selectedSpot.start_ms)} – {monitorTime(selectedSpot.end_ms)}</span>
             <span className="whitespace-nowrap tabular-nums text-slate-600">{(selectedSpot.duration_ms / 1000).toFixed(1)}s</span>
             {selectedSpot.decision === 'generate' ? (
-              <span className="flex items-center gap-1 text-brand-800" title="เวลาพูดโดยประมาณ"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />อ่าน ~{(selectedSpotSpeechMs / 1000).toFixed(1)}s</span>
+              <span className={`flex items-center gap-1 ${isSelectedOverDuration ? 'font-semibold text-amber-800' : 'text-brand-800'}`} title="เวลาพูดโดยประมาณ">{isSelectedOverDuration ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}อ่าน ~{(selectedSpotSpeechMs / 1000).toFixed(1)}s{isSelectedOverDuration && ' · เกินเวลา'}</span>
             ) : selectedSpot.decision === 'pending' ? (
               <span className="flex items-center gap-1 text-amber-800"><Clock className="h-3.5 w-3.5" aria-hidden="true" />รอสร้าง</span>
             ) : (
@@ -274,16 +337,19 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           {selectedSpot && (
             <button type="button" disabled={!videoUrl} onClick={() => {
               seekToMs(selectedSpot.start_ms);
-              if (videoRef.current?.paused) videoRef.current.play().catch(() => {});
+              if (videoRef.current?.paused) playVideo();
             }} title={`เริ่มเล่นจาก ${formatTimestampDisplay(selectedSpot.start_ms)}`} aria-label="เล่นจากช่วงที่เลือก" className={`${controlBase} gap-1.5 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100`}>
               <Play className="h-3.5 w-3.5" aria-hidden="true" /><span className="hidden sm:inline">เล่นจากช่วงนี้</span>
             </button>
           )}
           <div role="group" aria-label="ซูมไทม์ไลน์" className="flex shrink-0 items-center gap-0.5 border-l border-slate-200 pl-3">
+            {selectedSpot && selectedSpot.duration_ms / effectiveDurationMs * timelineViewportWidth * zoomLevel < 24 && zoomLevel < MAX_TIMELINE_ZOOM && (
+              <button type="button" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))} className={`${timelineControl} underline underline-offset-2`}>ซูมช่วงนี้</button>
+            )}
             <button type="button" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} title="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์" aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className={timelineControl}>พอดี</button>
-            <button type="button" onClick={() => setZoomLevel((z) => Math.max(1, z - 0.5))} disabled={zoomLevel <= 1} title="ย่อไทม์ไลน์" aria-label="ย่อไทม์ไลน์" className={timelineControl}><ZoomOut className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} title="ย่อไทม์ไลน์" aria-label="ย่อไทม์ไลน์" className={timelineControl}><ZoomOut className="h-4 w-4" aria-hidden="true" /></button>
             <span className="min-w-12 text-center text-xs text-slate-600 tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
-            <button type="button" onClick={() => setZoomLevel((z) => Math.min(8, z + 0.5))} disabled={zoomLevel >= 8} title="ขยายไทม์ไลน์" aria-label="ขยายไทม์ไลน์" className={timelineControl}><ZoomIn className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} title="ขยายไทม์ไลน์" aria-label="ขยายไทม์ไลน์" className={timelineControl}><ZoomIn className="h-4 w-4" aria-hidden="true" /></button>
           </div>
         </div>
       </div>
@@ -333,19 +399,28 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               </div>
               <div className="relative h-16 bg-slate-50/40">
                 {spots.map((spot, index) => {
-                  const leftPct = Math.max(0, spot.start_ms / effectiveDurationMs * 100);
-                  const widthPct = Math.max(0.4, (spot.end_ms - spot.start_ms) / effectiveDurationMs * 100);
+                  const trackWidth = timelineViewportWidth * zoomLevel;
+                  const left = Math.max(0, spot.start_ms / effectiveDurationMs * trackWidth);
+                  const width = Math.max(1, (spot.end_ms - spot.start_ms) / effectiveDurationMs * trackWidth);
+                  const padding = Math.max(0, (32 - width) / 2);
+                  const previous = spots[index - 1];
+                  const next = spots[index + 1];
+                  // Share the space between spots without overlapping neighboring hit targets.
+                  const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + spot.start_ms) / 2 / effectiveDurationMs * trackWidth : 0);
+                  const hitRight = Math.min(trackWidth, left + width + padding, next ? (spot.end_ms + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
                   const isSelected = spot.spot_id === selectedSpotId;
                   const colorClasses = spot.decision === 'generate'
-                    ? 'bg-brand-700 hover:bg-brand-800 text-white border-brand-800'
+                    ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
                     : spot.decision === 'skip'
-                    ? 'bg-slate-300 hover:bg-slate-400 text-slate-800 border-slate-400'
-                    : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-400';
+                    ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
+                    : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
                   return (
                     <button key={spot.spot_id} type="button" aria-pressed={isSelected} aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} · ${decisionLabels[spot.decision]}`} onClick={(event) => {
                       event.stopPropagation(); onSelectSpot(spot.spot_id, true); seekToMs(spot.start_ms);
-                    }} style={{ left: `${leftPct}%`, width: `${widthPct}%` }} title={`${spot.spot_id} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`absolute top-1 bottom-1 flex min-h-0 min-w-0 cursor-pointer items-center justify-center overflow-hidden rounded-xs border px-1 transition-colors ${colorClasses} ${isSelected ? 'z-20 ring-2 ring-brand-950 ring-offset-1' : 'z-10'}`}>
-                      {timelineViewportWidth * zoomLevel * widthPct / 100 >= 36 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{spot.spot_id.replace('spot_', '#')}</span>}
+                    }} style={{ left: hitLeft, width: Math.max(1, hitRight - hitLeft) }} title={`ช่วง ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`group absolute top-0 bottom-0 min-h-0 min-w-0 cursor-pointer rounded px-0 ${isSelected ? 'z-20' : 'z-10'}`}>
+                      <span style={{ left: left - hitLeft, width }} className={`pointer-events-none absolute top-1 bottom-1 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}>
+                        {width >= 24 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{index + 1}</span>}
+                      </span>
                     </button>
                   );
                 })}
