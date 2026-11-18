@@ -5,9 +5,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
+import { pollJob } from './jobPolling';
 
 const root = process.cwd();
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function until(check: () => boolean | Promise<boolean>, timeout = 12000) {
   const end = Date.now() + timeout;
@@ -60,22 +61,54 @@ async function withServer(twoBatches: boolean, action: (ctx: {
   fs.writeFileSync(path.join(dir, 'server.ts'), server.replace('const PORT = 3000;', `const PORT = ${port};`));
   fs.writeFileSync(path.join(dir, 'fake.ts'), `import fs from 'node:fs';
 const real = globalThis.fetch; let n = 0;
+let uploads = 0;
 globalThis.fetch = async (input, init) => {
   const url = String(input instanceof Request ? input.url : input);
   if (url.startsWith('http://127.0.0.1:')) return real(input, init);
   if (!url.startsWith('https://generativelanguage.googleapis.com/')) throw new Error('Unexpected network request');
+  const pathname = new URL(url).pathname;
+  if (pathname.startsWith('/upload/') && pathname.endsWith('/files')) {
+    return Response.json({}, { headers: { 'x-goog-upload-url': 'https://generativelanguage.googleapis.com/test-upload' } });
+  }
+  if (pathname === '/test-upload') {
+    const id = 'upload-' + ++uploads;
+    fs.writeFileSync(id, '1');
+    return Response.json({ file: {
+      name: 'files/' + id,
+      state: fs.existsSync('upload-fail') ? 'FAILED' : 'ACTIVE',
+      uri: 'https://fake.invalid/' + id,
+      mimeType: 'video/mp4',
+    } }, { headers: { 'x-goog-upload-status': 'final' } });
+  }
+  if (init?.method === 'DELETE') {
+    const id = pathname.split('/').at(-1);
+    fs.writeFileSync('deleted-' + id, '1');
+    while (fs.existsSync('hold-delete')) await new Promise(r => setTimeout(r, 20));
+    if (fs.existsSync('delete-fail') || fs.existsSync('delete-fail-once')) {
+      fs.rmSync('delete-fail-once', { force: true });
+      return Response.json({ error: { code: 500, status: 'INTERNAL' } }, { status: 500 });
+    }
+    if (fs.existsSync('delete-missing')) return Response.json({ error: { code: 404, status: 'NOT_FOUND' } }, { status: 404 });
+    return Response.json({});
+  }
+  if (pathname.endsWith('/files/example') && fs.existsSync('old-processing')) {
+    return Response.json({ name: 'files/example', state: 'PROCESSING' });
+  }
   if (url.includes(':generateContent')) {
     const call = ++n; fs.writeFileSync('entered-' + call, '1');
     while (!fs.existsSync('release-' + call) && !fs.existsSync('release-all')) await new Promise(r => setTimeout(r, 20));
     if (fs.existsSync('fail')) return Response.json({ error: { code: 400, message: 'fake failure', status: 'INVALID_ARGUMENT' } }, { status: 400 });
-    const id = call >= 3 ? 'b' : 'a';
-    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ spots: [{ spot_id: id, decision: 'generate', text: 'AI result' }] }) }] }, finishReason: 'STOP' }] });
+    const spots = ['a', 'b'].map((id) => ({ spot_id: id, decision: 'generate', text: 'AI result' }));
+    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ spots }) }] }, finishReason: 'STOP' }] });
   }
-  return Response.json({ name: 'files/example', state: 'ACTIVE', uri: 'https://fake.invalid/file', mimeType: 'video/mp4' });
+  const id = pathname.split('/').at(-1);
+  return Response.json({ name: 'files/' + id, state: 'ACTIVE', uri: 'https://fake.invalid/' + id, mimeType: 'video/mp4' });
 };`);
   const jobDir = path.join(dir, '.data/jobs/job_test');
   fs.mkdirSync(jobDir, { recursive: true });
-  fs.writeFileSync(path.join(jobDir, 'job.json'), JSON.stringify(makeJob(twoBatches)));
+  const source = path.join(jobDir, 'source_video.mp4');
+  fs.writeFileSync(source, '1');
+  fs.writeFileSync(path.join(jobDir, 'job.json'), JSON.stringify({ ...makeJob(twoBatches), local_file_path: source }));
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(dir, 'server.ts')], {
     cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
@@ -107,14 +140,130 @@ for (const route of ['single batch', 'background'] as const) for (const mode of 
       if (mode === 'fail') fs.writeFileSync(path.join(dir, 'fail'), '1');
       fs.writeFileSync(path.join(dir, 'release-all'), '1');
       if (pending) assert.equal((await pending).status, mode === 'success' ? 200 : 500);
-      else await until(async () => (await (await request()).json()).job.status === (mode === 'success' ? 'READY' : 'FAILED'));
+      await until(async () => !(await (await request()).json()).isRunning);
       const saved = await (await request()).json();
+      assert.equal(saved.job.status, mode === 'success' ? 'READY' : 'FAILED');
       assert.equal(saved.job.spots[1].text, 'manual edit');
       assert.equal(saved.job.spots[1].start_ms, 7200);
       assert.equal(saved.job.batches[0].status, mode === 'success' ? 'completed' : 'failed');
+      assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
+      assert.equal(saved.job.gemini_file_name, undefined);
+      assert.equal(saved.job.gemini_file_uri, undefined);
+      assert.equal(await (await request('/video')).text(), '1');
     });
   });
 }
+
+for (const route of ['single batch', 'background'] as const) {
+  test(`${route} keeps the Gemini file until the final batch finishes`, { timeout: 20000 }, async () => {
+    await withServer(true, async ({ dir, request }) => {
+      const first = route === 'single batch' ? request('/analyze-batch', 'POST', { batch_id: 'batch_1' }) : undefined;
+      if (!first) assert.equal((await request('/start', 'POST')).status, 200);
+      await until(() => fs.existsSync(path.join(dir, 'entered-1')));
+      fs.writeFileSync(path.join(dir, 'release-1'), '1');
+      if (first) assert.equal((await first).status, 200);
+      const second = route === 'single batch' ? request('/analyze-batch', 'POST', { batch_id: 'batch_2' }) : undefined;
+      await until(() => fs.existsSync(path.join(dir, 'entered-2')));
+      assert.equal(fs.existsSync(path.join(dir, 'deleted-example')), false);
+      fs.writeFileSync(path.join(dir, 'delete-missing'), '1');
+      fs.writeFileSync(path.join(dir, 'hold-delete'), '1');
+      fs.writeFileSync(path.join(dir, 'release-2'), '1');
+      await until(() => fs.existsSync(path.join(dir, 'deleted-example')));
+      const duringDeletion = await (await request()).json();
+      assert.equal(duringDeletion.job.batches[1].status, 'completed');
+      assert.equal(duringDeletion.job.spots[1].text, 'AI result');
+      fs.unlinkSync(path.join(dir, 'hold-delete'));
+      if (second) assert.equal((await second).status, 200);
+      await until(async () => !(await (await request()).json()).isRunning);
+      const { job } = await (await request()).json();
+      assert.equal(job.status, 'READY');
+      assert.equal(job.gemini_file_name, undefined);
+      assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
+    });
+  });
+}
+
+test('retry uploads the local video and cleans up even if Gemini rejects the uploaded file', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, request }) => {
+    const initial = request('/analyze-batch', 'POST', { batch_id: 'batch_1' });
+    await until(() => fs.existsSync(path.join(dir, 'entered-1')));
+    fs.writeFileSync(path.join(dir, 'fail'), '1');
+    fs.writeFileSync(path.join(dir, 'release-all'), '1');
+    assert.equal((await initial).status, 500);
+
+    fs.writeFileSync(path.join(dir, 'upload-fail'), '1');
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    const { job } = await (await request()).json();
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-upload-1')), job.error_message);
+    assert.equal(job.status, 'FAILED');
+    assert.equal(job.gemini_file_name, undefined);
+
+    fs.unlinkSync(path.join(dir, 'fail'));
+    fs.unlinkSync(path.join(dir, 'upload-fail'));
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-upload-2')));
+    const saved = await (await request()).json();
+    assert.equal(saved.job.status, 'READY');
+    assert.equal(saved.job.spots[0].text, 'AI result');
+  });
+});
+
+test('starting a completed job retries failed Gemini deletion without repeating analysis', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, request }) => {
+    fs.writeFileSync(path.join(dir, 'delete-fail'), '1');
+    fs.writeFileSync(path.join(dir, 'release-all'), '1');
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
+    const { job } = await (await request()).json();
+    assert.equal(job.status, 'READY');
+    assert.equal(job.spots[0].text, 'AI result');
+    assert.equal(job.gemini_file_name, 'files/example');
+
+    fs.unlinkSync(path.join(dir, 'delete-fail'));
+    fs.unlinkSync(path.join(dir, 'deleted-example'));
+    fs.writeFileSync(path.join(dir, 'hold-delete'), '1');
+    const retry = await request('/start', 'POST');
+    assert.equal(retry.status, 200);
+    assert.equal((await retry.json()).isRunning, true);
+    await until(() => fs.existsSync(path.join(dir, 'deleted-example')));
+    assert.equal((await (await request('/start', 'POST')).json()).isRunning, true);
+    const duringRetry = await (await request()).json();
+    duringRetry.job.spots[0].text = 'edited during cleanup retry';
+    assert.equal((await request('/spots', 'PATCH', { spots: duringRetry.job.spots })).status, 200);
+    fs.unlinkSync(path.join(dir, 'hold-delete'));
+    await until(async () => !(await (await request()).json()).isRunning);
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
+    assert.equal(fs.existsSync(path.join(dir, 'upload-1')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'entered-2')), false);
+    const saved = await (await request()).json();
+    assert.equal(saved.job.status, 'READY');
+    assert.equal(saved.job.spots[0].text, 'edited during cleanup retry');
+    assert.equal(saved.job.gemini_file_name, undefined);
+    assert.equal(await (await request('/video')).text(), '1');
+  });
+});
+
+test('failed deletion keeps the old Gemini reference until replacement can proceed', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, request }) => {
+    for (const name of ['old-processing', 'delete-fail-once', 'release-all']) fs.writeFileSync(path.join(dir, name), '1');
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    const failed = await (await request()).json();
+    assert.equal(failed.job.status, 'FAILED');
+    assert.equal(failed.job.gemini_file_name, 'files/example');
+    assert.equal(fs.existsSync(path.join(dir, 'upload-1')), false);
+
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    const saved = await (await request()).json();
+    assert.equal(saved.job.status, 'READY');
+    assert.equal(saved.job.gemini_file_name, undefined);
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-upload-1')));
+  });
+});
 
 test('same-job batch request waits for the running background job', { timeout: 20000 }, async () => {
   await withServer(false, async ({ dir, request, otherJob }) => {
@@ -126,9 +275,32 @@ test('same-job batch request waits for the running background job', { timeout: 2
     const current = await (await request()).json();
     assert.equal(current.isRunning, true);
     assert.equal((await otherJob()).status, 409);
+    fs.writeFileSync(path.join(dir, 'hold-delete'), '1');
     fs.writeFileSync(path.join(dir, 'release-all'), '1');
+    await until(() => fs.existsSync(path.join(dir, 'deleted-example')));
+    assert.equal((await otherJob()).status, 409);
+    const events: string[] = [];
+    const token = { aborted: false };
+    const polling = pollJob({
+      jobId: 'job_test', token,
+      parseResponse: (response) => response.json(),
+      fetch: () => request(),
+      wait: () => sleep(25),
+      onEvent: (event) => events.push(event.type),
+    });
+    await until(() => events.includes('snapshot'));
+    token.aborted = events.includes('ready');
+    assert.equal(token.aborted, false, 'reported ready before releasing the lock');
+    const { job } = await (await request()).json();
+    job.spots[1].text = 'edited during deletion';
+    assert.equal((await request('/spots', 'PATCH', { spots: job.spots })).status, 200);
+    fs.unlinkSync(path.join(dir, 'hold-delete'));
+    await polling;
+    assert.equal(events.at(-1), 'ready');
     assert.equal((await overlapping).status, 200);
-    await until(async () => (await (await request()).json()).job.status === 'READY');
+    const saved = await (await request()).json();
+    assert.equal(saved.job.status, 'READY');
+    assert.equal(saved.job.spots[1].text, 'edited during deletion');
   });
 });
 

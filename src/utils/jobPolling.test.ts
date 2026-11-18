@@ -23,7 +23,7 @@ test('polls until ready, resumes an idle job once and keeps the start error unti
       calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
       if (init?.method === 'POST') return Response.json({});
       polls++;
-      return Response.json({ job: job(polls === 5 ? 'READY' : 'ANALYZING'), isRunning: polls >= 4 });
+      return Response.json({ job: job(polls === 5 ? 'READY' : 'ANALYZING'), isRunning: polls === 4 });
     },
     onEvent: (event) => events.push(event),
   });

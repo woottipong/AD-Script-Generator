@@ -41,8 +41,12 @@ export async function pollJob(options: {
       consecutiveErrors = 0;
       const job = data.job;
       const isRunning = Boolean(data.isRunning);
-      if (isRunning) startError = undefined;
       onEvent({ type: 'snapshot', job });
+      if (isRunning) {
+        startError = undefined;
+        idlePollsWithoutRunner = 0;
+        continue;
+      }
 
       if (job.status === 'READY' || (job.batches.length > 0 && job.batches.every((batch) => batch.status === 'completed'))) {
         onEvent({ type: 'ready' });
@@ -52,20 +56,16 @@ export async function pollJob(options: {
         onEvent({ type: 'failed', message: startError || job.error_message || 'เกิดข้อผิดพลาดระหว่างการวิเคราะห์วิดีโอด้วย Gemini' });
         return;
       }
-      if (!isRunning && startError) {
+      if (startError) {
         onEvent({ type: 'start-unconfirmed', message: `${startError} กำลังตรวจสถานะงานอีกครั้ง` });
       }
-      if (!isRunning) {
-        idlePollsWithoutRunner++;
-        if (idlePollsWithoutRunner >= 2 && !autoResumedOnce) {
-          autoResumedOnce = true;
-          idlePollsWithoutRunner = 0;
-          await request(`/api/jobs/${encodeURIComponent(jobId)}/start`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-          }).catch(() => {});
-        }
-      } else {
+      idlePollsWithoutRunner++;
+      if (idlePollsWithoutRunner >= 2 && !autoResumedOnce) {
+        autoResumedOnce = true;
         idlePollsWithoutRunner = 0;
+        await request(`/api/jobs/${encodeURIComponent(jobId)}/start`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        }).catch(() => {});
       }
     } catch {
       if (token.aborted) return;

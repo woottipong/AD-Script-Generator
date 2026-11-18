@@ -7,7 +7,7 @@ import path from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, MediaProcessing, MediaResolution, ThinkingLevel, Type } from '@google/genai';
+import { ApiError, GoogleGenAI, MediaProcessing, MediaResolution, ThinkingLevel, Type } from '@google/genai';
 import {
   ADAnalysisSettings,
   ADSpot,
@@ -238,64 +238,35 @@ const upload = multer({
   },
 });
 
-/**
- * Uploads the local MP4 file to Gemini Files API and waits until its state is ACTIVE.
- * Reuses the existing File URI across all batches unless expired.
- */
-async function uploadAndAwaitGeminiFile(
-  ai: GoogleGenAI,
-  localFilePath: string,
-  displayName: string,
-  onProgressStage?: (stage: string) => void
-): Promise<{ uri: string; name: string; mimeType: string; expiresAt?: string }> {
-  if (!fs.existsSync(localFilePath)) {
-    throw new Error('ไม่พบไฟล์วิดีโอต้นทางบนเซิร์ฟเวอร์สำหรับอัปโหลดไปยัง Gemini Files API');
+class GeminiFileDeletionError extends Error {}
+
+async function deleteJobGeminiFile(ai: GoogleGenAI, job: PersistedJobState): Promise<boolean> {
+  const name = job.gemini_file_name;
+  if (!name) return false;
+
+  verifiedActiveFileNames.delete(name);
+  if (!/^files\/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(name)) {
+    console.warn('Invalid Gemini file name for job', job.job_id);
+    return false;
   }
 
-  onProgressStage?.('กำลังส่งไฟล์วิดีโอไปยัง Gemini Files API...');
-  const uploaded = await ai.files.upload({
-    file: localFilePath,
-    config: {
-      mimeType: 'video/mp4',
-      displayName: displayName || 'source_video.mp4',
-    },
-  });
-
-  if (!uploaded.name || !uploaded.uri) {
-    throw new Error('การอัปโหลดไฟล์ไปยัง Gemini Files API ไม่สำเร็จ (ไม่ได้รับ File URI)');
+  try {
+    await ai.files.delete({
+      name,
+      config: { httpOptions: { timeout: 5_000, retryOptions: { attempts: 1 } } },
+    });
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) {
+      console.warn('Failed to delete Gemini file for job', job.job_id);
+      return false;
+    }
   }
 
-  // Poll until file state is ACTIVE
-  let currentFile = uploaded;
-  const maxPollAttempts = 90; // Up to ~3 minutes for large 30-min 480p video
-  let attempt = 0;
-
-  while (currentFile.state === 'PROCESSING' && attempt < maxPollAttempts) {
-    attempt++;
-    onProgressStage?.(
-      `รอ Gemini Files API ประมวลผลไฟล์วิดีโอ (${attempt * 2} วินาที)...`
-    );
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    currentFile = await ai.files.get({ name: uploaded.name });
-  }
-
-  if (currentFile.state === 'FAILED') {
-    throw new Error('Gemini Files API ไม่สามารถประมวลผลไฟล์วิดีโอนี้ได้ (State: FAILED)');
-  }
-
-  if (currentFile.state !== 'ACTIVE') {
-    throw new Error(`ไฟล์วิดีโอบน Gemini Files API ยังไม่พร้อมใช้งาน (State: ${currentFile.state})`);
-  }
-
-  const finalName = currentFile.name || uploaded.name;
-  verifiedActiveFileNames.add(finalName);
-
-  return {
-    uri: currentFile.uri || uploaded.uri,
-    name: finalName,
-    mimeType: currentFile.mimeType || 'video/mp4',
-    expiresAt: currentFile.expirationTime,
-  };
+  job.gemini_file_name = undefined;
+  job.gemini_file_uri = undefined;
+  job.gemini_file_mime_type = undefined;
+  job.gemini_file_expires_at = undefined;
+  return true;
 }
 
 /**
@@ -307,13 +278,14 @@ async function ensureActiveGeminiFileUri(
   job: PersistedJobState,
   onProgressStage?: (stage: string) => void
 ): Promise<{ uri: string; mimeType: string }> {
-  if (job.gemini_file_name && job.gemini_file_uri) {
+  const existingName = job.gemini_file_name;
+  if (existingName) {
     const expiresMs = job.gemini_file_expires_at
       ? Date.parse(job.gemini_file_expires_at)
       : 0;
     const hasPlentyOfTtl = expiresMs > Date.now() + 15 * 60 * 1000;
 
-    if (hasPlentyOfTtl && verifiedActiveFileNames.has(job.gemini_file_name)) {
+    if (job.gemini_file_uri && hasPlentyOfTtl && verifiedActiveFileNames.has(existingName)) {
       return {
         uri: job.gemini_file_uri,
         mimeType: job.gemini_file_mime_type || 'video/mp4',
@@ -321,17 +293,16 @@ async function ensureActiveGeminiFileUri(
     }
 
     try {
-      const remoteFile = await uploadAi.files.get({ name: job.gemini_file_name });
+      const remoteFile = await uploadAi.files.get({ name: existingName });
       if (remoteFile && remoteFile.state === 'ACTIVE' && remoteFile.uri) {
-        verifiedActiveFileNames.add(job.gemini_file_name);
+        verifiedActiveFileNames.add(existingName);
         return {
           uri: remoteFile.uri,
           mimeType: remoteFile.mimeType || 'video/mp4',
         };
       }
     } catch {
-      verifiedActiveFileNames.delete(job.gemini_file_name);
-      // File expired or not found on Gemini Files API; fall through to re-upload if local file exists
+      verifiedActiveFileNames.delete(existingName);
     }
   }
 
@@ -339,22 +310,58 @@ async function ensureActiveGeminiFileUri(
     throw new Error('File URI บน Gemini หมดอายุแล้ว และไม่พบไฟล์วิดีโอสำรองบนเซิร์ฟเวอร์ กรุณาอัปโหลดวิดีโอใหม่อีกครั้ง');
   }
 
-  const freshUpload = await uploadAndAwaitGeminiFile(
-    uploadAi,
-    job.local_file_path,
-    job.video_metadata.fileName,
-    onProgressStage
-  );
-  job.gemini_file_uri = freshUpload.uri;
-  job.gemini_file_name = freshUpload.name;
-  job.gemini_file_mime_type = freshUpload.mimeType;
-  job.gemini_file_expires_at = freshUpload.expiresAt;
+  if (existingName) {
+    if (!(await deleteJobGeminiFile(uploadAi, job))) {
+      throw new GeminiFileDeletionError('ยังลบไฟล์วิดีโอเดิมบน Gemini ไม่สำเร็จ กรุณารอสักครู่แล้วกดทำต่อจากชุดที่ค้าง');
+    }
+    saveProcessingState(job);
+  }
+
+  onProgressStage?.('กำลังส่งไฟล์วิดีโอไปยัง Gemini Files API...');
+  const uploaded = await uploadAi.files.upload({
+    file: job.local_file_path,
+    config: {
+      mimeType: 'video/mp4',
+      displayName: job.video_metadata.fileName || 'source_video.mp4',
+    },
+  });
+
+  const name = uploaded.name;
+  if (name) {
+    job.gemini_file_name = name;
+    job.gemini_file_uri = uploaded.uri;
+    job.gemini_file_mime_type = uploaded.mimeType || 'video/mp4';
+    job.gemini_file_expires_at = uploaded.expirationTime;
+    saveProcessingState(job);
+  }
+  if (!name || !uploaded.uri) {
+    throw new Error('การอัปโหลดไฟล์ไปยัง Gemini Files API ไม่สำเร็จ (ไม่ได้รับ File URI)');
+  }
+
+  let currentFile = uploaded;
+  const maxPollAttempts = 90;
+  for (let attempt = 1; currentFile.state === 'PROCESSING' && attempt <= maxPollAttempts; attempt++) {
+    onProgressStage?.(`รอ Gemini Files API ประมวลผลไฟล์วิดีโอ (${attempt * 2} วินาที)...`);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    currentFile = await uploadAi.files.get({ name });
+  }
+
+  if (currentFile.state === 'FAILED') {
+    throw new Error('Gemini Files API ไม่สามารถประมวลผลไฟล์วิดีโอนี้ได้ (State: FAILED)');
+  }
+  if (currentFile.state !== 'ACTIVE') {
+    throw new Error(`ไฟล์วิดีโอบน Gemini Files API ยังไม่พร้อมใช้งาน (State: ${currentFile.state})`);
+  }
+
+  const uri = currentFile.uri || uploaded.uri;
+  const mimeType = currentFile.mimeType || 'video/mp4';
+  verifiedActiveFileNames.add(name);
+  job.gemini_file_uri = uri;
+  job.gemini_file_mime_type = mimeType;
+  job.gemini_file_expires_at = currentFile.expirationTime;
   saveProcessingState(job);
 
-  return {
-    uri: freshUpload.uri,
-    mimeType: freshUpload.mimeType,
-  };
+  return { uri, mimeType };
 }
 
 /**
@@ -711,29 +718,21 @@ ${candidateListDescription}
  * so HTTP requests return immediately (<50ms) and never trigger proxy/gateway timeouts.
  */
 async function runJobInBackground(jobId: string): Promise<void> {
-  if (
-    activeProcessingLock &&
-    activeProcessingLock.jobId === jobId
-  ) {
-    return;
-  }
+  if (activeProcessingLock) return;
 
   const job = loadJobState(jobId);
   if (!job) return;
 
-  if (job.batches.length === 0 || job.batches.every((b) => b.status === 'completed')) {
-    job.status = 'READY';
-    job.progress_stage = undefined;
-    job.progress_percent = 100;
-    saveProcessingState(job);
-    return;
-  }
-
+  const allBatchesCompleted = job.batches.every((batch) => batch.status === 'completed');
   const lock = createProcessingLock(jobId);
   activeProcessingLock = lock;
 
+  let uploadAi: GoogleGenAI | undefined;
+  let deletionFailed = false;
   try {
-    const uploadAi = getGeminiClient({ fastFail: false });
+    if (allBatchesCompleted) return;
+
+    uploadAi = getGeminiClient({ fastFail: false });
     const fastAi = getGeminiClient({ fastFail: true });
     const serverConfig = getServerConfig();
 
@@ -804,8 +803,8 @@ async function runJobInBackground(jobId: string): Promise<void> {
     job.progress_stage = undefined;
     job.progress_percent = 100;
     job.error_message = undefined;
-    saveProcessingState(job);
   } catch (err) {
+    deletionFailed = err instanceof GeminiFileDeletionError;
     const parsed = parseGeminiError(err);
     const stuckBatch = job.batches.find((b) => b.status === 'processing');
     if (stuckBatch) {
@@ -815,13 +814,17 @@ async function runJobInBackground(jobId: string): Promise<void> {
     job.status = 'FAILED';
     job.progress_stage = undefined;
     job.error_message = parsed.userMessage;
-    try {
-      saveProcessingState(job);
-    } catch {
-      console.error('Failed to persist job processing failure');
-    }
   } finally {
-    releaseProcessingLock(lock);
+    try {
+      if (!deletionFailed && (uploadAi || (allBatchesCompleted && job.gemini_file_name))) {
+        await deleteJobGeminiFile(uploadAi ?? getGeminiClient({ fastFail: false }), job);
+      }
+      if (job.status === 'READY' || job.status === 'FAILED') saveProcessingState(job);
+    } catch {
+      console.error('Failed to finalize job processing');
+    } finally {
+      releaseProcessingLock(lock);
+    }
   }
 }
 
@@ -1270,14 +1273,16 @@ async function startServer() {
       job.progress_stage = undefined;
       job.progress_percent = 100;
       saveJobState(job);
-      res.json({ job, isRunning: false });
-      return;
+      if (!job.gemini_file_name) {
+        res.json({ job, isRunning: false });
+        return;
+      }
+    } else {
+      job.status = 'ANALYZING';
+      job.error_message = undefined;
+      job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
+      saveJobState(job);
     }
-
-    job.status = 'ANALYZING';
-    job.error_message = undefined;
-    job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
-    saveJobState(job);
 
     void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
     res.json({ job, isRunning: true });
@@ -1331,9 +1336,10 @@ async function startServer() {
     batch.error = undefined;
     job.status = 'ANALYZING';
     job.error_message = undefined;
+    let uploadAi: GoogleGenAI | undefined;
     try {
       saveJobState(job);
-      const uploadAi = getGeminiClient({ fastFail: false });
+      uploadAi = getGeminiClient({ fastFail: false });
       const fastAi = getGeminiClient({ fastFail: true });
       const serverConfig = getServerConfig();
       const spotResults = await analyzeBatchWithGemini(
@@ -1353,6 +1359,13 @@ async function startServer() {
       }
 
       saveProcessingState(job, spotResults);
+      if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
+        try {
+          saveProcessingState(job);
+        } catch {
+          console.error('Failed to persist Gemini file cleanup');
+        }
+      }
       res.json({ job, batch });
     } catch (err) {
       const parsed = parseGeminiError(err);
@@ -1361,6 +1374,7 @@ async function startServer() {
       job.status = 'FAILED';
       job.error_message = parsed.userMessage;
       try {
+        if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
         saveProcessingState(job);
       } catch {
         res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });

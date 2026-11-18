@@ -53,6 +53,9 @@ export function getProcessingFeedback(
   if (progress?.stage.includes('บันทึกการแก้ไข')) {
     return { title: 'กำลังบันทึกบทบรรยาย', description: 'รอให้บันทึกการแก้ไขสำเร็จก่อนดำเนินการต่อ' };
   }
+  if (batches.length > 0 && batches.every((batch) => batch.status === 'completed')) {
+    return { title: 'กำลังปิดงานวิเคราะห์', description: 'สร้างบทบรรยายครบแล้ว รอสักครู่ก่อนเริ่มแก้ไข' };
+  }
   const activeBatch = batches.find((batch) => batch.status === 'processing');
   if (activeBatch) {
     const completed = batches.filter((batch) => batch.status === 'completed').length;

@@ -264,7 +264,7 @@ export default function App() {
         }
 
         const hasIncompleteBatches = savedJob.batches.some((b) => b.status !== 'completed');
-        if (data.isRunning && hasIncompleteBatches) {
+        if (data.isRunning) {
           setStatus('ANALYZING');
           if (savedJob.progress_stage) {
             setVadProgress({

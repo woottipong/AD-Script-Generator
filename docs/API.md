@@ -36,7 +36,9 @@ An analysis batch contains `batch_index`, `batch_id`, `batch_start_ms`, `batch_e
 
 An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `is_edited`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
 
-`isRunning` indicates whether the process-local lock belongs to the job. It is not a persisted job field. `progress_percent` is stage-based progress, not a prediction of remaining time.
+The server reuses the Gemini file across batches. After the last batch or a processing failure, it attempts to delete the job's Gemini file before releasing the processing lock. A successful deletion or HTTP 404 clears the Gemini file metadata. Other deletion errors leave the analysis result and file reference intact. If deletion fails before a replacement upload, the job fails and can be retried. The server keeps the local MP4 for playback and re-upload.
+
+`isRunning` indicates whether the process-local lock belongs to the job, including during Gemini file cleanup. The browser waits for `isRunning: false` before treating the processing run as finished. `progress_percent` is stage-based progress, not a prediction of remaining time.
 
 ## Endpoints
 
@@ -235,7 +237,8 @@ Starts or resumes background processing. No request body is required. The server
 
 - HTTP 200 returns `{ job, isRunning: true }` when background work starts.
 - If the same job already holds the lock, HTTP 200 returns its current state with `isRunning: true` without starting another runner.
-- If all batches are completed, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first.
+- If all batches are completed and the job still has a Gemini file name, HTTP 200 returns `{ job, isRunning: true }` and retries deletion in the background. The server skips analysis and keeps the job `READY`.
+- If all batches are completed and the job has no Gemini file name, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first in both cases.
 - HTTP 404 means that the job was not found.
 - HTTP 409 means that another job holds the lock.
 - Classified client errors return HTTP 401, 429, or 500 with `error`.
