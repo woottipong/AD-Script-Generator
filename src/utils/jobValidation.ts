@@ -29,6 +29,10 @@ const vadOutput = z.object({
     avgSpeechProbability: z.number().finite(), highConfidenceFrameRatio: z.number().finite(),
     acousticProfileLabel: z.string(), recommendedConfig: vadConfig, recommendationReason: z.string(),
   }).optional(),
+  waveform: z.object({
+    sampleIntervalMs: z.number().int().min(10).max(1000),
+    peaksBase64: z.string().max(200_000),
+  }).optional(),
 });
 
 const initialization = z.object({ video_metadata: metadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: settings });

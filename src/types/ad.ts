@@ -69,11 +69,17 @@ export interface CandidateSpot {
   duration_ms: number;
 }
 
+export interface WaveformEnvelope {
+  sampleIntervalMs: number;
+  peaksBase64: string;
+}
+
 export interface VADOutput {
   duration_ms: number;
   speech_segments: SpeechSegment[];
   candidate_spots: CandidateSpot[];
   signal_analysis?: AudioSignalAnalysis;
+  waveform?: WaveformEnvelope;
 }
 
 export interface ADSpot {

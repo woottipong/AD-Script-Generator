@@ -181,8 +181,8 @@ Desktop-first NLE split workspace locked to the viewport (`100dvh`, `overflow-hi
 
 - **Top Command Navbar (`min-h-16` / 64px):** Sticky white bar with a 1px cerulean hairline bottom border. Left holds the logo and wordmark; right holds the video file disclosure, live Status Pill, primary project CTA (`สร้างบทบรรยายภาพ` before generation, `ส่งออก SRT` once spots exist), and the `จัดการ` menu.
 - **Hairline Progress Track (`3px`):** Anchored flush to the bottom edge of the navbar (`position: absolute; top: 0`) so processing states consume `0px` of vertical workspace height and cause zero layout shift.
-- **Left Pane (`6 cols` on `lg`):** Unobstructed dark video monitor starting directly beneath the navbar (no redundant pane header), floating Broadcast CC Pill at the bottom edge of the video frame, cerulean-tinted transport control bar (`-5s`, `-1s`, Play/Pause, `+1s`, `+5s`, prev/next spot, Loop, CC toggle, Mute, timecode), selected-spot status bar, and zoomable multi-track timeline.
-- **Right Pane (`6 cols` on `lg`):** Compact single-row Search + Filter toolbar (`44px` / `py-2`) above a `cool-paper-canvas` scrollable list of AD spot cards.
+- **Left Pane (`6 cols` on `lg`):** Unobstructed dark video monitor starting directly beneath the navbar (no redundant pane header), floating Broadcast CC Pill at the bottom edge of the video frame, pure-white transport control bar (`-5s`, `-1s`, Play/Pause, `+1s`, `+5s`, prev/next spot, soft-active Loop/CC/Mute toggles, timecode), slim cool-slate timeline utility bar (`ช่วง X/Y`, 3-dot legend, live hover/drag timecode, Zoom controls), and an edge-to-edge 3-track timeline (`คลื่นเสียง` 56px, `เสียงพูด` 28px, `บรรยาย` 56px).
+- **Right Pane (`6 cols` on `lg`):** Compact single-row Search + Filter toolbar (`44px` / `py-2`) above an edge-to-edge white editorial list (`divide-y divide-slate-200`) resting on `cool-paper-canvas` below the final item.
 - **Touch & Pointer Rhythm:** Minimum interactive target height is `36px` (`2.25rem`) on desktop (`32px` for compact video transport buttons) and automatically expands to `44px` (`2.75rem`) on coarse pointers (`@media (pointer: coarse)`).
 
 ## Elevation & Depth
@@ -215,7 +215,7 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 
 ### Status Pill & Hairline Progress Bar
 Zero-shift asynchronous status indicator combining a compact header trigger with an edge-pinned progress line.
-- **Pill Style:** `studio-cerulean-tint` background, `1px solid studio-cerulean-border`, `studio-cerulean-ink` text, `6px` radius, `40px` height. Displays a spinning loader, task title, active batch index (`ชุด X/Y`), percentage, and live elapsed time in `tabular-nums`. Clicking opens the `#analysis-details` popover.
+- **Pill Style:** Active processing uses `studio-cerulean-tint` background, `1px solid studio-cerulean-border`, `studio-cerulean-ink` text, `6px` radius, `40px` height (displaying spinner, task title, active batch index, percentage, and elapsed time in `tabular-nums`). Completed (`READY`) state steps down to calm neutral slate (`bg-slate-100 border-slate-200 text-slate-700`) so `ส่งออก SRT` remains the single cerulean CTA on the navbar.
 - **Hairline Bar:** `3px` track flush beneath the navbar. Uses a Material Design 3 two-segment indeterminate sweep at `0%` / unknown progress, transitioning to a determinate cerulean gradient fill with a soft shimmer sweep and leading highlight when `> 0%`. Respects `prefers-reduced-motion: reduce`.
 
 ### Inputs & Search Toolbar
@@ -223,17 +223,24 @@ Single-row editorial filter controls designed to stay uncluttered inside a half-
 - **Style:** `pure-surface` fill, `1px solid control-border`, `6px` radius, `36px` height. Search input carries a leading `14px` magnifying glass icon (`32px` left padding) and expands (`flex: 1`) beside a fixed-width (`144px–160px`) filter select.
 - **Focus:** Border shifts to `studio-cerulean-active` with a 1px matching ring.
 
-### Script Spot Row
+### Script Spot Row & Micro-Badges
 Edge-to-edge editorial list item separated by 1px horizontal dividers (`divide-y divide-slate-200`)—no outer card border or nested card header.
-- **Background:** `pure-surface` at rest; `studio-cerulean-tint` (`bg-brand-50/45`) when selected; soft slate tint (`bg-slate-50/70`) when skipped.
-- **Internal Padding:** `14px 16px` (`px-4 py-3.5`), housing the flat inline header (spot number, compact timecode steppers, duration pill, high-contrast `บรรยาย | ข้าม` toggle), a single bordered `Sarabun` textarea (`border-slate-300`, `6px` radius), and the compact spoken-duration footer.
-- **Skipped State:** Existing text stays visible inside a disabled muted textarea (`bg-slate-100/80 text-slate-400`) with a non-destructive notice so authors never think their draft was deleted.
+- **Background:** `pure-surface` at rest; 90% `studio-cerulean-tint` with a 1px inset `studio-cerulean-border` ring when selected; subtle 35% `studio-cerulean-tint` wash when the video playhead is inside an unselected row; soft muted slate tint (85% `slate-50`) when skipped.
+- **Internal Padding & Stability:** `14px 16px` vertical/horizontal padding with locked `32px` header height, `useLayoutEffect` auto-grow `Sarabun` textarea, and click scroll-anchor compensation so expanding/collapsing rows never jump under the cursor.
+- **Concentric Segmented Toggle (`บรรยาย | ข้าม`):** `6px` outer border (90% `slate-200` border on `slate-100`, `2px` padding) with `4px` inner buttons (`studio-cerulean` fill with white text for active `บรรยาย`, dark `slate-700` fill with white text for active `ข้าม`).
+- **Status Micro-Badges:** 1px-bordered `6px`-radius pills for instant scanning (`บรรยาย` cerulean tint, `ข้าม` slate-200, `กำลังวิเคราะห์` active cerulean, `รอวิเคราะห์` amber, `เกินเวลา` bold amber, `แก้ไขแล้ว` pure white border, `ตำแหน่งวิดีโอ` solid cerulean).
+- **Skipped State:** Existing text stays visible inside a disabled muted textarea (80% `slate-100` surface with muted `slate-400` text) with a non-destructive notice so authors never think their draft was deleted.
+
+### Waveform Envelope & Soft Mist Loading Wave (Signature Component)
+Dedicated `56px` audio waveform track above the `28px` VAD speech track and `56px` AD track.
+- **Rendered Waveform:** Retina 2D `<canvas>` drawing crisp `2px` rounded micro-bars (`1px` gap, `1px` radius) auto-normalized to the clip's 98th percentile peak (`pow(norm, 1.45)`). Played bars to the left of the playhead tint in `Studio Cerulean` (`#0284c7 → #38bdf8`); unplayed bars sit in cool slate (`#475569 → #94a3b8`); quiet valleys (`< 12%`) soften to `#bae6fd` / `#cbd5e1`.
+- **Soft Mist Loading Wave:** While audio is scanning, two wide (`240px` wavelength), gently blurred (`1px` / `2px`), translucent cerulean SVG mist ribbons drift smoothly in opposite directions (`5.5s` / `8.5s`) with zero hard sweep lines or spring-like zigzags, topped by a borderless translucent pill (`กำลังสแกนเสียง %`).
 
 ### Broadcast CC Pill (Signature Component)
 Floating closed-caption preview docked `12px` above the bottom edge of the video monitor.
-- **Style:** `rgba(2, 6, 23, 0.80)` dark translucent surface, `backdrop-filter: blur(4px)`, `1px solid rgba(255, 255, 255, 0.15)`, `8px` radius, max-width `min(92%, 40rem)`, `Popover Elevation` shadow.
-- **Layout:** Inline `AD N` badge (`studio-cerulean-active`, `4px` radius) pinned on the left beside left-aligned full white text (no ellipsis truncation; bounded to `max-h-[48%]` with scroll only for exceptionally long blocks) with a subtle `0 1px 2px rgba(0,0,0,0.65)` text shadow.
-- **Interaction:** Clicking selects that spot in the right editor pane without pausing playback; toggled on/off via the `Subtitles` (`CC`) button in the transport bar.
+- **Style:** `rgba(2, 6, 23, 0.80)` dark translucent surface, `backdrop-filter: blur(4px)`, `1px solid rgba(255, 255, 255, 0.15)`, `8px` radius, max-width `min(94%, 42rem)`, `Popover Elevation` shadow.
+- **Layout:** Inline `AD N` badge (`studio-cerulean-active`, `4px` radius, `text-xs`) pinned on the left beside left-aligned full white text (no ellipsis truncation; bounded to `max-h-[48%]` with scroll only for exceptionally long blocks) with a subtle `0 1px 2px rgba(0,0,0,0.65)` text shadow.
+- **Interaction:** Clicking selects that spot in the right editor pane without pausing playback; toggled on/off via the soft-active `Subtitles` (`CC`) button in the transport bar.
 
 ## Do's and Don'ts
 

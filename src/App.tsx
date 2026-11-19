@@ -820,9 +820,13 @@ export default function App() {
             currentTimeMs={currentTimeMs}
             onTimeUpdateMs={setCurrentTimeMs}
             speechSegments={vadOutput?.speech_segments || []}
+            waveform={vadOutput?.waveform}
             spots={spots}
             selectedSpotId={selectedSpotId}
+            isAnalyzing={status === 'ANALYZING'}
+            detectProgress={status === 'DETECTING' ? vadProgress : null}
             onSelectSpot={handleSelectSpot}
+            onUpdateSpot={handleUpdateSpot}
             videoRef={videoRef}
           />
         </div>

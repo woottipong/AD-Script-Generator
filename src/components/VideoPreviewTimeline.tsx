@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Film,
@@ -14,11 +14,18 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { ADSpot, SpeechSegment, VideoMetadata } from '../types/ad';
+import { ADSpot, SpeechSegment, VideoMetadata, WaveformEnvelope } from '../types/ad';
+import type { ProcessingProgress } from '../utils/processingFeedback';
 import {
   formatCompactTime,
   formatTimestampDisplay,
 } from '../utils/formatters';
+import {
+  DEFAULT_WAVEFORM_SAMPLE_INTERVAL_MS,
+  SpotDragMode,
+  computeClampedSpotDrag,
+  decodeWaveformPeaks,
+} from '../utils/waveform';
 
 const controlBase = 'video-control inline-flex shrink-0 items-center justify-center gap-1 rounded px-1.5 text-xs transition-colors disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer';
 const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover:text-brand-900`;
@@ -27,6 +34,17 @@ const decisionLabels = { generate: 'มีบทบรรยาย', pending: '�
 const monitorTime = (ms: number) => formatTimestampDisplay(ms).replace(/^00:/, '');
 const MAX_TIMELINE_ZOOM = 64;
 
+interface ActiveSpotDrag {
+  spotId: string;
+  mode: SpotDragMode;
+  pointerId: number;
+  startClientX: number;
+  originSpot: ADSpot;
+  previewStartMs: number;
+  previewEndMs: number;
+  hasMoved: boolean;
+}
+
 interface VideoPreviewTimelineProps {
   videoUrl: string | null;
   videoMetadata: VideoMetadata | null;
@@ -34,9 +52,13 @@ interface VideoPreviewTimelineProps {
   currentTimeMs: number;
   onTimeUpdateMs: (ms: number) => void;
   speechSegments: SpeechSegment[];
+  waveform?: WaveformEnvelope;
   spots: ADSpot[];
   selectedSpotId: string | null;
+  isAnalyzing?: boolean;
+  detectProgress?: ProcessingProgress | null;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
+  onUpdateSpot: (updatedSpot: ADSpot) => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -47,13 +69,18 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   currentTimeMs,
   onTimeUpdateMs,
   speechSegments,
+  waveform,
   spots,
   selectedSpotId,
+  isAnalyzing = false,
+  detectProgress = null,
   onSelectSpot,
+  onUpdateSpot,
   videoRef,
 }) => {
   const timelineScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState<'load' | 'play' | null>(null);
@@ -64,6 +91,30 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(600);
+  const [activeDrag, setActiveDrag] = useState<ActiveSpotDrag | null>(null);
+
+  const waveformPeaks = useMemo(
+    () => (waveform?.peaksBase64 ? decodeWaveformPeaks(waveform.peaksBase64) : new Uint8Array(0)),
+    [waveform?.peaksBase64]
+  );
+  const waveformPeakCeiling = useMemo(() => {
+    if (waveformPeaks.length === 0) return 255;
+    // Use 98th percentile peak for clean normalization without letting a single pop flatten the track
+    const histogram = new Uint32Array(256);
+    for (let i = 0; i < waveformPeaks.length; i++) {
+      histogram[waveformPeaks[i]]++;
+    }
+    const target = Math.floor(waveformPeaks.length * 0.98);
+    let acc = 0;
+    for (let v = 0; v < 256; v++) {
+      acc += histogram[v];
+      if (acc >= target) return Math.max(32, v);
+    }
+    return 255;
+  }, [waveformPeaks]);
+  const waveformIntervalMs = waveform?.sampleIntervalMs || DEFAULT_WAVEFORM_SAMPLE_INTERVAL_MS;
+  const isDetecting = Boolean(detectProgress);
+  const showWaveformTrack = waveformPeaks.length > 0 || isDetecting;
 
   useEffect(() => {
     const container = timelineScrollContainerRef.current;
@@ -74,6 +125,168 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   }, []);
 
   const effectiveDurationMs = Math.max(1, durationMs || videoMetadata?.durationMs || 0);
+
+  const drawWaveform = useCallback(() => {
+    const canvas = waveformCanvasRef.current;
+    const scrollContainer = timelineScrollContainerRef.current;
+    if (!canvas || !scrollContainer || waveformPeaks.length === 0) return;
+
+    const cssWidth = Math.max(1, Math.floor(timelineViewportWidth));
+    const cssHeight = 56; // matches h-14 waveform track height
+    const dpr = window.devicePixelRatio || 1;
+    const backingW = Math.round(cssWidth * dpr);
+    const backingH = Math.round(cssHeight * dpr);
+    if (canvas.width !== backingW || canvas.height !== backingH) {
+      canvas.width = backingW;
+      canvas.height = backingH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    const totalTrackWidth = Math.max(1, cssWidth * zoomLevel);
+    const scrollLeft = scrollContainer.scrollLeft;
+
+    // Crisp center baseline
+    const midY = cssHeight / 2;
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.22)';
+    ctx.fillRect(0, Math.round(midY) - 0.5, cssWidth, 1);
+
+    // Crisp Retina rounded micro-bars (2px bar + 1px gap) with cerulean played-region tinting
+    const barStep = 3;
+    const barWidth = 2;
+    const maxHalfHeight = midY - 4;
+
+    const playedGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
+    playedGrad.addColorStop(0, '#38bdf8');
+    playedGrad.addColorStop(0.5, '#0284c7');
+    playedGrad.addColorStop(1, '#38bdf8');
+
+    const unplayedGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
+    unplayedGrad.addColorStop(0, '#94a3b8');
+    unplayedGrad.addColorStop(0.5, '#475569');
+    unplayedGrad.addColorStop(1, '#94a3b8');
+
+    for (let x = 0; x < cssWidth; x += barStep) {
+      const tStart = ((scrollLeft + x) / totalTrackWidth) * effectiveDurationMs;
+      const tEnd = ((scrollLeft + x + barStep) / totalTrackWidth) * effectiveDurationMs;
+      const bucketStart = Math.max(0, Math.floor(tStart / waveformIntervalMs));
+      const bucketEnd = Math.min(
+        waveformPeaks.length - 1,
+        Math.max(bucketStart, Math.floor(tEnd / waveformIntervalMs))
+      );
+
+      let maxPeak = 0;
+      for (let b = bucketStart; b <= bucketEnd; b++) {
+        if (waveformPeaks[b] > maxPeak) maxPeak = waveformPeaks[b];
+      }
+
+      const normalized = Math.min(1, maxPeak / waveformPeakCeiling);
+      // Restore crisp peak-to-silence contrast so quiet gaps stay thin and transients pop
+      const shaped = Math.pow(normalized, 1.45);
+      const barHalf = Math.max(1, Math.round(shaped * maxHalfHeight * 2) / 2);
+      const barH = barHalf * 2;
+      const y = midY - barHalf;
+
+      const isPlayed = tStart <= currentTimeMs;
+      ctx.fillStyle = normalized < 0.12
+        ? (isPlayed ? '#bae6fd' : '#cbd5e1')
+        : (isPlayed ? playedGrad : unplayedGrad);
+
+      if (barH <= 2) {
+        ctx.fillRect(x, y, barWidth, barH);
+      } else {
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, 1);
+        ctx.fill();
+      }
+    }
+  }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth, currentTimeMs]);
+
+  useEffect(() => {
+    drawWaveform();
+  }, [drawWaveform]);
+
+  const startSpotDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    spot: ADSpot,
+    mode: SpotDragMode
+  ) => {
+    if (event.button !== 0 || isAnalyzing) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setActiveDrag({
+      spotId: spot.spot_id,
+      mode,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      originSpot: spot,
+      previewStartMs: spot.start_ms,
+      previewEndMs: spot.end_ms,
+      hasMoved: false,
+    });
+  };
+
+  const handleSpotDragMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    event.stopPropagation();
+    const deltaX = event.clientX - activeDrag.startClientX;
+    if (!activeDrag.hasMoved && Math.abs(deltaX) < 3) return;
+    const totalTrackWidth = Math.max(1, timelineViewportWidth * zoomLevel);
+    const deltaMs = (deltaX / totalTrackWidth) * effectiveDurationMs;
+    const clamped = computeClampedSpotDrag(
+      activeDrag.originSpot,
+      activeDrag.mode,
+      deltaMs,
+      speechSegments,
+      effectiveDurationMs
+    );
+    setActiveDrag((prev) =>
+      prev
+        ? {
+            ...prev,
+            hasMoved: true,
+            previewStartMs: clamped.start_ms,
+            previewEndMs: clamped.end_ms,
+          }
+        : null
+    );
+  };
+
+  const finishSpotDrag = (event: React.PointerEvent<HTMLElement>, cancelled = false) => {
+    if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const drag = activeDrag;
+    setActiveDrag(null);
+
+    if (cancelled) return;
+
+    if (!drag.hasMoved) {
+      onSelectSpot(drag.originSpot.spot_id, true);
+      seekToMs(drag.originSpot.start_ms);
+      return;
+    }
+
+    const changed =
+      drag.previewStartMs !== drag.originSpot.start_ms ||
+      drag.previewEndMs !== drag.originSpot.end_ms;
+    onSelectSpot(drag.originSpot.spot_id, false);
+    if (changed) {
+      onUpdateSpot({
+        ...drag.originSpot,
+        start_ms: drag.previewStartMs,
+        end_ms: drag.previewEndMs,
+        duration_ms: drag.previewEndMs - drag.previewStartMs,
+        is_edited: true,
+      });
+      seekToMs(drag.mode === 'trim-end' ? drag.previewEndMs : drag.previewStartMs);
+    }
+  };
 
   const activeSubtitleSpot = spots.find(
     (s) =>
@@ -328,7 +541,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-300" aria-hidden="true" />รอ</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-slate-300" aria-hidden="true" />ข้าม</span>
           </div>
-          {hoverTimeMs !== null && (
+          {activeDrag?.hasMoved ? (
+            <span className="inline-flex items-center gap-1.5 rounded bg-slate-900 px-2 py-0.5 font-mono text-xs tabular-nums text-white">
+              <span>{monitorTime(activeDrag.previewStartMs)} – {monitorTime(activeDrag.previewEndMs)}</span>
+              <span className="text-brand-300">{((activeDrag.previewEndMs - activeDrag.previewStartMs) / 1000).toFixed(1)}s</span>
+            </span>
+          ) : hoverTimeMs !== null && (
             <span className="hidden sm:inline font-mono tabular-nums text-slate-500" title="ตำแหน่งเมาส์" aria-hidden="true">
               {monitorTime(hoverTimeMs)}
             </span>
@@ -348,11 +566,18 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       <div className="flex shrink-0 min-w-0 overflow-hidden bg-white">
         <div className="w-20 sm:w-24 shrink-0 whitespace-nowrap border-r border-slate-200 bg-slate-50 text-xs">
           <div className="flex h-7 items-center border-b border-slate-200 px-3 font-medium text-slate-500">เวลา</div>
-          <div className="flex h-10 items-center justify-between gap-1.5 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-400">{speechSegments.length}</span></div>
-          <div className="flex h-16 items-center justify-between gap-1.5 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-500">{spots.length}</span></div>
+          {showWaveformTrack && (
+            <div className="flex h-14 items-center border-b border-slate-200 px-3 text-slate-600">คลื่นเสียง</div>
+          )}
+          <div className="flex h-7 items-center justify-between gap-1.5 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-400">{speechSegments.length}</span></div>
+          <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-500">{spots.length}</span></div>
         </div>
-        <div ref={timelineScrollContainerRef} className="min-w-0 flex-1 overflow-x-auto select-none">
-          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className="relative min-w-full overflow-hidden cursor-crosshair bg-white">
+        <div
+          ref={timelineScrollContainerRef}
+          onScroll={drawWaveform}
+          className="min-w-0 flex-1 overflow-x-auto select-none"
+        >
+          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className="relative min-w-full overflow-x-clip cursor-crosshair bg-white">
             <div
               role="slider" tabIndex={videoUrl ? 0 : -1} aria-disabled={!videoUrl}
               aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
@@ -372,36 +597,174 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 </div>
               ))}
             </div>
-            <div className="relative h-10 border-b border-slate-200">
-              {speechSegments.map((seg, index) => (
-                <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-xs bg-slate-400/75" />
-              ))}
+            {showWaveformTrack && (
+              <div className="relative h-14 border-b border-slate-200 bg-white">
+                {waveformPeaks.length > 0 ? (
+                  <canvas
+                    ref={waveformCanvasRef}
+                    aria-hidden="true"
+                    style={{ width: `${Math.max(1, Math.floor(timelineViewportWidth))}px` }}
+                    className="pointer-events-none sticky left-0 block h-full"
+                  />
+                ) : (
+                  <div className="pointer-events-none relative h-full w-full overflow-hidden bg-gradient-to-b from-white via-brand-50/35 to-white">
+                    <svg
+                      aria-hidden="true"
+                      className="waveform-loading-wave-slow absolute inset-y-0 left-0 h-full w-[calc(100%+240px)] blur-[2px]"
+                      preserveAspectRatio="none"
+                    >
+                      <defs>
+                        <linearGradient id="ad-mist-fill-back" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.16" />
+                          <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.34" />
+                          <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.04" />
+                        </linearGradient>
+                        <pattern id="ad-loading-wave-soft" width="240" height="56" patternUnits="userSpaceOnUse">
+                          <path
+                            d="M0 30 Q 60 12, 120 30 T 240 30 L 240 56 L 0 56 Z"
+                            fill="url(#ad-mist-fill-back)"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#ad-loading-wave-soft)" />
+                    </svg>
+                    <svg
+                      aria-hidden="true"
+                      className="waveform-loading-wave absolute inset-y-0 left-0 h-full w-[calc(100%+240px)] blur-[1px]"
+                      preserveAspectRatio="none"
+                    >
+                      <defs>
+                        <linearGradient id="ad-mist-fill-front" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.24" />
+                          <stop offset="60%" stopColor="#0284c7" stopOpacity="0.15" />
+                          <stop offset="100%" stopColor="#0284c7" stopOpacity="0" />
+                        </linearGradient>
+                        <pattern id="ad-loading-wave-main" width="240" height="56" patternUnits="userSpaceOnUse">
+                          <path
+                            d="M0 28 Q 60 15, 120 28 T 240 28 L 240 56 L 0 56 Z"
+                            fill="url(#ad-mist-fill-front)"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#ad-loading-wave-main)" />
+                    </svg>
+                    <div
+                      style={{ width: `${Math.max(1, Math.floor(timelineViewportWidth))}px` }}
+                      className="sticky left-0 flex h-full items-center justify-center px-3"
+                    >
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-xs font-medium text-brand-900 backdrop-blur-xs tabular-nums">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" aria-hidden="true" />
+                        <span>กำลังสแกนเสียง</span>
+                        {detectProgress && <span className="font-semibold text-brand-700">{detectProgress.percent}%</span>}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="relative h-7 border-b border-slate-200 bg-white">
+              {isDetecting && speechSegments.length === 0 ? (
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-brand-50/40 via-slate-50/60 to-brand-50/40" />
+              ) : (
+                speechSegments.map((seg, index) => (
+                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-xs bg-slate-400/75" />
+                ))
+              )}
             </div>
-            <div className="relative h-16 bg-slate-50/40">
+            <div className="relative h-14 bg-slate-50/40">
+              {activeDrag?.hasMoved && (() => {
+                const trackWidth = timelineViewportWidth * zoomLevel;
+                const gapLeft = Math.max(0, (activeDrag.originSpot.original_start_ms / effectiveDurationMs) * trackWidth);
+                const gapWidth = Math.max(
+                  2,
+                  ((activeDrag.originSpot.original_end_ms - activeDrag.originSpot.original_start_ms) / effectiveDurationMs) * trackWidth
+                );
+                return (
+                  <div
+                    aria-hidden="true"
+                    style={{ left: gapLeft, width: gapWidth }}
+                    className="pointer-events-none absolute top-1 bottom-1 z-10 rounded-xs border border-dashed border-brand-400 bg-brand-100/45"
+                  />
+                );
+              })()}
               {spots.map((spot, index) => {
                 const trackWidth = timelineViewportWidth * zoomLevel;
-                const left = Math.max(0, spot.start_ms / effectiveDurationMs * trackWidth);
-                const width = Math.max(1, (spot.end_ms - spot.start_ms) / effectiveDurationMs * trackWidth);
+                const isDraggingThis = activeDrag?.spotId === spot.spot_id;
+                const displayStartMs = isDraggingThis ? activeDrag.previewStartMs : spot.start_ms;
+                const displayEndMs = isDraggingThis ? activeDrag.previewEndMs : spot.end_ms;
+                const left = Math.max(0, (displayStartMs / effectiveDurationMs) * trackWidth);
+                const width = Math.max(2, ((displayEndMs - displayStartMs) / effectiveDurationMs) * trackWidth);
                 const padding = Math.max(0, (32 - width) / 2);
                 const previous = spots[index - 1];
                 const next = spots[index + 1];
                 // Share the space between spots without overlapping neighboring hit targets.
-                const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + spot.start_ms) / 2 / effectiveDurationMs * trackWidth : 0);
-                const hitRight = Math.min(trackWidth, left + width + padding, next ? (spot.end_ms + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
+                const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + displayStartMs) / 2 / effectiveDurationMs * trackWidth : 0);
+                const hitRight = Math.min(trackWidth, left + width + padding, next ? (displayEndMs + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
                 const isSelected = spot.spot_id === selectedSpotId;
+                const showHandles = !isAnalyzing && width >= 18;
                 const colorClasses = spot.decision === 'generate'
                   ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
                   : spot.decision === 'skip'
                   ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
                   : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
                 return (
-                  <button key={spot.spot_id} type="button" aria-pressed={isSelected} aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} · ${decisionLabels[spot.decision]}`} onClick={(event) => {
-                    event.stopPropagation(); onSelectSpot(spot.spot_id, true); seekToMs(spot.start_ms);
-                  }} style={{ left: hitLeft, width: Math.max(1, hitRight - hitLeft) }} title={`ช่วง ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`group absolute top-0 bottom-0 min-h-0 min-w-0 cursor-pointer rounded px-0 ${isSelected ? 'z-20' : 'z-10'}`}>
-                    <span style={{ left: left - hitLeft, width }} className={`pointer-events-none absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}>
-                      {width >= 24 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{index + 1}</span>}
+                  <div
+                    key={spot.spot_id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(displayStartMs)} ถึง ${formatTimestampDisplay(displayEndMs)} · ${decisionLabels[spot.decision]}`}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === ' ' || event.key === 'Enter') {
+                        event.preventDefault();
+                        onSelectSpot(spot.spot_id, true);
+                        seekToMs(spot.start_ms);
+                      }
+                    }}
+                    onPointerDown={(event) => startSpotDrag(event, spot, 'move')}
+                    onPointerMove={handleSpotDragMove}
+                    onPointerUp={(event) => finishSpotDrag(event, false)}
+                    onPointerCancel={(event) => finishSpotDrag(event, true)}
+                    style={{ left: hitLeft, width: Math.max(2, hitRight - hitLeft) }}
+                    title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)} (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)${spot.text ? `\n${spot.text}` : ''}`}
+                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${isAnalyzing ? 'cursor-pointer' : isDraggingThis ? 'cursor-grabbing' : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
+                  >
+                    <span
+                      style={{ left: left - hitLeft, width }}
+                      className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}
+                    >
+                      {showHandles && (
+                        <span
+                          aria-label={`ลากขอบซ้ายเพื่อปรับเวลาเริ่มช่วงที่ ${index + 1}`}
+                          onPointerDown={(event) => startSpotDrag(event, spot, 'trim-start')}
+                          onPointerMove={handleSpotDragMove}
+                          onPointerUp={(event) => finishSpotDrag(event, false)}
+                          onPointerCancel={(event) => finishSpotDrag(event, true)}
+                          className="absolute inset-y-0 left-0 z-10 flex w-2.5 cursor-ew-resize items-center justify-center hover:bg-black/20"
+                        >
+                          <span className={`h-4 w-0.5 rounded-full bg-white/90 transition-opacity ${isSelected || isDraggingThis ? 'opacity-90' : 'opacity-0 group-hover:opacity-100'}`} />
+                        </span>
+                      )}
+                      {width >= 24 && (
+                        <span className="pointer-events-none truncate px-2 font-mono text-xs font-semibold tabular-nums">
+                          {index + 1}
+                        </span>
+                      )}
+                      {showHandles && (
+                        <span
+                          aria-label={`ลากขอบขวาเพื่อปรับเวลาจบช่วงที่ ${index + 1}`}
+                          onPointerDown={(event) => startSpotDrag(event, spot, 'trim-end')}
+                          onPointerMove={handleSpotDragMove}
+                          onPointerUp={(event) => finishSpotDrag(event, false)}
+                          onPointerCancel={(event) => finishSpotDrag(event, true)}
+                          className="absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-ew-resize items-center justify-center hover:bg-black/20"
+                        >
+                          <span className={`h-4 w-0.5 rounded-full bg-white/90 transition-opacity ${isSelected || isDraggingThis ? 'opacity-90' : 'opacity-0 group-hover:opacity-100'}`} />
+                        </span>
+                      )}
                     </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>

@@ -1,11 +1,12 @@
 /// <reference lib="webworker" />
 import { createFile } from 'mp4box';
 import * as ort from 'onnxruntime-web';
-import { AudioSignalAnalysis, VADConfig, VADOutput } from '../types/ad';
+import { AudioSignalAnalysis, VADConfig, VADOutput, WaveformEnvelope } from '../types/ad';
 import {
   analyzeAudioSignalAndRecommendVad,
   computeVadOutputFromProbabilities,
 } from '../utils/vadPostProcess';
+import { WaveformPeakAccumulator } from '../utils/waveform';
 
 // Configure ONNX Runtime Web WASM paths using absolute origin URL
 const workerOrigin = typeof location !== 'undefined' && location.origin ? location.origin : '';
@@ -20,6 +21,7 @@ const VAD_CONTEXT_SAMPLES = 64; // Silero v5 context window @ 16kHz
 let cachedSession: ort.InferenceSession | null = null;
 let lastProbabilities: Float32Array | null = null;
 let lastSignalAnalysis: AudioSignalAnalysis | undefined = undefined;
+let lastWaveform: WaveformEnvelope | undefined = undefined;
 let lastDurationMs = 0;
 
 async function getVadSession(): Promise<ort.InferenceSession> {
@@ -233,14 +235,17 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       });
       return;
     }
-    const vadOutput: VADOutput = computeVadOutputFromProbabilities(
-      lastProbabilities,
-      lastDurationMs,
-      msg.vadConfig,
-      VAD_FRAME_SAMPLES,
-      TARGET_SAMPLE_RATE,
-      lastSignalAnalysis
-    );
+    const vadOutput: VADOutput = {
+      ...computeVadOutputFromProbabilities(
+        lastProbabilities,
+        lastDurationMs,
+        msg.vadConfig,
+        VAD_FRAME_SAMPLES,
+        TARGET_SAMPLE_RATE,
+        lastSignalAnalysis
+      ),
+      ...(lastWaveform ? { waveform: lastWaveform } : {}),
+    };
     self.postMessage({
       type: 'COMPLETE',
       vadOutput,
@@ -296,8 +301,13 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
         });
       };
 
-      const appendPcm16k = (chunk16k: Float32Array) => {
+      const waveformAccumulator = new WaveformPeakAccumulator(TARGET_SAMPLE_RATE);
+
+      const appendPcm16k = (chunk16k: Float32Array, recordWaveform = true) => {
         if (chunk16k.length === 0) return;
+        if (recordWaveform) {
+          waveformAccumulator.push(chunk16k);
+        }
         const combined = new Float32Array(pendingPcm.length + chunk16k.length);
         combined.set(pendingPcm, 0);
         combined.set(chunk16k, pendingPcm.length);
@@ -574,7 +584,7 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       // 2. Pad any remaining trailing sub-frame (< 512 samples) with zeros to complete the final frame
       if (pendingPcm.length > 0 && pendingPcm.length < VAD_FRAME_SAMPLES) {
         const padSize = VAD_FRAME_SAMPLES - pendingPcm.length;
-        appendPcm16k(new Float32Array(padSize));
+        appendPcm16k(new Float32Array(padSize), false);
         await runPendingVadFrames();
       }
 
@@ -592,19 +602,23 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       lastProbabilities = Float32Array.from(frameProbabilities);
       lastDurationMs = computedDurationMs;
       lastSignalAnalysis = analyzeAudioSignalAndRecommendVad(lastProbabilities, frameRmsValues);
+      lastWaveform = waveformAccumulator.finalize();
 
       const effectiveConfig: VADConfig = autoTuneOptimal
         ? lastSignalAnalysis.recommendedConfig
         : vadConfig;
 
-      const vadOutput: VADOutput = computeVadOutputFromProbabilities(
-        lastProbabilities,
-        computedDurationMs,
-        effectiveConfig,
-        VAD_FRAME_SAMPLES,
-        TARGET_SAMPLE_RATE,
-        lastSignalAnalysis
-      );
+      const vadOutput: VADOutput = {
+        ...computeVadOutputFromProbabilities(
+          lastProbabilities,
+          computedDurationMs,
+          effectiveConfig,
+          VAD_FRAME_SAMPLES,
+          TARGET_SAMPLE_RATE,
+          lastSignalAnalysis
+        ),
+        waveform: lastWaveform,
+      };
 
       self.postMessage({
         type: 'COMPLETE',
