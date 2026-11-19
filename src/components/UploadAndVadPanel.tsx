@@ -356,8 +356,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             ? 'bg-red-50 text-red-800 hover:bg-red-100'
             : activityFeedback
             ? 'border border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
-            : !vadOutput?.candidate_spots.length
-            ? 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+            : status === 'READY' || !vadOutput?.candidate_spots.length
+            ? 'border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80'
             : 'bg-brand-50 text-brand-900 hover:bg-brand-100'
         }`}
       >

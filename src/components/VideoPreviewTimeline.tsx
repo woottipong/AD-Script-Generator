@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  CheckCircle2,
-  Clock,
   Film,
   Loader2,
-  MinusCircle,
   Pause,
   Play,
   Repeat,
@@ -17,9 +14,8 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { ADSpot, AnalysisBatch, SpeechSegment, VideoMetadata } from '../types/ad';
+import { ADSpot, SpeechSegment, VideoMetadata } from '../types/ad';
 import {
-  estimateThaiSpeechDurationMs,
   formatCompactTime,
   formatTimestampDisplay,
 } from '../utils/formatters';
@@ -39,7 +35,6 @@ interface VideoPreviewTimelineProps {
   onTimeUpdateMs: (ms: number) => void;
   speechSegments: SpeechSegment[];
   spots: ADSpot[];
-  batches: AnalysisBatch[];
   selectedSpotId: string | null;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -53,7 +48,6 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   onTimeUpdateMs,
   speechSegments,
   spots,
-  batches,
   selectedSpotId,
   onSelectSpot,
   videoRef,
@@ -224,12 +218,6 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       ? Math.min(100, Math.max(0, (currentTimeMs / effectiveDurationMs) * 100))
       : 0;
 
-  const selectedSpotSpeechMs =
-    selectedSpot && selectedSpot.decision === 'generate'
-      ? estimateThaiSpeechDurationMs(selectedSpot.text)
-      : 0;
-  const isSelectedOverDuration = Boolean(selectedSpot && selectedSpotSpeechMs > selectedSpot.duration_ms);
-
   return (
     <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col">
@@ -301,7 +289,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-brand-100 bg-brand-50 px-3 py-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 bg-white px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
             <button type="button" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} title="ย้อนกลับ 5 วินาที" aria-label="ย้อนกลับ 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>−5s</button>
             <button type="button" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} title="ย้อนกลับ 1 วินาที" aria-label="ย้อนกลับ 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>−1s</button>
@@ -311,11 +299,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <button type="button" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} title="เดินหน้า 1 วินาที" aria-label="เดินหน้า 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>+1s</button>
             <button type="button" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} title="เดินหน้า 5 วินาที" aria-label="เดินหน้า 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>+5s</button>
           </div>
-          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-brand-200 pl-2">
+          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-slate-200 pl-2">
             <button type="button" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} title="ช่วงก่อนหน้า (Alt + ↑)" aria-label="ช่วงบรรยายก่อนหน้า" className={transportControl}><SkipBack className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} title="ช่วงถัดไป (Alt + ↓)" aria-label="ช่วงบรรยายถัดไป" className={transportControl}><SkipForward className="h-4 w-4" aria-hidden="true" /></button>
           </div>
-          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-brand-200 sm:pl-2">
+          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-slate-200 sm:pl-2">
             <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={() => setShowCaptionOverlay((prev) => !prev)} disabled={!videoUrl} title={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-label={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-pressed={showCaptionOverlay} className={`${controlBase} ${showCaptionOverlay ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Subtitles className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
@@ -326,122 +314,99 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
-        {selectedSpot ? (
-          <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-            <span className="font-semibold text-slate-900" aria-label={`ช่วงที่เลือก ${selectedSpotIndex + 1} จาก ${spots.length}`}>ช่วง {selectedSpotIndex + 1}/{spots.length}</span>
-            <span className="whitespace-nowrap font-mono tabular-nums text-slate-600" title={`${formatTimestampDisplay(selectedSpot.start_ms)} – ${formatTimestampDisplay(selectedSpot.end_ms)}`}>{monitorTime(selectedSpot.start_ms)} – {monitorTime(selectedSpot.end_ms)}</span>
-            <span className="whitespace-nowrap tabular-nums text-slate-600">{(selectedSpot.duration_ms / 1000).toFixed(1)}s</span>
-            {selectedSpot.decision === 'generate' ? (
-              <span className={`flex items-center gap-1 ${isSelectedOverDuration ? 'font-semibold text-amber-800' : 'text-brand-800'}`} title="เวลาพูดโดยประมาณ">{isSelectedOverDuration ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}อ่าน ~{(selectedSpotSpeechMs / 1000).toFixed(1)}s{isSelectedOverDuration && ' · เกินเวลา'}</span>
-            ) : selectedSpot.decision === 'pending' ? (
-              <span className="flex items-center gap-1 text-amber-800"><Clock className="h-3.5 w-3.5" aria-hidden="true" />รอสร้าง</span>
-            ) : (
-              <span className="flex items-center gap-1 text-slate-600"><MinusCircle className="h-3.5 w-3.5" aria-hidden="true" />ข้าม</span>
-            )}
-          </div>
-        ) : <p className="min-w-0 grow basis-80 text-xs text-slate-600">เลือกช่วงบรรยายบนไทม์ไลน์เพื่อดูเวลา</p>}
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          {selectedSpot && (
-            <button type="button" disabled={!videoUrl} onClick={() => {
-              seekToMs(selectedSpot.start_ms);
-              if (videoRef.current?.paused) playVideo();
-            }} title={`เริ่มเล่นจาก ${formatTimestampDisplay(selectedSpot.start_ms)}`} aria-label="เล่นจากช่วงที่เลือก" className={`${controlBase} gap-1.5 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100`}>
-              <Play className="h-3.5 w-3.5" aria-hidden="true" /><span className="hidden sm:inline">เล่นจากช่วงนี้</span>
-            </button>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-y border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+        <div className="flex min-w-0 items-center gap-3">
+          {selectedSpot ? (
+            <span className="font-semibold text-slate-900 tabular-nums" aria-label={`ช่วงที่เลือก ${selectedSpotIndex + 1} จาก ${spots.length}`}>
+              ช่วง {selectedSpotIndex + 1}/{spots.length}
+            </span>
+          ) : (
+            <span className="text-slate-500">ไทม์ไลน์</span>
           )}
-          <div role="group" aria-label="ซูมไทม์ไลน์" className="flex shrink-0 items-center gap-0.5 border-l border-slate-200 pl-3">
-            {selectedSpot && selectedSpot.duration_ms / effectiveDurationMs * timelineViewportWidth * zoomLevel < 24 && zoomLevel < MAX_TIMELINE_ZOOM && (
-              <button type="button" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))} className={`${timelineControl} underline underline-offset-2`}>ซูมช่วงนี้</button>
-            )}
-            <button type="button" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} title="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์" aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className={timelineControl}>พอดี</button>
-            <button type="button" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} title="ย่อไทม์ไลน์" aria-label="ย่อไทม์ไลน์" className={timelineControl}><ZoomOut className="h-4 w-4" aria-hidden="true" /></button>
-            <span className="min-w-12 text-center text-xs text-slate-600 tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
-            <button type="button" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} title="ขยายไทม์ไลน์" aria-label="ขยายไทม์ไลน์" className={timelineControl}><ZoomIn className="h-4 w-4" aria-hidden="true" /></button>
+          <div className="hidden xl:flex items-center gap-3 text-slate-600" aria-label="สถานะช่วงบรรยาย">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-brand-700" aria-hidden="true" />บรรยาย</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-300" aria-hidden="true" />รอ</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-slate-300" aria-hidden="true" />ข้าม</span>
           </div>
+          {hoverTimeMs !== null && (
+            <span className="hidden sm:inline font-mono tabular-nums text-slate-500" title="ตำแหน่งเมาส์" aria-hidden="true">
+              {monitorTime(hoverTimeMs)}
+            </span>
+          )}
+        </div>
+        <div role="group" aria-label="ซูมไทม์ไลน์" className="ml-auto flex shrink-0 items-center gap-0.5">
+          {selectedSpot && selectedSpot.duration_ms / effectiveDurationMs * timelineViewportWidth * zoomLevel < 24 && zoomLevel < MAX_TIMELINE_ZOOM && (
+            <button type="button" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))} className={`${timelineControl} underline underline-offset-2`}>ซูมช่วงนี้</button>
+          )}
+          <button type="button" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} title="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์" aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className={timelineControl}>พอดี</button>
+          <button type="button" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} title="ย่อไทม์ไลน์" aria-label="ย่อไทม์ไลน์" className={timelineControl}><ZoomOut className="h-4 w-4" aria-hidden="true" /></button>
+          <span className="min-w-11 text-center text-xs text-slate-600 tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
+          <button type="button" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} title="ขยายไทม์ไลน์" aria-label="ขยายไทม์ไลน์" className={timelineControl}><ZoomIn className="h-4 w-4" aria-hidden="true" /></button>
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col gap-2 bg-white px-3 py-3">
-        <div className="flex min-w-0 overflow-hidden rounded-md border border-slate-200">
-          <div className="w-24 sm:w-28 shrink-0 whitespace-nowrap border-r border-slate-200 bg-slate-50 text-xs">
-            <div className="flex h-8 items-center border-b border-slate-200 px-3 font-medium text-slate-600">แทร็ก</div>
-            {batches.length > 0 && <div className="flex h-9 items-center justify-between gap-2 border-b border-slate-200 px-3 text-slate-600"><span>วิเคราะห์</span><span className="hidden shrink-0 sm:inline tabular-nums">{batches.length}</span></div>}
-            <div className="flex h-12 items-center justify-between gap-2 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums">{speechSegments.length}</span></div>
-            <div className="flex h-16 items-center justify-between gap-2 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums">{spots.length}</span></div>
-          </div>
-          <div ref={timelineScrollContainerRef} className="min-w-0 flex-1 overflow-x-auto pb-1 select-none">
-            <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className="relative min-w-full overflow-hidden cursor-crosshair bg-white">
-              <div
-                role="slider" tabIndex={videoUrl ? 0 : -1} aria-disabled={!videoUrl}
-                aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
-                aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={Math.min(durationMs, currentTimeMs)} aria-valuetext={formatTimestampDisplay(currentTimeMs)}
-                onKeyDown={(event) => {
-                  const nextTime = event.key === 'ArrowLeft' ? currentTimeMs - 1000
-                    : event.key === 'ArrowRight' ? currentTimeMs + 1000
-                    : event.key === 'Home' ? 0 : event.key === 'End' ? durationMs : null;
-                  if (nextTime !== null && videoUrl) { event.preventDefault(); seekToMs(nextTime); }
-                }}
-                className="relative h-8 border-b border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
-              >
-                {ticks.map((tickMs, idx) => (
-                  <div key={idx} style={{ left: `${tickMs / effectiveDurationMs * 100}%` }} className="pointer-events-none absolute top-0 bottom-0 w-0">
-                    <div className="h-1.5 w-px bg-slate-300" />
-                    <span className={`absolute bottom-1 whitespace-nowrap font-mono text-xs text-slate-600 tabular-nums ${idx === 0 ? 'translate-x-2' : idx === ticks.length - 1 ? '-translate-x-full pr-2' : '-translate-x-1/2'}`}>{formatCompactTime(tickMs)}</span>
-                  </div>
-                ))}
-              </div>
-              {batches.length > 0 && (
-                <div className="relative h-9 border-b border-slate-200 bg-slate-50/60">
-                  {batches.map((b) => (
-                    <div key={b.batch_id} style={{ left: `${Math.max(0, b.batch_start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.5, (b.batch_end_ms - b.batch_start_ms) / effectiveDurationMs * 100)}%` }} className={`pointer-events-none absolute top-0.5 bottom-0.5 flex items-center justify-between overflow-hidden border-r border-slate-200 px-1.5 text-xs ${b.status === 'processing' ? 'bg-amber-100 text-slate-900' : b.status === 'completed' ? 'bg-brand-50 text-brand-800' : b.status === 'failed' ? 'bg-red-50 text-red-800' : 'bg-slate-100 text-slate-600'}`}>
-                      <span className="truncate">ชุด {b.batch_index}</span>{b.status === 'processing' && <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="relative h-12 border-b border-slate-200">
-                {speechSegments.map((seg, index) => (
-                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-xs bg-slate-600/85" />
-                ))}
-              </div>
-              <div className="relative h-16 bg-slate-50/40">
-                {spots.map((spot, index) => {
-                  const trackWidth = timelineViewportWidth * zoomLevel;
-                  const left = Math.max(0, spot.start_ms / effectiveDurationMs * trackWidth);
-                  const width = Math.max(1, (spot.end_ms - spot.start_ms) / effectiveDurationMs * trackWidth);
-                  const padding = Math.max(0, (32 - width) / 2);
-                  const previous = spots[index - 1];
-                  const next = spots[index + 1];
-                  // Share the space between spots without overlapping neighboring hit targets.
-                  const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + spot.start_ms) / 2 / effectiveDurationMs * trackWidth : 0);
-                  const hitRight = Math.min(trackWidth, left + width + padding, next ? (spot.end_ms + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
-                  const isSelected = spot.spot_id === selectedSpotId;
-                  const colorClasses = spot.decision === 'generate'
-                    ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
-                    : spot.decision === 'skip'
-                    ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
-                    : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
-                  return (
-                    <button key={spot.spot_id} type="button" aria-pressed={isSelected} aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} · ${decisionLabels[spot.decision]}`} onClick={(event) => {
-                      event.stopPropagation(); onSelectSpot(spot.spot_id, true); seekToMs(spot.start_ms);
-                    }} style={{ left: hitLeft, width: Math.max(1, hitRight - hitLeft) }} title={`ช่วง ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`group absolute top-0 bottom-0 min-h-0 min-w-0 cursor-pointer rounded px-0 ${isSelected ? 'z-20' : 'z-10'}`}>
-                      <span style={{ left: left - hitLeft, width }} className={`pointer-events-none absolute top-1 bottom-1 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}>
-                        {width >= 24 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{index + 1}</span>}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 h-2.5 w-2.5 rotate-45 bg-red-600" /></div>
-            </div>
-          </div>
+      <div className="flex shrink-0 min-w-0 overflow-hidden bg-white">
+        <div className="w-20 sm:w-24 shrink-0 whitespace-nowrap border-r border-slate-200 bg-slate-50 text-xs">
+          <div className="flex h-7 items-center border-b border-slate-200 px-3 font-medium text-slate-500">เวลา</div>
+          <div className="flex h-10 items-center justify-between gap-1.5 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-400">{speechSegments.length}</span></div>
+          <div className="flex h-16 items-center justify-between gap-1.5 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-500">{spots.length}</span></div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-slate-600" aria-label="สถานะช่วงบรรยาย">
-          <span className="mr-auto hidden sm:inline font-mono tabular-nums text-slate-600" title="ตำแหน่งเมาส์" aria-hidden="true">{hoverTimeMs !== null ? monitorTime(hoverTimeMs) : '\u00a0'}</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-brand-700" aria-hidden="true" />มีบทบรรยาย</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-200" aria-hidden="true" />รอสร้าง</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-slate-300" aria-hidden="true" />ข้าม</span>
+        <div ref={timelineScrollContainerRef} className="min-w-0 flex-1 overflow-x-auto select-none">
+          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className="relative min-w-full overflow-hidden cursor-crosshair bg-white">
+            <div
+              role="slider" tabIndex={videoUrl ? 0 : -1} aria-disabled={!videoUrl}
+              aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
+              aria-valuemin={0} aria-valuemax={durationMs} aria-valuenow={Math.min(durationMs, currentTimeMs)} aria-valuetext={formatTimestampDisplay(currentTimeMs)}
+              onKeyDown={(event) => {
+                const nextTime = event.key === 'ArrowLeft' ? currentTimeMs - 1000
+                  : event.key === 'ArrowRight' ? currentTimeMs + 1000
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? durationMs : null;
+                if (nextTime !== null && videoUrl) { event.preventDefault(); seekToMs(nextTime); }
+              }}
+              className="relative h-7 border-b border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
+            >
+              {ticks.map((tickMs, idx) => (
+                <div key={idx} style={{ left: `${tickMs / effectiveDurationMs * 100}%` }} className="pointer-events-none absolute top-0 bottom-0 w-0">
+                  <div className="h-1.5 w-px bg-slate-300" />
+                  <span className={`absolute bottom-1 whitespace-nowrap font-mono text-xs text-slate-500 tabular-nums ${idx === 0 ? 'translate-x-2' : idx === ticks.length - 1 ? '-translate-x-full pr-2' : '-translate-x-1/2'}`}>{formatCompactTime(tickMs)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="relative h-10 border-b border-slate-200">
+              {speechSegments.map((seg, index) => (
+                <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-xs bg-slate-400/75" />
+              ))}
+            </div>
+            <div className="relative h-16 bg-slate-50/40">
+              {spots.map((spot, index) => {
+                const trackWidth = timelineViewportWidth * zoomLevel;
+                const left = Math.max(0, spot.start_ms / effectiveDurationMs * trackWidth);
+                const width = Math.max(1, (spot.end_ms - spot.start_ms) / effectiveDurationMs * trackWidth);
+                const padding = Math.max(0, (32 - width) / 2);
+                const previous = spots[index - 1];
+                const next = spots[index + 1];
+                // Share the space between spots without overlapping neighboring hit targets.
+                const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + spot.start_ms) / 2 / effectiveDurationMs * trackWidth : 0);
+                const hitRight = Math.min(trackWidth, left + width + padding, next ? (spot.end_ms + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
+                const isSelected = spot.spot_id === selectedSpotId;
+                const colorClasses = spot.decision === 'generate'
+                  ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
+                  : spot.decision === 'skip'
+                  ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
+                  : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
+                return (
+                  <button key={spot.spot_id} type="button" aria-pressed={isSelected} aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} · ${decisionLabels[spot.decision]}`} onClick={(event) => {
+                    event.stopPropagation(); onSelectSpot(spot.spot_id, true); seekToMs(spot.start_ms);
+                  }} style={{ left: hitLeft, width: Math.max(1, hitRight - hitLeft) }} title={`ช่วง ${index + 1} · ${formatTimestampDisplay(spot.start_ms)} – ${formatTimestampDisplay(spot.end_ms)}${spot.text ? `: ${spot.text}` : ''}`} className={`group absolute top-0 bottom-0 min-h-0 min-w-0 cursor-pointer rounded px-0 ${isSelected ? 'z-20' : 'z-10'}`}>
+                    <span style={{ left: left - hitLeft, width }} className={`pointer-events-none absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}>
+                      {width >= 24 && <span className="truncate font-mono text-xs font-semibold tabular-nums">{index + 1}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 h-2.5 w-2.5 rotate-45 bg-red-600" /></div>
+          </div>
         </div>
       </div>
       </div>

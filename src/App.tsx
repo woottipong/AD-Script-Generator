@@ -821,7 +821,6 @@ export default function App() {
             onTimeUpdateMs={setCurrentTimeMs}
             speechSegments={vadOutput?.speech_segments || []}
             spots={spots}
-            batches={batches}
             selectedSpotId={selectedSpotId}
             onSelectSpot={handleSelectSpot}
             videoRef={videoRef}
