@@ -23,6 +23,7 @@ import {
 import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
+  formatCompactTime,
   formatTimestampDisplay,
 } from './src/utils/formatters';
 import { mergeProcessingState } from './src/utils/jobProcessing';
@@ -477,27 +478,46 @@ async function analyzeBatchWithGemini(
   const paceCharsPerSec = adSettings.narrationPaceCharsPerSec || 11.5;
   const safetyBufferMs = adSettings.safetyBufferMs ?? 250;
 
-  // Find surrounding speech segments in this window for additional context awareness
-  const nearbySpeech = job.vad_output.speech_segments.filter(
-    (seg) => seg.end_ms >= batch.window_start_ms && seg.start_ms <= batch.window_end_ms
-  );
+  const clipBaseMs = startOffsetSeconds * 1000;
+  const clipEndBoundaryMs = endOffsetSeconds * 1000;
 
+  const speechOnsetMarginMs = 350;
   const candidateListDescription = batch.candidate_spots
     .map((spot) => {
       const durationSec = (spot.duration_ms / 1000).toFixed(1);
-      // Subtract head & tail safety buffer (default 250ms * 2 = 500ms) so narration never collides with dialogue
-      const usableDurationSec = Math.max(1.2, (spot.duration_ms - safetyBufferMs * 2) / 1000);
-      const maxRecommendedChars = Math.max(10, Math.floor(usableDurationSec * paceCharsPerSec));
-      return `- spot_id: "${spot.spot_id}" | ช่วงเวลาว่าง: ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)} (ความยาวเต็ม ${durationSec}s · เวลาพูดจริงหลังหักระยะปลอดภัย ${usableDurationSec.toFixed(1)}s · ความยาวภาษาไทยที่เหมาะสมที่สุด: ไม่เกิน ~${maxRecommendedChars} ตัวอักษร)`;
+      // Subtract head & tail safety buffer (default 250ms * 2 = 500ms) and breath/onset margin (350ms)
+      // plus an 85% pacing headroom so natural LLM length overshoot still fits inside the gap
+      const usableDurationMs = Math.max(500, spot.duration_ms - safetyBufferMs * 2);
+      const usableDurationSec = usableDurationMs / 1000;
+      const speakableDurationSec = Math.max(0.5, (usableDurationMs - speechOnsetMarginMs) / 1000);
+      const maxRecommendedChars = Math.max(
+        8,
+        Math.floor(speakableDurationSec * paceCharsPerSec * 0.85)
+      );
+      const maxRecommendedWords = Math.max(3, Math.round(maxRecommendedChars / 4.5));
+      const clipStartMs = Math.max(0, spot.start_ms - clipBaseMs);
+      const clipEndMs = Math.max(clipStartMs, spot.end_ms - clipBaseMs);
+      return `- spot_id: "${spot.spot_id}" | เวลาในคลิปนี้: ${formatCompactTime(clipStartMs)}–${formatCompactTime(clipEndMs)} (เวลาเต็ม: ${formatTimestampDisplay(spot.start_ms)}–${formatTimestampDisplay(spot.end_ms)} · ความยาวเต็ม ${durationSec}s · เวลาพูดจริง ${usableDurationSec.toFixed(1)}s · ห้ามเกิน ~${maxRecommendedChars} ตัวอักษร / ~${maxRecommendedWords} คำ)`;
     })
     .join('\n');
 
-  const speechContextDescription =
-    nearbySpeech.length > 0
-      ? nearbySpeech
-          .map((s) => `${formatTimestampDisplay(s.start_ms)} - ${formatTimestampDisplay(s.end_ms)}`)
-          .join(', ')
-      : 'ไม่มีช่วงเสียงพูดในช่วงเวลานี้';
+  // Include recent generated AD lines from earlier batches for character/scene continuity
+  const previousGeneratedSpots = (job.spots || [])
+    .filter(
+      (s) =>
+        s.decision === 'generate' &&
+        s.text.trim().length > 0 &&
+        s.start_ms < batch.batch_start_ms
+    )
+    .sort((a, b) => a.start_ms - b.start_ms)
+    .slice(-5);
+
+  const continuityContextSection =
+    previousGeneratedSpots.length > 0
+      ? `\n- บทบรรยายช่วงล่าสุดก่อนหน้า Batch นี้ (ใช้รักษาความต่อเนื่องของชื่อตัวละคร สถานที่ และไม่บรรยายซ้ำ):\n${previousGeneratedSpots
+          .map((s) => `  • [${formatTimestampDisplay(s.start_ms)}] ${s.text.trim()}`)
+          .join('\n')}`
+      : '';
 
   const genreGuidanceMap: Record<ADAnalysisSettings['contentGenre'], string> = {
     auto_cinema:
@@ -512,7 +532,7 @@ async function analyzeBatchWithGemini(
 
   const styleRulesExtra = [
     adSettings.avoidCameraJargon
-      ? '- ห้ามใช้ศัพท์เทคนิคมุมกล้อง เช่น "กล้องแพน", "กล้องซูม", "ภาพตัดไปที่" ให้บรรยายสิ่งที่ปรากฏในภาพโดยตรง (เช่น "ในห้องครัว...", "ระยะใกล้ที่มือของชายหนุ่ม...")'
+      ? '- ห้ามใช้ศัพท์เทคนิคมุมกล้องหรือขนาดภาพ เช่น "กล้องแพน", "กล้องซูม", "ภาพตัดไปที่", "ระยะใกล้" ให้บรรยายสิ่งที่เกิดขึ้นตรง ๆ (เช่น "ในห้องครัว...", "มือของชายหนุ่มกำกุญแจแน่น")'
       : '',
     adSettings.prioritizeCharacterActions
       ? '- ใช้โครงสร้างประโยคกรรตุวาจก (ประธาน + กริยา + กรรม) ที่กระชับและเข้าใจง่ายในครั้งเดียวที่ฟัง'
@@ -530,21 +550,27 @@ async function analyzeBatchWithGemini(
 ${styleRulesExtra}
 
 กฎการวิเคราะห์ (AI Analysis Rules):
-1. เข้าใจเหตุการณ์จากทั้งภาพและเสียงในวิดีโอ
-2. วิเคราะห์บริบทสิ่งที่เกิดขึ้นก่อนหน้า ระหว่าง และหลัง Candidate Spot
-3. พิจารณาว่ามีเหตุการณ์สำคัญทางภาพ (เช่น การกระทำของตัวละคร การเปลี่ยนฉาก สีหน้าท่าทางที่ชัดเจน วัตถุสำคัญ หรือข้อความบนหน้าจอ) ที่ผู้ฟังไม่สามารถรับรู้ได้จากเสียงเพียงอย่างเดียวหรือไม่
-4. หลีกเลี่ยงการบรรยายซ้ำกับบทพูดหรือเสียงที่อธิบายเหตุการณ์อยู่แล้ว
-5. หลีกเลี่ยงการทับเสียงเหตุการณ์สำคัญ (เช่น เสียงดนตรีสำคัญหรือเสียงเอฟเฟกต์ที่ต้องฟังเพื่อเข้าใจเนื้อเรื่อง)
-6. สร้างคำบรรยายภาษาไทยที่กระชับ ชัดเจน เป็นธรรมชาติ และใช้ภาษาปัจจุบัน (เช่น "ชายคนหนึ่งเปิดประตูและเดินเข้าไปในห้อง")
-7. ห้ามเดาความรู้สึกภายใน ความตั้งใจ หรือข้อมูลที่ไม่ปรากฏให้เห็นชัดเจนในวิดีโอ ให้บรรยายเฉพาะสิ่งที่เห็นจริง
-8. ปรับความยาวข้อความให้พูดจบได้พอดีภายในระยะเวลาของ Spot นั้นๆ ตามจำนวนตัวอักษรที่แนะนำ
-9. ตอบ decision เป็น "skip" พร้อมระบุ reason ภาษาไทยสั้นๆ และให้ text เป็น "" หากไม่มีเหตุการณ์สำคัญที่ต้องบรรยาย หรือภาพนิ่ง/ต่อเนื่องไม่เปลี่ยนสาระสำคัญ
-10. ห้ามสร้าง spot_id ใหม่เด็ดขาด และต้องส่งผลลัพธ์ครบทุก spot_id ที่กำหนดใน Batch นี้เท่านั้น`;
+1. อ้างอิงตำแหน่งเหตุการณ์จาก "เวลาในคลิปนี้" เป็นหลัก โดยเข้าใจเหตุการณ์จากทั้งภาพและเสียง ก่อน ระหว่าง และหลัง Candidate Spot
+2. บรรยายเฉพาะเหตุการณ์สำคัญทางภาพ (เช่น การกระทำของตัวละคร การเปลี่ยนฉาก สีหน้าท่าทางที่ชัดเจน วัตถุสำคัญ หรือข้อความบนหน้าจอ) ที่ผู้ฟังไม่สามารถรับรู้ได้จากเสียงเพียงอย่างเดียว
+3. หลีกเลี่ยงการบรรยายซ้ำกับบทพูดหรือเสียงที่อธิบายเหตุการณ์อยู่แล้ว และห้ามทับเสียงดนตรีสำคัญหรือเสียงเอฟเฟกต์ที่ต้องฟังเพื่อเข้าใจเนื้อเรื่อง
+4. ใช้ภาษาพูดภาษาไทยที่เป็นธรรมชาติสำหรับอ่านออกเสียง เล่าแบบกาลปัจจุบัน (เหตุการณ์ที่กำลังเกิดขึ้น) กระชับ ไม่ใช้คำขึ้นต้นฟุ่มเฟือย เช่น "ภาพแสดงให้เห็น...", "ปรากฏภาพ...", "ในฉากนี้...", "เราจะเห็น..."
+5. ห้ามเดาความรู้สึกภายใน เจตนา หรือข้อมูลที่ไม่ปรากฏให้เห็นชัดเจน ห้ามสปอยล์เหตุการณ์ล่วงหน้า และหากข้อความบนหน้าจอเบลอหรือไม่ชัดจนอ่านได้ไม่ครบ ห้ามเดาคำ ให้ข้ามหรือบรรยายเฉพาะสิ่งที่เห็นชัดเจน
+6. รักษาความสม่ำเสมอในการเรียกตัวละคร ใช้ชื่อตัวละครเฉพาะเมื่อได้ยินในบทพูดหรือเห็นบนหน้าจอชัดเจนแล้วเท่านั้น ก่อนหน้านั้นให้ใช้ลักษณะเด่นที่คงที่ (เช่น "ชายเสื้อเชิ้ตฟ้า") ไม่เปลี่ยนคำเรียกไปมา
+7. คุมความยาวให้พูดจบก่อนหมดช่วงว่างเสมอ ห้ามเขียนเกินโควตาตัวอักษร/คำที่กำหนดในแต่ละ Spot หากช่วงว่างสั้นให้เลือกบรรยายเฉพาะใจความสำคัญที่สุด 1 อย่าง (สั้นกระชับดีกว่าพูดล้นไปทับบทพูดถัดไป)
+8. ตอบ decision เป็น "skip" พร้อมระบุ reason ภาษาไทยสั้นๆ และให้ text เป็น "" หากไม่มีเหตุการณ์สำคัญที่ต้องบรรยาย ภาพนิ่ง/ต่อเนื่องไม่เปลี่ยนสาระสำคัญ หรือเสียงอธิบายชัดเจนอยู่แล้ว
+9. ห้ามสร้าง spot_id ใหม่เด็ดขาด และต้องส่งผลลัพธ์ครบทุก spot_id ที่กำหนดใน Batch นี้เท่านั้น
+
+ตัวอย่างการตัดสินใจและสไตล์การเขียน (Few-shot Examples):
+- ช่วงสั้น (เต็ม 3.0s · ห้ามเกิน ~21 ตัวอักษร / ~5 คำ):
+  decision: "generate", text: "ชายเสื้อฟ้าเปิดประตูเข้าห้อง"
+- ช่วงยาว (เต็ม 7.5s · ห้ามเกิน ~64 ตัวอักษร / ~14 คำ):
+  decision: "generate", text: "หญิงสาววางแก้วน้ำลงบนโต๊ะ เธอหยิบซองจดหมายขึ้นมาพลิกดูแล้วชะงัก"
+- ช่วงที่ไม่ควรบรรยาย (ภาพแช่/เสียงอธิบายแล้ว):
+  decision: "skip", text: "", reason: "ภาพแช่ที่ตัวละครเดิม ไม่มีเหตุการณ์สำคัญใหม่"`;
 
   const promptText = `ข้อมูลการวิเคราะห์ Batch ที่ ${batch.batch_index}:
-- ช่วงเวลาวิดีโอที่ส่งให้วิเคราะห์ (รวมบริบทก่อน-หลัง): ${formatTimestampDisplay(batch.window_start_ms)} ถึง ${formatTimestampDisplay(batch.window_end_ms)}
-- ช่วงเวลาหลักของ Batch: ${formatTimestampDisplay(batch.batch_start_ms)} ถึง ${formatTimestampDisplay(batch.batch_end_ms)}
-- ช่วงเวลาที่ตรวจพบเสียงพูด (Speech Segments) ในบริเวณนี้: ${speechContextDescription}
+- คลิปวิดีโอที่แนบมาตัดจากช่วงเวลาเต็ม ${formatTimestampDisplay(clipBaseMs)} ถึง ${formatTimestampDisplay(clipEndBoundaryMs)} (เวลา 00:00 ของคลิปนี้ = เวลาเต็ม ${formatTimestampDisplay(clipBaseMs)})
+- ช่วงเวลาหลักของ Batch: ${formatTimestampDisplay(batch.batch_start_ms)} ถึง ${formatTimestampDisplay(batch.batch_end_ms)}${continuityContextSection}
 
 รายการ Candidate AD Spots ที่ต้องตัดสินใจและเขียนบทบรรยายภาพ (ต้องส่งคืนครบทั้ง ${batch.candidate_spots.length} รายการ):
 ${candidateListDescription}
@@ -614,6 +640,7 @@ ${candidateListDescription}
                     },
                     decision: {
                       type: Type.STRING,
+                      enum: ['generate', 'skip'],
                       description: 'Either "generate" or "skip".',
                     },
                     text: {
@@ -622,7 +649,7 @@ ${candidateListDescription}
                     },
                     reason: {
                       type: Type.STRING,
-                      description: 'Reason in Thai if decision is "skip".',
+                      description: 'Short reason in Thai if decision is "skip". Omit when decision is "generate".',
                     },
                   },
                   required: ['spot_id', 'decision', 'text'],
