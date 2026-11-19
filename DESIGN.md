@@ -37,7 +37,7 @@ typography:
     lineHeight: 1.35
     letterSpacing: "-0.015em"
   script-body:
-    fontFamily: "'IBM Plex Sans Thai Looped', 'IBM Plex Sans Thai', Tahoma, sans-serif"
+    fontFamily: "'Sarabun', 'IBM Plex Sans Thai', Tahoma, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.75
@@ -123,7 +123,7 @@ The system is intentionally flat and restrained. Structure comes from crisp 1px 
 **Key Characteristics:**
 - Dark broadcast monitor stage paired with a cool-paper light editorial pane in a full-viewport (`100dvh`) desktop split.
 - Single cerulean accent family (`studio-cerulean`) with semantic amber and red reserved strictly for timing warnings and errors.
-- Looped Thai typography (`IBM Plex Sans Thai Looped`) for long-form script legibility, paired with `Plus Jakarta Sans` UI chrome and tabular `JetBrains Mono` timecodes.
+- Looped Thai typography (`Sarabun`) for long-form script legibility, paired with `Plus Jakarta Sans` UI chrome and tabular `JetBrains Mono` timecodes.
 - Flat 1px hairline architecture where elevation shadows appear only on floating overlays and popovers.
 - Zero-shift asynchronous feedback via a compact header status pill and a 3px Material Design 3 hairline progress bar.
 
@@ -157,7 +157,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 ## Typography
 
 **Display & UI Font:** `Plus Jakarta Sans` paired with `IBM Plex Sans Thai` (OpenType stylistic alternates `cv02, cv03, cv04, cv11` for clean geometric UI numerals and Latin labels).
-**Script Editing Font:** `IBM Plex Sans Thai Looped` (fallback `IBM Plex Sans Thai`, `Tahoma`, sans-serif) with default Thai feature settings for unmistakable consonant loops during fast proofreading.
+**Script Editing Font:** `Sarabun` (fallback `IBM Plex Sans Thai`, `Tahoma`, sans-serif) with default Thai feature settings for unmistakable consonant loops during fast proofreading.
 **Timecode / Mono Font:** `JetBrains Mono` (fallback `ui-monospace, SFMono-Regular, monospace`) with mandatory `tabular-nums`.
 
 **Character:** Clinical and editorial at once—geometric sans keeps dense toolbar controls crisp, while looped Thai letterforms reduce eye strain when reading and trimming audio description scripts.
@@ -173,7 +173,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 ### Named Rules
 **The Tabular Timecode Rule.** Every timestamp, duration, percentage, and elapsed timer must render with `tabular-nums` (and `JetBrains Mono` for timecodes) so numbers never jitter horizontally during playback or live updates.
 
-**The Looped-Script Rule.** Editable Thai AD script content always uses `IBM Plex Sans Thai Looped` at `1rem` (`1.75` line-height), keeping prose clearly distinct from UI chrome.
+**The Looped-Script Rule.** Editable Thai AD script content always uses `Sarabun` at `1rem` (`1.75` line-height), keeping prose clearly distinct from UI chrome.
 
 ## Layout
 
@@ -223,17 +223,16 @@ Single-row editorial filter controls designed to stay uncluttered inside a half-
 - **Style:** `pure-surface` fill, `1px solid control-border`, `6px` radius, `36px` height. Search input carries a leading `14px` magnifying glass icon (`32px` left padding) and expands (`flex: 1`) beside a fixed-width (`144px–160px`) filter select.
 - **Focus:** Border shifts to `studio-cerulean-active` with a 1px matching ring.
 
-### Script Spot Card
-High-legibility container for reviewing and editing a single Audio Description gap.
-- **Corner Style:** `8px` radius.
-- **Background:** `pure-surface` at rest on `cool-paper-canvas`; selected card carries a `studio-cerulean` border/ring highlight.
-- **Border:** `1px solid hairline-border`.
-- **Internal Padding:** `12px` (`spacing.md`), housing spot header/duration, generate/skip toggle, start/end timecode steppers, looped-Thai textarea, and live spoken-duration meter.
+### Script Spot Row
+Edge-to-edge editorial list item separated by 1px horizontal dividers (`divide-y divide-slate-200`)—no outer card border or nested card header.
+- **Background:** `pure-surface` at rest; `studio-cerulean-tint` (`bg-brand-50/45`) when selected; soft slate tint (`bg-slate-50/70`) when skipped.
+- **Internal Padding:** `14px 16px` (`px-4 py-3.5`), housing the flat inline header (spot number, compact timecode steppers, duration pill, high-contrast `บรรยาย | ข้าม` toggle), a single bordered `Sarabun` textarea (`border-slate-300`, `6px` radius), and the compact spoken-duration footer.
+- **Skipped State:** Existing text stays visible inside a disabled muted textarea (`bg-slate-100/80 text-slate-400`) with a non-destructive notice so authors never think their draft was deleted.
 
 ### Broadcast CC Pill (Signature Component)
 Floating closed-caption preview docked `12px` above the bottom edge of the video monitor.
 - **Style:** `rgba(2, 6, 23, 0.80)` dark translucent surface, `backdrop-filter: blur(4px)`, `1px solid rgba(255, 255, 255, 0.15)`, `8px` radius, max-width `min(92%, 40rem)`, `Popover Elevation` shadow.
-- **Layout:** Inline `AD N` badge (`studio-cerulean-active`, `4px` radius) pinned on the left beside left-aligned white text clamped to 2 lines (`line-clamp-2`) with a subtle `0 1px 2px rgba(0,0,0,0.65)` text shadow.
+- **Layout:** Inline `AD N` badge (`studio-cerulean-active`, `4px` radius) pinned on the left beside left-aligned full white text (no ellipsis truncation; bounded to `max-h-[48%]` with scroll only for exceptionally long blocks) with a subtle `0 1px 2px rgba(0,0,0,0.65)` text shadow.
 - **Interaction:** Clicking selects that spot in the right editor pane without pausing playback; toggled on/off via the `Subtitles` (`CC`) button in the transport bar.
 
 ## Do's and Don'ts
@@ -243,7 +242,7 @@ Floating closed-caption preview docked `12px` above the bottom edge of the video
 - **Do** place project-level deliverables (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `จัดการ`) in the top command navbar and reserve pane toolbars strictly for local filtering and playback.
 - **Do** use `tabular-nums` on every timecode, percentage, character count, and elapsed timer.
 - **Do** honor `prefers-reduced-motion: reduce` by disabling spinner and progress-bar sweep animations.
-- **Do** keep Thai AD script inputs in `IBM Plex Sans Thai Looped` at `1rem` (`1.75` line-height) for sustained proofreading comfort.
+- **Do** keep Thai AD script inputs in `Sarabun` at `1rem` (`1.75` line-height) for sustained proofreading comfort.
 
 ### Don't:
 - **Don't** render full-width vertical progress banners above the workspace that shift the video player or duplicate the navbar status pill.

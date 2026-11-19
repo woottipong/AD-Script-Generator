@@ -394,7 +394,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         <button
           type="button"
           onClick={onExportSrt}
-          className={`flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer sm:grow-0 ${
+          className={`flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer ${
             canShowGenerate && !isRegenerating
               ? 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-50'
               : 'bg-brand-700 text-white hover:bg-brand-800'

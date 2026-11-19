@@ -280,13 +280,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectSpot(activeSubtitleSpot.spot_id, false)}
-                    title={activeSubtitleSpot.text}
-                    className="pointer-events-auto flex max-w-[min(92%,40rem)] items-start gap-2.5 rounded-lg border border-white/15 bg-slate-950/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-slate-950/90 focus-visible:outline-brand-400 cursor-pointer"
+                    className="pointer-events-auto flex max-h-[48%] max-w-[min(94%,42rem)] items-start gap-2.5 overflow-y-auto rounded-lg border border-white/15 bg-slate-950/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-slate-950/90 focus-visible:outline-brand-400 cursor-pointer"
                   >
-                    <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white tabular-nums">
+                    <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-xs font-semibold leading-none tracking-wide text-white tabular-nums">
                       AD {spots.indexOf(activeSubtitleSpot) + 1}
                     </span>
-                    <p className="min-w-0 line-clamp-2 text-xs sm:text-sm font-medium leading-relaxed text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]">
+                    <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]">
                       {activeSubtitleSpot.text}
                     </p>
                   </button>
@@ -316,10 +315,10 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <button type="button" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} title="ช่วงก่อนหน้า (Alt + ↑)" aria-label="ช่วงบรรยายก่อนหน้า" className={transportControl}><SkipBack className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} title="ช่วงถัดไป (Alt + ↓)" aria-label="ช่วงบรรยายถัดไป" className={transportControl}><SkipForward className="h-4 w-4" aria-hidden="true" /></button>
           </div>
-          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 border-l border-brand-200 pl-2">
-            <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={() => setShowCaptionOverlay((prev) => !prev)} disabled={!videoUrl} title={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-label={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-pressed={showCaptionOverlay} className={`${controlBase} ${showCaptionOverlay ? 'bg-brand-700 text-white hover:bg-brand-800' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Subtitles className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-700 text-white hover:bg-brand-800' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
+          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-brand-200 sm:pl-2">
+            <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={() => setShowCaptionOverlay((prev) => !prev)} disabled={!videoUrl} title={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-label={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-pressed={showCaptionOverlay} className={`${controlBase} ${showCaptionOverlay ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Subtitles className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
           </div>
           <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600" title={`${formatTimestampDisplay(currentTimeMs)} / ${formatTimestampDisplay(videoUrl ? effectiveDurationMs : 0)}`}>
             <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
