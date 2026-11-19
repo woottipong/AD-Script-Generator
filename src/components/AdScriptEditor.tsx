@@ -70,12 +70,24 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   const [startInput, setStartInput] = useState(formatTimestampDisplay(spot.start_ms));
   const [endInput, setEndInput] = useState(formatTimestampDisplay(spot.end_ms));
   const [timestampError, setTimestampError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setStartInput(formatTimestampDisplay(spot.start_ms));
     setEndInput(formatTimestampDisplay(spot.end_ms));
     setTimestampError(null);
   }, [spot.start_ms, spot.end_ms]);
+
+  const isExpanded = isSelected || timestampError !== null;
+  const isSkipped = spot.decision === 'skip';
+  const hasSavedText = spot.text.trim().length > 0;
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || !isExpanded || (spot.decision !== 'generate' && !hasSavedText)) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [spot.text, isExpanded, spot.decision, hasSavedText]);
 
   const applyTimestampChange = (newStartMs: number, newEndMs: number) => {
     const check = validateSpotTimestampEdit(
@@ -178,7 +190,6 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
 
   const isBatchProcessing = isAnalyzing && batchInfo?.status === 'processing';
   const isBatchPending = isAnalyzing && batchInfo?.status === 'pending';
-  const isExpanded = isSelected || timestampError !== null;
   const statusLabel = spot.decision === 'pending'
     ? isBatchProcessing ? `กำลังวิเคราะห์ · ชุด ${batchInfo.batch_index}`
       : isBatchPending ? `รอวิเคราะห์ · ชุด ${batchInfo.batch_index}`
@@ -192,42 +203,138 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       aria-label={`ช่วงบรรยายที่ ${spotOrder}`}
       onClick={() => onSelect(spot.spot_id, true)}
       className={`rounded-md border px-3 py-2.5 transition-colors cursor-pointer ${
-        isSelected
+        isSkipped
+          ? isSelected
+            ? 'border-dashed border-slate-400 bg-slate-50'
+            : 'border-dashed border-slate-300 bg-slate-50/75 hover:border-slate-400'
+          : isSelected
           ? 'border-brand-300 bg-white shadow-sm'
           : 'border-slate-300 bg-white hover:border-brand-400'
       }`}
     >
-      <div className={`-mx-3 -mt-2.5 mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-t-md border-b px-3 py-2 ${isSelected ? 'border-brand-100 bg-brand-50/60' : 'border-slate-100 bg-slate-50/60'}`}>
-        <button
-          type="button"
-          aria-pressed={isSelected}
-          aria-label={`เลือกช่วงที่ ${spotOrder} เวลา ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)}`}
-          onClick={(event) => { event.stopPropagation(); onSelect(spot.spot_id, true); }}
-          className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 rounded py-1 text-left text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
-        >
-          <span className={`text-sm font-semibold ${isSelected ? 'text-brand-900' : 'text-slate-900'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
-          {!isExpanded && <span className="whitespace-nowrap font-mono tabular-nums">{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
-          <span className="tabular-nums">{(spot.duration_ms / 1000).toFixed(1)}s</span>
-        </button>
+      <div
+        className={`-mx-3 -mt-2.5 ${isExpanded ? 'mb-2.5' : 'mb-2'} flex flex-wrap items-center justify-between gap-x-2.5 gap-y-2 rounded-t-md border-b px-3 py-2 ${
+          isSkipped
+            ? 'border-slate-200 bg-slate-100/80'
+            : isSelected
+            ? 'border-brand-100 bg-brand-50/60'
+            : 'border-slate-100 bg-slate-50/60'
+        }`}
+      >
+        <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <button
+            type="button"
+            aria-pressed={isSelected}
+            aria-label={`เลือกช่วงที่ ${spotOrder} เวลา ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)}`}
+            onClick={(event) => { event.stopPropagation(); onSelect(spot.spot_id, true); }}
+            className="min-w-0 inline-flex items-center gap-2 rounded py-0.5 text-left text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+          >
+            <span className={`text-sm font-semibold whitespace-nowrap ${isSkipped ? 'text-slate-500' : isSelected ? 'text-brand-900' : 'text-slate-900'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
+            {!isExpanded && <span className={`whitespace-nowrap font-mono tabular-nums ${isSkipped ? 'text-slate-400' : ''}`}>{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
+          </button>
+
+          {isExpanded && (
+            <fieldset
+              disabled={isAnalyzing || isSkipped}
+              aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
+              onFocus={() => onSelect(spot.spot_id, false)}
+              onClick={(e) => e.stopPropagation()}
+              className={`flex flex-wrap items-center gap-1.5 text-xs transition-opacity ${isSkipped ? 'opacity-50' : ''}`}
+            >
+              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
+                <button
+                  type="button"
+                  onClick={() => nudgeStartMs(-200)}
+                  disabled={spot.start_ms <= spot.original_start_ms}
+                  title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
+                  aria-label="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
+                  className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Minus className="h-3 w-3" aria-hidden="true" />
+                </button>
+                <input
+                  type="text"
+                  aria-label={`เวลาเริ่มบทบรรยายที่ ${spotOrder}`}
+                  value={startInput}
+                  onChange={(e) => { setStartInput(e.target.value); setTimestampError(null); }}
+                  onBlur={handleStartBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleStartBlur();
+                  }}
+                  className="video-control w-[6.25rem] border-0 bg-transparent px-1 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => nudgeStartMs(200)}
+                  disabled={spot.start_ms + 1000 >= spot.end_ms}
+                  title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
+                  aria-label="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
+                  className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </div>
+              <span aria-hidden="true" className="text-slate-400">–</span>
+              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
+                <button
+                  type="button"
+                  onClick={() => nudgeEndMs(-200)}
+                  disabled={spot.end_ms - 1000 <= spot.start_ms}
+                  title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
+                  aria-label="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
+                  className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Minus className="h-3 w-3" aria-hidden="true" />
+                </button>
+                <input
+                  type="text"
+                  aria-label={`เวลาจบบทบรรยายที่ ${spotOrder}`}
+                  value={endInput}
+                  onChange={(e) => { setEndInput(e.target.value); setTimestampError(null); }}
+                  onBlur={handleEndBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleEndBlur();
+                  }}
+                  className="video-control w-[6.25rem] border-0 bg-transparent px-1 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => nudgeEndMs(200)}
+                  disabled={spot.end_ms >= spot.original_end_ms}
+                  title="ขยายเวลาจบออกไป 0.2 วินาที"
+                  aria-label="ขยายเวลาจบออกไป 0.2 วินาที"
+                  className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </div>
+            </fieldset>
+          )}
+
+          <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-xs font-medium tabular-nums text-slate-700" title="ความยาวช่วงว่าง">
+            {(spot.duration_ms / 1000).toFixed(1)}s
+          </span>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {isExpanded && (
             <fieldset
               disabled={isAnalyzing}
               aria-label={`เลือกการบรรยายจุดที่ ${spotOrder}`}
               onClick={(e) => e.stopPropagation()}
-              className="min-w-0 inline-flex items-center gap-0.5 rounded-md bg-slate-100 p-0.5"
+              className="min-w-0 inline-flex items-center gap-0.5 rounded-md bg-slate-200/70 p-0.5"
             >
               <button
                 type="button"
                 aria-pressed={spot.decision === 'generate'}
                 onClick={() => onUpdate(enableSpotNarration(spot))}
-                className={`video-control px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`video-control px-2.5 py-0.5 text-xs font-semibold rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   spot.decision === 'generate'
-                    ? 'bg-white text-brand-800 shadow-sm'
-                    : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
+                    ? 'bg-brand-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                 }`}
               >
-                <CheckCircle2 className="w-3 h-3" />
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>บรรยาย</span>
               </button>
               <button
@@ -240,13 +347,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                     is_edited: true,
                   })
                 }
-                className={`video-control px-2 py-0.5 text-xs font-medium rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`video-control px-2.5 py-0.5 text-xs font-semibold rounded-xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                   spot.decision === 'skip'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:bg-white/60 hover:text-slate-900'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                 }`}
               >
-                <MinusCircle className="w-3 h-3" />
+                <MinusCircle className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>ข้าม</span>
               </button>
             </fieldset>
@@ -257,121 +364,19 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               {statusLabel}
             </span>
           )}
-          {isOverDurationWarning && <span className="inline-flex items-center gap-1 font-medium text-amber-800"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />ข้อความเกินเวลา</span>}
-          {spot.is_edited && <span className="text-slate-600">แก้ไขแล้ว</span>}
+          {!isExpanded && isOverDurationWarning && <span className="inline-flex items-center gap-1 font-medium text-amber-800"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />เกินเวลา</span>}
+          {!isExpanded && spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && <span className="font-medium text-brand-800">ตำแหน่งวิดีโอ</span>}
         </div>
       </div>
 
       {isExpanded && <>
-        {/* Second Row: Precision Timecode Editor + Quick ±0.2s Nudgers */}
-        <fieldset
-          disabled={isAnalyzing}
-          aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
-          onFocus={() => onSelect(spot.spot_id, false)}
-          onClick={(e) => e.stopPropagation()}
-          className="min-w-0 w-full mb-3 flex flex-wrap items-center justify-between gap-3 text-xs"
-        >
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            {/* Start Time + Nudge */}
-            <div className="flex items-center gap-2">
-              <span className="w-6 shrink-0 text-slate-600">เริ่ม</span>
-              <div className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50/60 p-0.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
-                <button
-                  type="button"
-                  onClick={() => nudgeStartMs(-200)}
-                  disabled={spot.start_ms <= spot.original_start_ms}
-                  title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
-                  aria-label="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Minus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-                <input
-                  type="text"
-                  aria-label={`เวลาเริ่มบทบรรยายที่ ${spotOrder}`}
-                  value={startInput}
-                  onChange={(e) => { setStartInput(e.target.value); setTimestampError(null); }}
-                  onBlur={handleStartBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleStartBlur();
-                  }}
-                  className="w-32 rounded border-0 bg-transparent px-1 py-2 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => nudgeStartMs(200)}
-                  disabled={spot.start_ms + 1000 >= spot.end_ms}
-                  title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
-                  aria-label="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-
-            {/* End Time + Nudge */}
-            <div className="flex items-center gap-2">
-              <span className="w-6 shrink-0 text-slate-600">จบ</span>
-              <div className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50/60 p-0.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
-                <button
-                  type="button"
-                  onClick={() => nudgeEndMs(-200)}
-                  disabled={spot.end_ms - 1000 <= spot.start_ms}
-                  title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
-                  aria-label="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Minus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-                <input
-                  type="text"
-                  aria-label={`เวลาจบบทบรรยายที่ ${spotOrder}`}
-                  value={endInput}
-                  onChange={(e) => { setEndInput(e.target.value); setTimestampError(null); }}
-                  onBlur={handleEndBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleEndBlur();
-                  }}
-                  className="w-32 rounded border-0 bg-transparent px-1 py-2 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => nudgeEndMs(200)}
-                  disabled={spot.end_ms >= spot.original_end_ms}
-                  title="ขยายเวลาจบออกไป 0.2 วินาที"
-                  aria-label="ขยายเวลาจบออกไป 0.2 วินาที"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Gap Bounds & Reset */}
-          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600">
-            {isTimestampsModified && (
-              <button
-                type="button"
-                onClick={handleResetTimestamps}
-                title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
-                className="px-1.5 py-0.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded flex items-center gap-1 font-sans cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>เต็มช่วงว่าง</span>
-              </button>
-            )}
-          </div>
-        </fieldset>
-
         {/* Timestamp Validation Error */}
         {timestampError && (
           <div
             onClick={(e) => e.stopPropagation()}
             role="alert"
-            className="mt-2 px-2.5 py-1.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-1.5"
+            className="mb-2 px-2.5 py-1.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-1.5"
           >
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             <span>{timestampError}</span>
@@ -379,11 +384,12 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
         )}
 
         {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
-        {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full mt-2">
+        {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
           {spot.decision === 'generate' ? (
             <div className="space-y-2">
               <textarea
-                rows={3}
+                ref={textareaRef}
+                rows={2}
                 aria-label={`บทบรรยายที่ ${spotOrder}`}
                 value={spot.text}
                 onChange={(e) =>
@@ -394,11 +400,11 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   })
                 }
                 placeholder="เขียนบทบรรยายภาพ"
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 font-script text-script font-normal tracking-normal text-slate-900 placeholder:text-slate-600 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                className="w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 font-script text-script font-normal tracking-normal text-slate-900 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:cursor-not-allowed"
               />
 
-              {/* Visual Thai Speech Duration Fit Bar & Character Telemetry */}
-              <div className="space-y-1">
+              {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
+              <div className="space-y-1.5">
                 <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-150 ${
@@ -415,30 +421,33 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 tabular-nums">
-                  {isTimestampsModified && (
-                    <span>
-                      ช่วงว่างต้นทาง: {formatTimestampDisplay(spot.original_start_ms)} –{' '}
-                      {formatTimestampDisplay(spot.original_end_ms)}
-                    </span>
-                  )}
-
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span>
-                      {spot.text.trim().length} อักษรรวม (รวมสระและวรรณยุกต์)
-                    </span>
-                    <span aria-hidden="true" className="text-slate-300">
-                      ·
-                    </span>
                     <span
                       className={
                         isOverDurationWarning
                           ? 'text-amber-800 font-semibold'
-                          : 'text-slate-700'
+                          : 'text-slate-700 font-medium'
                       }
                     >
-                      เวลาพูดประมาณ {(estimatedSpeechMs / 1000).toFixed(1)} /{' '}
-                      {(spot.duration_ms / 1000).toFixed(1)} วินาที
+                      พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
                     </span>
+                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <span>{spot.text.trim().length} อักษร</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {isTimestampsModified && (
+                      <button
+                        type="button"
+                        onClick={handleResetTimestamps}
+                        title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
+                        className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-sans text-xs text-slate-700 hover:bg-slate-200 hover:text-slate-900 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                        <span>คืนเวลาเดิม</span>
+                      </button>
+                    )}
+                    {spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
                   </div>
                 </div>
               </div>
@@ -463,21 +472,46 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 </div>
               )}
             </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-1 text-xs text-slate-600">
-              <div>
-                  <span className="text-slate-700">
-                  {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
-                </span>
+          ) : hasSavedText ? (
+            <div className="space-y-2">
+              <textarea
+                ref={textareaRef}
+                rows={2}
+                disabled
+                aria-label={`บทบรรยายที่ ${spotOrder} (ข้ามช่วงนี้)`}
+                value={spot.text}
+                className="w-full resize-none rounded-md border border-slate-200 bg-slate-100/80 px-3 py-2 font-script text-script font-normal tracking-normal text-slate-400 cursor-not-allowed"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
+                {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
-
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 py-1 text-xs text-slate-500">
+              <span>
+                {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
+              </span>
+              {spot.is_edited && <span>แก้ไขแล้ว</span>}
             </div>
           )}
         </fieldset>}
       </>}
       {!isExpanded && spot.decision !== 'pending' && (
-        <p className={`line-clamp-2 ${spot.decision === 'generate' ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-800' : 'text-sm leading-relaxed text-slate-600'}`}>
-          {spot.decision === 'generate' ? (spot.text || 'ยังไม่มีข้อความบรรยาย') : (spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงนี้')}
+        <p
+          className={`line-clamp-2 ${
+            spot.decision === 'generate'
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-800'
+              : hasSavedText
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-400'
+              : 'text-sm leading-relaxed text-slate-500'
+          }`}
+        >
+          {spot.decision === 'generate'
+            ? (spot.text || 'ยังไม่มีข้อความบรรยาย')
+            : hasSavedText
+            ? spot.text
+            : (spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงนี้')}
         </p>
       )}
     </div>

@@ -17,7 +17,9 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {
-        ignored: ['**/_data/**', '**/.data/**'],
+        usePolling: process.env.CHOKIDAR_USEPOLLING === 'true',
+        interval: Number(process.env.CHOKIDAR_INTERVAL) || 300,
+        ignored: ['**/_data/**', '**/.data/**', '**/dist/**'],
       },
     },
   };

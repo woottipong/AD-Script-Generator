@@ -3,6 +3,7 @@ dotenv.config();
 
 import express, { Request, Response } from 'express';
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
@@ -1495,10 +1496,15 @@ async function startServer() {
   });
   app.use(express.static(publicDir));
 
+  const httpServer = http.createServer(app);
+
   // Mount Vite middleware in development or static dist in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true' ? { server: httpServer } : false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1510,7 +1516,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`AD Script Generator Server listening on http://0.0.0.0:${PORT}`);
   });
 }
