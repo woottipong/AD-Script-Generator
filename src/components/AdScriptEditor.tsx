@@ -522,6 +522,19 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           )}
         </fieldset>}
       </>}
+      {spot.decision === 'pending' && isBatchProcessing && (
+        <div
+          aria-hidden="true"
+          style={{ '--shimmer-delay': `${(spotOrder % 4) * 140}ms` } as React.CSSProperties}
+          className="mt-1.5 w-full space-y-2"
+        >
+          <div className="soft-shimmer h-3.5 w-full rounded bg-brand-100/80" />
+          <div
+            className="soft-shimmer h-3.5 rounded bg-brand-100/60"
+            style={{ width: `${[68, 54, 78, 60][spotOrder % 4]}%` }}
+          />
+        </div>
+      )}
       {!isExpanded && spot.decision !== 'pending' && (
         <p
           className={`line-clamp-2 ${
@@ -712,22 +725,52 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       {/* 2. Scrollable spot editor list */}
       <div ref={listScrollRef} className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
-            {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
-            <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-slate-900">
-              {emptyState === 'preparing' ? 'บทบรรยายจะแสดงที่นี่' : emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
-            </p>
-            <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
-              {emptyState === 'preparing' ? 'ระบบกำลังตรวจช่วงเสียงพูดบนเครื่องของคุณ รายการบทบรรยายจะแสดงที่นี่เมื่อพร้อม' : emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
-            </p>
-            {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
-            {emptyState === 'failed' && errorMessage && (
-              <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
-                <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
-                <p className="mt-2 rounded-md bg-slate-50 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
-              </details>
-            )}
-          </div>
+          emptyState === 'preparing' ? (
+            <div role="status" className="divide-y divide-slate-200 border-b border-slate-200 bg-white">
+              <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-600" aria-hidden="true" />
+                <span>กำลังตรวจช่วงเสียงพูดเพื่อสร้างรายการบทบรรยาย…</span>
+              </div>
+              {[74, 58, 82, 52].map((secondLineWidth, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
+                  className="px-4 py-3.5"
+                >
+                  <div className="mb-2.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="soft-shimmer h-4 w-12 rounded bg-slate-200/80" />
+                      <div className="soft-shimmer h-3.5 w-28 rounded bg-slate-100" />
+                      <div className="soft-shimmer h-4 w-10 rounded bg-slate-100" />
+                    </div>
+                    <div className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
+                  </div>
+                  <div className="w-full space-y-2">
+                    <div className="soft-shimmer h-3.5 w-full rounded bg-slate-100" />
+                    <div className="soft-shimmer h-3.5 rounded bg-slate-100/70" style={{ width: `${secondLineWidth}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
+              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
+              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-slate-900">
+                {emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
+              </p>
+              <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
+                {emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+              </p>
+              {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
+              {emptyState === 'failed' && errorMessage && (
+                <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
+                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
+                  <p className="mt-2 rounded-md bg-slate-50 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+                </details>
+              )}
+            </div>
+          )
         ) : filteredSpots.length === 0 ? (
           <div className="py-12 px-6 text-center text-sm text-slate-600 space-y-3">
             <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>

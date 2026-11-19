@@ -148,6 +148,21 @@
   animation: waveform-loading-glide 8.5s linear infinite reverse;
 }
 
+.soft-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.soft-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+  background: linear-gradient(90deg, transparent 10%, oklch(99.5% 0.01 236 / 0.88) 50%, transparent 90%);
+  animation: progress-shimmer-sweep 1.75s ease-in-out infinite;
+  animation-delay: var(--shimmer-delay, 0ms);
+}
+
 .progress-indeterminate-primary {
   transform-origin: left center;
   will-change: transform;
@@ -183,7 +198,8 @@
   }
 
   .progress-indeterminate-secondary,
-  .progress-shimmer-sweep {
+  .progress-shimmer-sweep,
+  .soft-shimmer::after {
     display: none;
   }
 

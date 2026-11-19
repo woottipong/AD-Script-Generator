@@ -27,11 +27,29 @@ export function VideoProcessingStatus({ feedback, compact = false }: { feedback:
           </p>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-brand-900">{feedback.detail || feedback.description}</p>
-        {feedback.percent !== undefined && (
-          <div role="progressbar" aria-label={feedback.title} aria-valuenow={feedback.percent} aria-valuetext={`${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}`} aria-valuemin={0} aria-valuemax={100} className="mt-2 h-1.5 overflow-hidden rounded-full bg-brand-100">
-            <div className="h-full origin-left rounded-full bg-brand-600 transition-transform duration-200" style={{ transform: `scaleX(${feedback.percent / 100})` }} />
-          </div>
-        )}
+        <div
+          role="progressbar"
+          aria-label={feedback.title}
+          aria-valuenow={feedback.percent}
+          aria-valuetext={feedback.percent !== undefined ? `${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}` : feedback.description}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-brand-100"
+        >
+          {feedback.percent !== undefined && feedback.percent > 0 ? (
+            <div
+              className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-brand-700 via-brand-600 to-brand-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, feedback.percent)}%` }}
+            >
+              <div className="progress-shimmer-sweep absolute inset-0" />
+            </div>
+          ) : (
+            <>
+              <div className="progress-indeterminate-primary absolute inset-0" />
+              <div className="progress-indeterminate-secondary absolute inset-0" />
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -49,13 +67,31 @@ export function VideoProcessingStatus({ feedback, compact = false }: { feedback:
         {feedback.detail && <p className="min-w-0 leading-relaxed">{feedback.detail}</p>}
         {feedback.percent !== undefined && <span className="ml-auto shrink-0 text-3xl font-semibold leading-none text-brand-800">{feedback.percent}%</span>}
       </div>}
-      {feedback.percent !== undefined && (
-        <div className="mt-3">
-          <div role="progressbar" aria-label={feedback.title} aria-valuenow={feedback.percent} aria-valuetext={`${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}`} aria-valuemin={0} aria-valuemax={100} className="h-3 overflow-hidden rounded-full bg-brand-100">
-            <div className="h-full origin-left rounded-full bg-brand-600 transition-transform duration-200" style={{ transform: `scaleX(${feedback.percent / 100})` }} />
-          </div>
+      <div className="mt-3">
+        <div
+          role="progressbar"
+          aria-label={feedback.title}
+          aria-valuenow={feedback.percent}
+          aria-valuetext={feedback.percent !== undefined ? `${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}` : feedback.description}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="relative h-2 overflow-hidden rounded-full bg-brand-100"
+        >
+          {feedback.percent !== undefined && feedback.percent > 0 ? (
+            <div
+              className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-brand-700 via-brand-600 to-brand-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, feedback.percent)}%` }}
+            >
+              <div className="progress-shimmer-sweep absolute inset-0" />
+            </div>
+          ) : (
+            <>
+              <div className="progress-indeterminate-primary absolute inset-0" />
+              <div className="progress-indeterminate-secondary absolute inset-0" />
+            </>
+          )}
         </div>
-      )}
+      </div>
       <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-900">
         <span>เวลาที่ใช้ในช่วงนี้</span><span className="tabular-nums">{formatCompactTime(elapsedMs)}</span>
       </p>

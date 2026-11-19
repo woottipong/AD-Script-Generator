@@ -824,6 +824,15 @@ export default function App() {
             spots={spots}
             selectedSpotId={selectedSpotId}
             isAnalyzing={status === 'ANALYZING'}
+            processingSpotIds={
+              status === 'ANALYZING'
+                ? new Set(
+                    batches
+                      .filter((b) => b.status === 'processing')
+                      .flatMap((b) => b.candidate_spots.map((s) => s.spot_id))
+                  )
+                : undefined
+            }
             detectProgress={status === 'DETECTING' ? vadProgress : null}
             onSelectSpot={handleSelectSpot}
             onUpdateSpot={handleUpdateSpot}

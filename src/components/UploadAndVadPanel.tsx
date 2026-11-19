@@ -500,11 +500,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3 space-y-3">
+          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3 space-y-2.5">
             {activityFeedback && (
-              <div className="rounded-lg border border-brand-200 bg-white px-3.5 py-2.5">
-                <VideoProcessingStatus feedback={activityFeedback} compact />
-              </div>
+              <p className="text-xs leading-relaxed text-brand-900">
+                {activityFeedback.detail || activityFeedback.description}
+              </p>
             )}
             {vadOutput ? (
               <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">

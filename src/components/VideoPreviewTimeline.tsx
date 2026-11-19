@@ -56,6 +56,7 @@ interface VideoPreviewTimelineProps {
   spots: ADSpot[];
   selectedSpotId: string | null;
   isAnalyzing?: boolean;
+  processingSpotIds?: ReadonlySet<string>;
   detectProgress?: ProcessingProgress | null;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onUpdateSpot: (updatedSpot: ADSpot) => void;
@@ -73,6 +74,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   spots,
   selectedSpotId,
   isAnalyzing = false,
+  processingSpotIds,
   detectProgress = null,
   onSelectSpot,
   onUpdateSpot,
@@ -460,8 +462,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               {videoError || isVideoLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 px-6 py-4 text-center text-white">
                   {videoError ? <AlertTriangle className="h-6 w-6 text-amber-300" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
-                  <div role={videoError ? 'alert' : 'status'} className="max-w-sm space-y-2">
+                  <div role={videoError ? 'alert' : 'status'} className="w-full max-w-xs space-y-2">
                     <p className="text-sm font-semibold">{videoError === 'load' ? 'ยังเปิดวิดีโอไม่ได้' : videoError === 'play' ? 'ยังเล่นวิดีโอไม่ได้' : 'กำลังโหลดวิดีโอ'}</p>
+                    {!videoError && (
+                      <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-slate-800">
+                        <div className="progress-indeterminate-primary absolute inset-0" />
+                        <div className="progress-indeterminate-secondary absolute inset-0" />
+                      </div>
+                    )}
                     {videoError && <p className="text-xs leading-relaxed text-slate-300">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
                   </div>
                   {videoError && <button type="button" onClick={() => {
@@ -701,11 +709,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 const hitLeft = Math.max(0, left - padding, previous ? (previous.end_ms + displayStartMs) / 2 / effectiveDurationMs * trackWidth : 0);
                 const hitRight = Math.min(trackWidth, left + width + padding, next ? (displayEndMs + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
                 const isSelected = spot.spot_id === selectedSpotId;
+                const isProcessingSpot = spot.decision === 'pending' && Boolean(processingSpotIds?.has(spot.spot_id));
                 const showHandles = !isAnalyzing && width >= 18;
                 const colorClasses = spot.decision === 'generate'
                   ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
                   : spot.decision === 'skip'
                   ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
+                  : isProcessingSpot
+                  ? 'bg-brand-100 text-brand-900 border-brand-400'
                   : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
                 return (
                   <div
@@ -734,6 +745,9 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                       style={{ left: left - hitLeft, width }}
                       className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}
                     >
+                      {isProcessingSpot && (
+                        <span aria-hidden="true" className="progress-shimmer-sweep pointer-events-none absolute inset-0" />
+                      )}
                       {showHandles && (
                         <span
                           aria-label={`ลากขอบซ้ายเพื่อปรับเวลาเริ่มช่วงที่ ${index + 1}`}
