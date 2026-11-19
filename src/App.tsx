@@ -806,13 +806,13 @@ export default function App() {
         onRetryFailedBatches={handleRetryFailedBatches}
         onResetJob={handleResetJob}
         onSelectSpot={handleSelectSpot}
+        onExportSrt={handleExportSrt}
         errorMessage={errorMessage}
       />
 
-      {/* Shared header row keeps both panes aligned when editor controls wrap. */}
-      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
-        {/* Left Pane: Video Monitor, Transport & Multi-Track Timeline (6 cols) */}
-        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden">
+      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
+        {/* Left Pane: Video Monitor, Caption Strip, Transport & Multi-Track Timeline (6 cols) */}
+        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
           <VideoPreviewTimeline
             videoUrl={videoUrl}
             videoMetadata={videoMetadata}
@@ -829,7 +829,7 @@ export default function App() {
         </div>
 
         {/* Right Pane: Full-Height Scrollable AD Script Editor (6 cols) */}
-        <div className={`lg:col-span-6 min-h-0 flex flex-col lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
+        <div className={`lg:col-span-6 min-h-0 flex flex-col lg:overflow-hidden ${status === 'FAILED' && !vadOutput ? 'order-first lg:order-none' : ''}`}>
           <AdScriptEditor
             spots={spots}
             batches={batches}
@@ -843,7 +843,6 @@ export default function App() {
             currentTimeMs={currentTimeMs}
             onSelectSpot={handleSelectSpot}
             onUpdateSpot={handleUpdateSpot}
-            onExportSrt={handleExportSrt}
             saveStatus={jobId ? saveStatus : 'local'}
             onRetrySave={() => { if (jobId) saveQueue.save(jobId, spots); }}
           />

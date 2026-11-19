@@ -96,9 +96,74 @@
   transform: translateY(0);
 }
 
+@keyframes progress-indeterminate-primary {
+  0% {
+    transform: translateX(-100%) scaleX(0.35);
+  }
+  60% {
+    transform: translateX(45%) scaleX(0.6);
+  }
+  100% {
+    transform: translateX(105%) scaleX(0.2);
+  }
+}
+
+@keyframes progress-indeterminate-secondary {
+  0% {
+    transform: translateX(-100%) scaleX(0.2);
+  }
+  45% {
+    transform: translateX(15%) scaleX(0.45);
+  }
+  100% {
+    transform: translateX(110%) scaleX(0.15);
+  }
+}
+
+@keyframes progress-shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.progress-indeterminate-primary {
+  transform-origin: left center;
+  will-change: transform;
+  background: linear-gradient(90deg, var(--color-brand-500), var(--color-brand-600), var(--color-brand-400));
+  animation: progress-indeterminate-primary 2.1s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
+.progress-indeterminate-secondary {
+  transform-origin: left center;
+  will-change: transform;
+  background: linear-gradient(90deg, var(--color-brand-400), var(--color-brand-600));
+  animation: progress-indeterminate-secondary 2.1s cubic-bezier(0.165, 0.84, 0.44, 1) 1.05s infinite;
+}
+
+.progress-shimmer-sweep {
+  will-change: transform;
+  background: linear-gradient(90deg, transparent 0%, oklch(98% 0.02 236 / 0.55) 50%, transparent 100%);
+  animation: progress-shimmer-sweep 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin {
+  .animate-spin,
+  .progress-indeterminate-primary,
+  .progress-indeterminate-secondary,
+  .progress-shimmer-sweep {
     animation: none;
+  }
+
+  .progress-indeterminate-primary {
+    transform: none;
+  }
+
+  .progress-indeterminate-secondary,
+  .progress-shimmer-sweep {
+    display: none;
   }
 
   .transition-all, .transition-colors, .transition-opacity, .transition-transform {
@@ -132,17 +197,7 @@
   height: 2rem;
 }
 
-.workspace-pane-heading {
-  display: flex;
-  min-height: 2.25rem;
-  align-items: center;
-}
-
 @media (pointer: coarse) {
-  .workspace-pane-heading {
-    min-height: 2.75rem;
-  }
-
   .video-control {
     min-width: 2.75rem;
     min-height: 2.75rem;

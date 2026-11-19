@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  FileText,
   FileVideo,
   Layers,
   Loader2,
@@ -75,6 +76,7 @@ interface UploadAndVadPanelProps {
   onRetryFailedBatches: () => void;
   onResetJob: () => void;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
+  onExportSrt: () => void;
   errorMessage: string | null;
 }
 
@@ -95,6 +97,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onRetryFailedBatches,
   onResetJob,
   onSelectSpot,
+  onExportSrt,
   errorMessage,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -105,6 +108,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [isWideHeader, setIsWideHeader] = useState(false);
+  const [activityElapsedMs, setActivityElapsedMs] = useState(0);
 
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
@@ -112,6 +116,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const activityFeedback: ProcessingFeedback | null = checkingFileName
     ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
     : processingFeedback;
+
+  useEffect(() => {
+    if (!activityFeedback?.title) {
+      setActivityElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setActivityElapsedMs(0);
+    const timer = setInterval(() => setActivityElapsedMs(Date.now() - startedAt), 1000);
+    return () => clearInterval(timer);
+  }, [activityFeedback?.title]);
 
   useEffect(() => {
     // Match keyboard order to the header layout without duplicating its controls.
@@ -335,11 +350,36 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         onClick={() => setIsQueueExpanded((prev) => !prev)}
         aria-expanded={isQueueExpanded}
         aria-controls="analysis-details"
-        aria-label={`${statusText} · ดูรายละเอียดการทำงาน`}
-        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${errorMessage || failedBatchesCount > 0 ? 'bg-red-50 text-red-800 hover:bg-red-100' : isBusy || !vadOutput?.candidate_spots.length ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-brand-50 text-brand-900 hover:bg-brand-100'}`}
+        aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
+        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
+          errorMessage || failedBatchesCount > 0
+            ? 'bg-red-50 text-red-800 hover:bg-red-100'
+            : activityFeedback
+            ? 'border border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
+            : !vadOutput?.candidate_spots.length
+            ? 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+            : 'bg-brand-50 text-brand-900 hover:bg-brand-100'
+        }`}
       >
-        {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden="true" /> : <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-        <span role={activityFeedback ? undefined : 'status'} className="min-w-0 text-left">{statusText}</span>
+        {isBusy ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-brand-700" aria-hidden="true" />
+        ) : (
+          <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        )}
+        {activityFeedback ? (
+          <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
+            <span className="truncate font-semibold">{activityFeedback.title}</span>
+            {isAnalyzing && batches.length > 0 && processingBatch && (
+              <span className="hidden md:inline text-brand-800">· ชุด {processingBatch.batch_index}/{batches.length}</span>
+            )}
+            {activityFeedback.percent !== undefined && (
+              <span className="font-semibold text-brand-800">· {activityFeedback.percent}%</span>
+            )}
+            <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
+          </span>
+        ) : (
+          <span role="status" className="min-w-0 text-left">{statusText}</span>
+        )}
         {isQueueExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
       </button>
 
@@ -347,6 +387,21 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer sm:grow-0">
           <Sparkles className="w-4 h-4" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+        </button>
+      )}
+
+      {generatedSpotsCount > 0 && !isBusy && (
+        <button
+          type="button"
+          onClick={onExportSrt}
+          className={`flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer sm:grow-0 ${
+            canShowGenerate && !isRegenerating
+              ? 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-50'
+              : 'bg-brand-700 text-white hover:bg-brand-800'
+          }`}
+        >
+          <FileText className="w-4 h-4" aria-hidden="true" />
+          <span>ส่งออก SRT</span>
         </button>
       )}
     </div>
@@ -400,8 +455,33 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       )}
 
       {activityFeedback && (
-        <div className="border-b border-brand-200 bg-brand-50 px-4 py-3 sm:px-6">
-          <VideoProcessingStatus feedback={activityFeedback} compact />
+        <div
+          role="progressbar"
+          aria-label={activityFeedback.title}
+          aria-valuenow={activityFeedback.percent}
+          aria-valuetext={
+            activityFeedback.percent !== undefined
+              ? `${activityFeedback.percent}%${activityFeedback.detail ? ` · ${activityFeedback.detail}` : ''}`
+              : activityFeedback.description
+          }
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="pointer-events-none absolute inset-x-0 top-0 z-30 h-[3px] overflow-hidden bg-brand-100"
+        >
+          {activityFeedback.percent !== undefined && activityFeedback.percent > 0 ? (
+            <div
+              className="relative h-full overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-brand-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, activityFeedback.percent)}%` }}
+            >
+              <div className="progress-shimmer-sweep absolute inset-0" />
+              <div className="absolute right-0 top-0 bottom-0 w-3 bg-gradient-to-r from-transparent to-brand-200/90" />
+            </div>
+          ) : (
+            <>
+              <div className="progress-indeterminate-primary absolute inset-0" />
+              <div className="progress-indeterminate-secondary absolute inset-0" />
+            </>
+          )}
         </div>
       )}
 
@@ -420,17 +500,21 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3">
+          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3 space-y-3">
+            {activityFeedback && (
+              <div className="rounded-lg border border-brand-200 bg-white px-3.5 py-2.5">
+                <VideoProcessingStatus feedback={activityFeedback} compact />
+              </div>
+            )}
             {vadOutput ? (
               <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd></div>
                 <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-brand-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เวลาที่ไม่มีเสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{formatCompactTime(nonSpeechDurationMs)}</dd></div>
               </dl>
-            ) : <p className="mt-2 text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
-            {activityFeedback && <p className="mt-2 text-xs leading-relaxed text-slate-600">{activityFeedback.description}</p>}
+            ) : <p className="text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
             {videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+              <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
             )}
           </div>
           {batches.length > 0 && (

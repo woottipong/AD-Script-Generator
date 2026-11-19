@@ -34,7 +34,6 @@ interface AdScriptEditorProps {
   currentTimeMs: number;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onUpdateSpot: (updatedSpot: ADSpot) => void;
-  onExportSrt: () => void;
   saveStatus: 'local' | 'saving' | 'saved' | 'error';
   onRetrySave: () => void;
 }
@@ -498,7 +497,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   currentTimeMs,
   onSelectSpot,
   onUpdateSpot,
-  onExportSrt,
   saveStatus,
   onRetrySave,
 }) => {
@@ -580,52 +578,38 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   return (
     <section
       aria-label="บทบรรยาย"
-      className="flex flex-col lg:h-full min-h-0 bg-white lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden"
+      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-3 py-2.5">
-        <h1 className="workspace-pane-heading text-base font-semibold text-slate-900">บทบรรยาย</h1>
-        {spots.length > 0 && (
-          <div className="flex min-w-0 grow basis-[32rem] flex-wrap items-center gap-2">
-            <label htmlFor="spot-filter" className="sr-only">แสดง</label>
-            <select
-              id="spot-filter"
-              value={filterMode}
-              onChange={(event) => setFilterMode(event.target.value as FilterMode)}
-              className="w-40 max-w-full shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
-            >
-              <option value="all">ทั้งหมด ({spots.length})</option>
-              <option value="generate">มีบทบรรยาย ({generatedCount})</option>
-              <option value="pending">รอสร้าง ({pendingCount})</option>
-              <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
-              <option value="edited">แก้ไขแล้ว ({editedCount})</option>
-              <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
-            </select>
-            <div className="relative min-w-32 flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="ค้นหาบทบรรยายหรือเวลา"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="ค้นหาบทหรือเวลา…"
-                className="w-full rounded border border-slate-300 bg-white py-1 pl-8 pr-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-700"
-              />
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onExportSrt}
-                disabled={generatedCount === 0}
-                title={generatedCount === 0 ? 'เพิ่มบทบรรยายก่อนส่งออก' : undefined}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 disabled:opacity-40 cursor-pointer"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>ส่งออก SRT</span>
-              </button>
-            </div>
+      <h1 className="sr-only">บทบรรยายภาพ</h1>
+      {spots.length > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="ค้นหาบทบรรยายหรือเวลา"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="ค้นหาบทหรือเวลา…"
+              className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-900 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            />
           </div>
-        )}
-      </div>
+          <label htmlFor="spot-filter" className="sr-only">แสดง</label>
+          <select
+            id="spot-filter"
+            value={filterMode}
+            onChange={(event) => setFilterMode(event.target.value as FilterMode)}
+            className="w-36 sm:w-40 shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+          >
+            <option value="all">ทั้งหมด ({spots.length})</option>
+            <option value="generate">มีบทบรรยาย ({generatedCount})</option>
+            <option value="pending">รอสร้าง ({pendingCount})</option>
+            <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
+            <option value="edited">แก้ไขแล้ว ({editedCount})</option>
+            <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
+          </select>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col">
       {overDurationCount > 0 && (

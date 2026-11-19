@@ -11,6 +11,7 @@ import {
   Repeat,
   SkipBack,
   SkipForward,
+  Subtitles,
   Volume2,
   VolumeX,
   ZoomIn,
@@ -65,6 +66,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   const [isVideoLoading, setIsVideoLoading] = useState(Boolean(videoUrl));
   const [isMuted, setIsMuted] = useState(false);
   const [loopSelectedSpot, setLoopSelectedSpot] = useState(false);
+  const [showCaptionOverlay, setShowCaptionOverlay] = useState(true);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(600);
@@ -229,12 +231,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   const isSelectedOverDuration = Boolean(selectedSpot && selectedSpotSpeechMs > selectedSpot.duration_ms);
 
   return (
-    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:row-span-2 lg:grid lg:grid-rows-subgrid lg:overflow-hidden">
-      <div className="flex shrink-0 items-start justify-between border-b border-slate-200 bg-white px-3 py-2.5">
-        <h2 className="workspace-pane-heading text-base font-semibold text-slate-900">วิดีโอ</h2>
-        {videoMetadata && <span className="workspace-pane-heading text-xs text-slate-600 tabular-nums">{videoMetadata.width} × {videoMetadata.height}</span>}
-      </div>
-
+    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-col bg-slate-950 lg:flex-1">
         <div className="relative aspect-video min-h-0 max-h-[38vh] w-full overflow-hidden lg:aspect-auto lg:max-h-none lg:flex-1">
@@ -259,7 +256,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   }
                 }}
               />
-              {(videoError || isVideoLoading) && (
+              {videoError || isVideoLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 px-6 py-4 text-center text-white">
                   {videoError ? <AlertTriangle className="h-6 w-6 text-amber-300" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
                   <div role={videoError ? 'alert' : 'status'} className="max-w-sm space-y-2">
@@ -273,15 +270,26 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     videoRef.current?.load();
                   }} className="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
                 </div>
-              )}
-              {currentWindowSpot && !videoError && !isVideoLoading && (
-                <div className="pointer-events-none absolute top-2 left-2 rounded bg-black/75 px-2 py-1 text-xs font-medium text-white">
-                  ช่วง {spots.indexOf(currentWindowSpot) + 1}
-                </div>
-              )}
-              {activeSubtitleSpot && !videoError && !isVideoLoading && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center bg-gradient-to-t from-black/90 via-black/55 to-transparent px-6 pt-10 pb-3 text-center">
-                  <p className="max-w-2xl text-sm sm:text-base font-medium leading-relaxed text-white drop-shadow">{activeSubtitleSpot.text}</p>
+              ) : null}
+              {showCaptionOverlay && !videoError && !isVideoLoading && activeSubtitleSpot && (
+                <div
+                  aria-live="polite"
+                  aria-label="บทบรรยายภาพ ณ เวลาปัจจุบัน"
+                  className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-center"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectSpot(activeSubtitleSpot.spot_id, false)}
+                    title={activeSubtitleSpot.text}
+                    className="pointer-events-auto flex max-w-[min(92%,40rem)] items-start gap-2.5 rounded-lg border border-white/15 bg-slate-950/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-slate-950/90 focus-visible:outline-brand-400 cursor-pointer"
+                  >
+                    <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white tabular-nums">
+                      AD {spots.indexOf(activeSubtitleSpot) + 1}
+                    </span>
+                    <p className="min-w-0 line-clamp-2 text-xs sm:text-sm font-medium leading-relaxed text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]">
+                      {activeSubtitleSpot.text}
+                    </p>
+                  </button>
                 </div>
               )}
             </>
@@ -310,6 +318,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           </div>
           <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 border-l border-brand-200 pl-2">
             <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
+            <button type="button" onClick={() => setShowCaptionOverlay((prev) => !prev)} disabled={!videoUrl} title={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-label={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-pressed={showCaptionOverlay} className={`${controlBase} ${showCaptionOverlay ? 'bg-brand-700 text-white hover:bg-brand-800' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Subtitles className="h-4 w-4" aria-hidden="true" /></button>
             <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-700 text-white hover:bg-brand-800' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
           </div>
           <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600" title={`${formatTimestampDisplay(currentTimeMs)} / ${formatTimestampDisplay(videoUrl ? effectiveDurationMs : 0)}`}>
