@@ -35,7 +35,7 @@ const ACTIVE_JOB_POINTER = path.join(DATA_DIR, 'active_job.json');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const FIXED_SERVER_CONFIG: ServerConfig = {
-  geminiModel: 'gemini-3.8-flash',
+  geminiModel: 'gemini-4-hydrogen',
   maxVideoDurationSeconds: 1800,
   maxUploadSizeMb: 2000,
   vadThreshold: 0.5,
@@ -596,7 +596,7 @@ ${candidateListDescription}
           },
           systemInstruction,
           mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW,
-          ...(modelToUse === 'gemini-3.8-flash'
+          ...(modelToUse === config.geminiModel
             ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
             : {}),
           responseMimeType: 'application/json',

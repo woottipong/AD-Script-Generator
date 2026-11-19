@@ -179,18 +179,12 @@ export async function validateAndInspectMp4File(
       });
     }
 
-    // Validate Resolution (480p: 854x480 standard, or 480p height)
+    // Validate Resolution (480p height)
     if (height !== 480) {
       issues.push({
         field: 'resolution',
         severity: 'error',
-        message: `ความละเอียดวิดีโอต้องเป็น 480p (854 × 480) เท่านั้น (พบ: ${width} × ${height})`,
-      });
-    } else if (width !== 854) {
-      issues.push({
-        field: 'resolution',
-        severity: 'warning',
-        message: `ความละเอียดวิดีโอเป็น 480p (${width} × ${height}) แนะนำสัดส่วนมาตรฐาน 854 × 480`,
+        message: `ความละเอียดวิดีโอต้องเป็น 480p (ความสูง 480px) เท่านั้น (พบ: ${width} × ${height})`,
       });
     }
 

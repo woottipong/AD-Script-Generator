@@ -30,7 +30,7 @@ Signal analysis can recommend different speech, silence, and padding values befo
 
 Batching and Gemini interaction run in `server.ts` and `src/utils/formatters.ts`:
 
-- Primary model: `gemini-3.8-flash` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
+- Primary model: `gemini-4-hydrogen` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
 - Fallback model: `gemini-3.5-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.
 - Batch interval: 240 seconds of video timeline per batch.
 - Batch context window: Includes 20 seconds before batch start and 10 seconds after batch end, clamped to [0, duration]. A window expands to cover a spot crossing the batch boundary before context is added.
