@@ -29,12 +29,10 @@ import {
 } from './src/utils/formatters';
 import { mergeProcessingState } from './src/utils/jobProcessing';
 import { validateEditedSpots, validateJobInitialization } from './src/utils/jobValidation';
+import { createJobStore, isJobId } from './src/utils/jobStore';
 
 const PORT = 3000;
-const DATA_DIR = path.resolve(process.cwd(), '.data', 'jobs');
-const ACTIVE_JOB_POINTER = path.join(DATA_DIR, 'active_job.json');
-
-fs.mkdirSync(DATA_DIR, { recursive: true });
+const store = createJobStore(path.resolve(process.cwd(), '.data', 'jobs'));
 
 const FIXED_SERVER_CONFIG: ServerConfig = {
   geminiModel: 'gemini-4-hydrogen',
@@ -88,60 +86,14 @@ function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
   });
 }
 
-// Local JSON Persistence Helpers
-function getJobDir(jobId: string): string {
-  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) throw new Error('Invalid job ID');
-  return path.join(DATA_DIR, jobId);
-}
-
-function getJobFilePath(jobId: string): string {
-  return path.join(getJobDir(jobId), 'job.json');
-}
-
-function saveJobState(job: PersistedJobState, activate = true): void {
-  const jobDir = getJobDir(job.job_id);
-  fs.mkdirSync(jobDir, { recursive: true });
-  job.updated_at = new Date().toISOString();
-  fs.writeFileSync(getJobFilePath(job.job_id), JSON.stringify(job, null, 2), 'utf-8');
-  if (activate) {
-    fs.writeFileSync(
-      ACTIVE_JOB_POINTER,
-      JSON.stringify({ active_job_id: job.job_id, updated_at: job.updated_at }, null, 2),
-      'utf-8'
-    );
-  }
-}
-
-function loadJobState(jobId: string): PersistedJobState | null {
-  try {
-    const filePath = getJobFilePath(jobId);
-    if (!fs.existsSync(filePath)) return null;
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(raw) as PersistedJobState;
-  } catch {
-    return null;
-  }
-}
-
 function saveProcessingState(
   job: PersistedJobState,
   results?: ReadonlyMap<string, { decision: 'generate' | 'skip'; text: string; reason?: string }>,
 ): void {
-  const latest = loadJobState(job.job_id);
+  const latest = store.load(job.job_id);
   if (!latest) throw new Error('ไม่สามารถอ่านสถานะงานล่าสุดได้');
   job.spots = mergeProcessingState(job, latest, results).spots;
-  saveJobState(job, false);
-}
-
-function loadCurrentActiveJob(): PersistedJobState | null {
-  try {
-    if (!fs.existsSync(ACTIVE_JOB_POINTER)) return null;
-    const pointer = JSON.parse(fs.readFileSync(ACTIVE_JOB_POINTER, 'utf-8'));
-    if (!pointer?.active_job_id) return null;
-    return loadJobState(pointer.active_job_id);
-  } catch {
-    return null;
-  }
+  store.save(job, false);
 }
 
 // Single-job concurrency lock (MVP rule: process 1 Gemini job at a time)
@@ -164,59 +116,6 @@ function releaseProcessingLock(lock: ProcessingLock): void {
   lock.release();
 }
 
-function getStoragePointer(): string | null {
-  try {
-    const pointer = JSON.parse(fs.readFileSync(ACTIVE_JOB_POINTER, 'utf8'));
-    if (typeof pointer.active_job_id !== 'string') throw new Error('Invalid active pointer');
-    return pointer.active_job_id;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
-  }
-}
-
-function getStoredJob(jobId: string): { dir: string; job: PersistedJobState } | null {
-  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) return null;
-  const dir = path.join(DATA_DIR, jobId);
-  try {
-    if (!fs.lstatSync(dir).isDirectory()) return null;
-    if (path.dirname(fs.realpathSync(dir)) !== fs.realpathSync(DATA_DIR)) return null;
-    const file = path.join(dir, 'job.json');
-    if (!fs.lstatSync(file).isFile()) return null;
-    const job = JSON.parse(fs.readFileSync(file, 'utf8')) as PersistedJobState;
-    if (job.job_id !== jobId || !job.video_metadata || typeof job.video_metadata.fileName !== 'string') return null;
-    return { dir, job };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT' || err instanceof SyntaxError) return null;
-    throw err;
-  }
-}
-
-function getUnfinishedUpload(jobId: string): { dir: string; updatedAt: string } | null {
-  if (!/^job_[a-zA-Z0-9_-]+$/.test(jobId)) return null;
-  const dir = path.join(DATA_DIR, jobId);
-  try {
-    if (!fs.lstatSync(dir).isDirectory() || path.dirname(fs.realpathSync(dir)) !== fs.realpathSync(DATA_DIR)) return null;
-    const entries = fs.readdirSync(dir);
-    if (entries.length !== 1 || entries[0] !== 'source_video.mp4') return null;
-    const stat = fs.lstatSync(path.join(dir, 'source_video.mp4'));
-    return stat.isFile() ? { dir, updatedAt: stat.mtime.toISOString() } : null;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
-  }
-}
-
-function storageSize(dir: string): number {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += storageSize(file);
-    else if (entry.isFile()) total += fs.lstatSync(file).size;
-  }
-  return total;
-}
-
 // Multer disk storage for streaming large MP4 uploads (up to 2 GB) directly to temporary disk
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
@@ -224,7 +123,7 @@ const storage = multer.diskStorage({
     // Attach generated jobId to request object
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as any).generatedJobId = jobId;
-    const jobDir = getJobDir(jobId);
+    const jobDir = store.dirOf(jobId);
     fs.mkdirSync(jobDir, { recursive: true });
     cb(null, jobDir);
   },
@@ -748,7 +647,7 @@ ${candidateListDescription}
 async function runJobInBackground(jobId: string): Promise<void> {
   if (activeProcessingLock) return;
 
-  const job = loadJobState(jobId);
+  const job = store.load(jobId);
   if (!job) return;
 
   const allBatchesCompleted = job.batches.every((batch) => batch.status === 'completed');
@@ -789,7 +688,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
       }
 
       // Check if job was deleted/reset while running
-      const latestPointerExists = loadJobState(jobId);
+      const latestPointerExists = store.load(jobId);
       if (!latestPointerExists) {
         return;
       }
@@ -857,7 +756,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
 }
 
 function recoverOrphanedJobOnStartup(): void {
-  const activeJob = loadCurrentActiveJob();
+  const activeJob = store.loadActive();
   if (!activeJob) return;
   let modified = false;
   for (const b of activeJob.batches) {
@@ -873,7 +772,7 @@ function recoverOrphanedJobOnStartup(): void {
     modified = true;
   }
   if (modified) {
-    saveJobState(activeJob);
+    store.save(activeJob);
   }
 }
 
@@ -894,13 +793,13 @@ async function startServer() {
     const config = getServerConfig();
     res.json({
       config,
-      hasActiveJob: Boolean(loadCurrentActiveJob()),
+      hasActiveJob: Boolean(store.loadActive()),
     });
   });
 
   // 2. GET /api/jobs/current — Restore active/recent job on browser refresh or reconnect
   app.get('/api/jobs/current', (_req: Request, res: Response) => {
-    const job = loadCurrentActiveJob();
+    const job = store.loadActive();
     if (!job) {
       res.json({ job: null, isRunning: false });
       return;
@@ -913,20 +812,12 @@ async function startServer() {
 
   app.get('/api/jobs', (_req: Request, res: Response) => {
     try {
-      const activeId = getStoragePointer();
-      const jobs = fs.readdirSync(DATA_DIR, { withFileTypes: true }).filter((entry) => entry.isDirectory()).flatMap((entry) => {
-        const stored = getStoredJob(entry.name);
-        if (!stored) {
-          const upload = getUnfinishedUpload(entry.name);
-          if (!upload) return [];
-          return [{ job_id: entry.name, file_name: `อัปโหลดไม่เสร็จ (${entry.name})`,
-            updated_at: upload.updatedAt, size_bytes: storageSize(upload.dir), is_upload: true,
-            is_active: entry.name === activeId, is_processing: activeUploads.has(entry.name) }];
-        }
-        return [{ job_id: entry.name, file_name: stored.job.video_metadata.fileName,
-          updated_at: stored.job.updated_at, size_bytes: storageSize(stored.dir), is_upload: false,
-          is_active: entry.name === activeId, is_processing: entry.name === activeProcessingLock?.jobId }];
-      });
+      const activeId = store.activeJobId();
+      const jobs = store.list().map((job) => ({
+        ...job,
+        is_active: job.job_id === activeId,
+        is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
+      }));
       res.json({ jobs });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถอ่านรายการงานได้' });
@@ -935,13 +826,13 @@ async function startServer() {
 
   app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
     try {
-      const activeId = getStoragePointer();
-      const stored = getStoredJob(req.params.jobId) || getUnfinishedUpload(req.params.jobId);
-      if (!stored) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
+      const activeId = store.activeJobId();
+      const dir = store.filesDir(req.params.jobId);
+      if (!dir) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
       if (req.params.jobId === activeId || req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
         res.status(409).json({ error: 'ไม่สามารถลบงานปัจจุบันหรืองานที่กำลังประมวลผล' }); return;
       }
-      fs.rmSync(stored.dir, { recursive: true });
+      fs.rmSync(dir, { recursive: true });
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
@@ -950,7 +841,7 @@ async function startServer() {
 
   // 3. GET /api/jobs/:jobId — Fetch specific job state (used by fast client polling)
   app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
-    const job = loadJobState(req.params.jobId);
+    const job = store.load(req.params.jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผลนี้บนเซิร์ฟเวอร์' });
       return;
@@ -963,7 +854,7 @@ async function startServer() {
 
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
   app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
-    const job = loadJobState(req.params.jobId);
+    const job = store.load(req.params.jobId);
     if (!job || !job.local_file_path || !fs.existsSync(job.local_file_path)) {
       res.status(404).json({ error: 'ไม่พบไฟล์วิดีโอสำรองสำหรับงานนี้' });
       return;
@@ -1006,7 +897,7 @@ async function startServer() {
       }
       const safeFileName = (fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
       const uploadId = `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-      const jobDir = getJobDir(uploadId);
+      const jobDir = store.dirOf(uploadId);
       fs.mkdirSync(jobDir, { recursive: true });
 
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
@@ -1024,7 +915,7 @@ async function startServer() {
   });
 
   app.post('/api/upload/:uploadId/abandon', (req: Request, res: Response) => {
-    if (!/^job_[a-zA-Z0-9_-]+$/.test(req.params.uploadId)) {
+    if (!isJobId(req.params.uploadId)) {
       res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
       return;
     }
@@ -1039,7 +930,7 @@ async function startServer() {
     (req: Request, res: Response) => {
       try {
         const uploadId = String(req.query.uploadId || req.headers['x-upload-id'] || '');
-        if (!/^job_[a-zA-Z0-9_-]+$/.test(uploadId)) {
+        if (!isJobId(uploadId)) {
           res.status(400).json({ error: 'ไม่พบ uploadId' });
           return;
         }
@@ -1051,7 +942,7 @@ async function startServer() {
         }
         const offset = Number(offsetParam);
 
-        const jobDir = getJobDir(uploadId);
+        const jobDir = store.dirOf(uploadId);
         const targetFilePath = path.join(jobDir, 'source_video.mp4');
         if (!fs.existsSync(jobDir)) {
           res.status(404).json({ error: 'ไม่พบโฟลเดอร์สำหรับ uploadId นี้' });
@@ -1137,11 +1028,11 @@ async function startServer() {
 
       if (req.body && req.body.uploadId) {
         jobId = req.body.uploadId;
-        if (typeof jobId !== 'string' || !/^job_[a-zA-Z0-9_-]+$/.test(jobId)) {
+        if (!isJobId(jobId)) {
           res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
           return;
         }
-        const jobDir = getJobDir(jobId);
+        const jobDir = store.dirOf(jobId);
         localFilePath = path.join(jobDir, 'source_video.mp4');
         if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || fs.existsSync(path.join(jobDir, 'job.json'))) {
           res.status(400).json({ error: 'ไม่พบไฟล์วิดีโอที่อัปโหลด หรือไฟล์มีขนาดเป็น 0' });
@@ -1236,7 +1127,7 @@ async function startServer() {
         getGeminiClient({ fastFail: true });
       }
 
-      saveJobState(jobState);
+      store.save(jobState);
       activeUploads.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
@@ -1275,7 +1166,7 @@ async function startServer() {
       return;
     }
 
-    const job = loadJobState(jobId);
+    const job = store.load(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
       return;
@@ -1300,7 +1191,7 @@ async function startServer() {
       job.status = 'READY';
       job.progress_stage = undefined;
       job.progress_percent = 100;
-      saveJobState(job);
+      store.save(job);
       if (!job.gemini_file_name) {
         res.json({ job, isRunning: false });
         return;
@@ -1309,7 +1200,7 @@ async function startServer() {
       job.status = 'ANALYZING';
       job.error_message = undefined;
       job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
-      saveJobState(job);
+      store.save(job);
     }
 
     void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
@@ -1336,7 +1227,7 @@ async function startServer() {
       return;
     }
 
-    const job = loadJobState(jobId);
+    const job = store.load(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
       return;
@@ -1348,7 +1239,7 @@ async function startServer() {
 
     if (!batch) {
       job.status = 'READY';
-      saveJobState(job);
+      store.save(job);
       res.json({ job });
       return;
     }
@@ -1366,7 +1257,7 @@ async function startServer() {
     job.error_message = undefined;
     let uploadAi: GoogleGenAI | undefined;
     try {
-      saveJobState(job);
+      store.save(job);
       uploadAi = getGeminiClient({ fastFail: false });
       const fastAi = getGeminiClient({ fastFail: true });
       const serverConfig = getServerConfig();
@@ -1425,7 +1316,7 @@ async function startServer() {
     const { jobId } = req.params;
     const { spots } = (req.body || {}) as { spots?: ADSpot[] };
 
-    const job = loadJobState(jobId);
+    const job = store.load(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
       return;
@@ -1438,19 +1329,14 @@ async function startServer() {
     }
 
     job.spots = checked.spots;
-    saveJobState(job);
+    store.save(job);
     res.json({ job });
   });
 
   // 8. DELETE /api/jobs/:jobId — Clear active job pointer when resetting
   app.delete('/api/jobs/:jobId', (req: Request, res: Response) => {
     try {
-      if (fs.existsSync(ACTIVE_JOB_POINTER)) {
-        const ptr = JSON.parse(fs.readFileSync(ACTIVE_JOB_POINTER, 'utf-8'));
-        if (ptr?.active_job_id === req.params.jobId) {
-          fs.unlinkSync(ACTIVE_JOB_POINTER);
-        }
-      }
+      store.clearActive(req.params.jobId);
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });
