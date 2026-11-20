@@ -14,6 +14,7 @@ import {
   ADSpot,
   AnalysisBatch,
   DEFAULT_AD_ANALYSIS_SETTINGS,
+  JOB_SCHEMA_VERSION,
   PersistedJobState,
   ServerConfig,
   VADConfig,
@@ -169,6 +170,11 @@ async function deleteJobGeminiFile(ai: GoogleGenAI, job: PersistedJobState): Pro
  * Ensures the job has a valid, non-expired Gemini File URI.
  * If the URI has expired and the local source MP4 still exists, re-uploads it automatically (Section 06 Rule 7).
  */
+/** Server path of the Job's video copy; null when the video is not stored on this server. */
+function serverVideoPath(job: PersistedJobState): string | null {
+  return job.video_source.kind === 'server_copy' ? job.video_source.local_file_path : null;
+}
+
 async function ensureActiveGeminiFileUri(
   uploadAi: GoogleGenAI,
   job: PersistedJobState,
@@ -202,7 +208,8 @@ async function ensureActiveGeminiFileUri(
     }
   }
 
-  if (!job.local_file_path || !fs.existsSync(job.local_file_path)) {
+  const videoPath = serverVideoPath(job);
+  if (!videoPath || !fs.existsSync(videoPath)) {
     throw new Error('File URI บน Gemini หมดอายุแล้ว และไม่พบไฟล์วิดีโอสำรองบนเซิร์ฟเวอร์ กรุณาอัปโหลดวิดีโอใหม่อีกครั้ง');
   }
 
@@ -215,7 +222,7 @@ async function ensureActiveGeminiFileUri(
 
   onProgressStage?.('กำลังส่งไฟล์วิดีโอไปยัง Gemini Files API...');
   const uploaded = await uploadAi.files.upload({
-    file: job.local_file_path,
+    file: videoPath,
     config: {
       mimeType: 'video/mp4',
       displayName: job.video_metadata.fileName || 'source_video.mp4',
@@ -606,12 +613,12 @@ async function startServer() {
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
   app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
     const job = store.load(req.params.jobId);
-    if (!job || !job.local_file_path || !fs.existsSync(job.local_file_path)) {
+    const filePath = job ? serverVideoPath(job) : null;
+    if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'ไม่พบไฟล์วิดีโอสำรองสำหรับงานนี้' });
       return;
     }
 
-    const filePath = job.local_file_path;
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
@@ -854,7 +861,10 @@ async function startServer() {
 
       const now = new Date().toISOString();
       const jobState: PersistedJobState = {
+        schema_version: JOB_SCHEMA_VERSION,
         job_id: jobId,
+        mode: 'generate',
+        video_source: { kind: 'server_copy', local_file_path: localFilePath },
         created_at: now,
         updated_at: now,
         status: batches.length === 0 ? 'READY' : 'ANALYZING',
@@ -862,7 +872,6 @@ async function startServer() {
         vad_config: vadConfig,
         ad_settings: adSettings,
         vad_output: vadOutput,
-        local_file_path: localFilePath,
         batches,
         spots: initialSpots,
         progress_stage:

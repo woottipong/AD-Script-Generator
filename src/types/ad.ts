@@ -140,8 +140,22 @@ export interface ServerConfig {
   contextAfterSeconds: number;
 }
 
+export type JobMode = 'generate' | 'review';
+
+/** Where a Job's video lives. Only Generate Mode keeps a server copy (ADR-0002). */
+export type VideoSource =
+  | { kind: 'server_copy'; local_file_path: string }
+  | { kind: 'url'; url: string }
+  | { kind: 'local_file'; file_name: string; file_size: number };
+
+export const JOB_SCHEMA_VERSION = 2;
+
 export interface PersistedJobState {
+  schema_version: typeof JOB_SCHEMA_VERSION;
   job_id: string;
+  mode: JobMode;
+  video_source: VideoSource;
+  srt_source?: { file_name: string; cue_count: number; imported_at: string };
   created_at: string;
   updated_at: string;
   status: JobStatus;
@@ -153,7 +167,6 @@ export interface PersistedJobState {
   gemini_file_name?: string;
   gemini_file_mime_type?: string;
   gemini_file_expires_at?: string;
-  local_file_path?: string;
   batches: AnalysisBatch[];
   spots: ADSpot[];
   progress_stage?: string;

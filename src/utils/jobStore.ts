@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { PersistedJobState } from '../types/ad';
+import { JOB_SCHEMA_VERSION, type PersistedJobState } from '../types/ad';
 
 const JOB_ID_PATTERN = /^job_[a-zA-Z0-9_-]+$/;
 
@@ -53,10 +53,22 @@ export function createJobStore(dataDir: string) {
     return fs.lstatSync(dir).isDirectory() && path.dirname(fs.realpathSync(dir)) === fs.realpathSync(dataDir);
   }
 
+  /** Jobs written before schema version 2 are Generate Mode jobs whose video copy sits in their own folder. */
+  function upgrade(raw: PersistedJobState & { local_file_path?: string }): PersistedJobState {
+    if (raw.schema_version !== undefined) return raw;
+    const { local_file_path, ...rest } = raw;
+    return {
+      ...rest,
+      schema_version: JOB_SCHEMA_VERSION,
+      mode: 'generate',
+      video_source: { kind: 'server_copy', local_file_path: local_file_path ?? path.join(dirOf(raw.job_id), 'source_video.mp4') },
+    };
+  }
+
   /** Lenient read for the request path: any unreadable job is reported as missing. */
   function load(jobId: string): PersistedJobState | null {
     try {
-      return JSON.parse(fs.readFileSync(path.join(dirOf(jobId), 'job.json'), 'utf-8')) as PersistedJobState;
+      return upgrade(JSON.parse(fs.readFileSync(path.join(dirOf(jobId), 'job.json'), 'utf-8')));
     } catch {
       return null;
     }

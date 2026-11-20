@@ -50,6 +50,8 @@ Batching runs in `src/utils/formatters.ts`. Prompt building and response validat
 
 Job state persists as JSON on disk inside `.data/jobs/`. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, the active pointer, storage listing, and deletable directories. Route code goes through the store.
 
+Each Job records `schema_version` (currently 2), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). The store upgrades jobs without `schema_version` on read to Generate Mode with a `server_copy` source, and the next save writes the new shape. Only a `server_copy` source has a video file on the server.
+
 - Path format: `.data/jobs/<job_id>/job.json`
 - Active pointer: `.data/jobs/active_job.json` contains `{ "active_job_id": "<job_id>", "updated_at": "…" }`
 - Local video copy: `.data/jobs/<job_id>/source_video.mp4` stored during upload for range streaming (`/api/jobs/:jobId/video`) and automatic re-upload if Gemini file TTL expires.

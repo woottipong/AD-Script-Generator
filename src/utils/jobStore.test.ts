@@ -88,3 +88,47 @@ test('list and filesDir cover stored jobs and unfinished uploads but not escapes
   assert.equal(store.filesDir('job_link'), null);
   assert.equal(store.filesDir('job_missing'), null);
 });
+
+test('a legacy job without schema_version loads as a Generate Mode job with a server copy', () => {
+  const { dataDir, store } = tempStore();
+  const legacyDir = path.join(dataDir, 'job_legacy');
+  fs.mkdirSync(legacyDir);
+  const videoPath = path.join(legacyDir, 'source_video.mp4');
+  fs.writeFileSync(path.join(legacyDir, 'job.json'), JSON.stringify({ ...job('job_legacy'), local_file_path: videoPath }));
+
+  const loaded = store.load('job_legacy')!;
+  assert.equal(loaded.schema_version, 2);
+  assert.equal(loaded.mode, 'generate');
+  assert.deepEqual(loaded.video_source, { kind: 'server_copy', local_file_path: videoPath });
+  assert.equal('local_file_path' in loaded, false);
+
+  store.save(loaded, false);
+  const onDisk = JSON.parse(fs.readFileSync(path.join(legacyDir, 'job.json'), 'utf-8'));
+  assert.equal(onDisk.schema_version, 2);
+  assert.equal(onDisk.mode, 'generate');
+  assert.equal(onDisk.local_file_path, undefined);
+});
+
+test('a legacy job that never recorded a video path points at its own source_video.mp4', () => {
+  const { dataDir, store } = tempStore();
+  fs.mkdirSync(path.join(dataDir, 'job_nopath'));
+  fs.writeFileSync(path.join(dataDir, 'job_nopath', 'job.json'), JSON.stringify(job('job_nopath')));
+  assert.deepEqual(store.load('job_nopath')!.video_source, {
+    kind: 'server_copy',
+    local_file_path: path.join(dataDir, 'job_nopath', 'source_video.mp4'),
+  });
+});
+
+test('a schema version 2 job loads unchanged, including its mode and video source', () => {
+  const { store } = tempStore();
+  const review = {
+    ...job('job_review'), schema_version: 2, mode: 'review',
+    video_source: { kind: 'url', url: 'https://example.invalid/clip.mp4' },
+    srt_source: { file_name: 'clip.srt', cue_count: 3, imported_at: '2026-11-20T00:00:00Z' },
+  } as unknown as PersistedJobState;
+  store.save(review, false);
+  const loaded = store.load('job_review')!;
+  assert.equal(loaded.mode, 'review');
+  assert.deepEqual(loaded.video_source, { kind: 'url', url: 'https://example.invalid/clip.mp4' });
+  assert.equal(loaded.srt_source?.cue_count, 3);
+});

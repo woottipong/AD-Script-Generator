@@ -46,6 +46,13 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     assert.equal((await patch([{ ...spot, text: 'edited' }])).status, 200);
     const saved = JSON.parse(fs.readFileSync(path.join(jobDir, 'job.json'), 'utf8'));
     assert.equal(saved.spots[0].text, 'edited');
+    assert.equal(saved.schema_version, 2, 'legacy job is rewritten as schema version 2 on save');
+    assert.equal(saved.mode, 'generate');
+    assert.equal(saved.video_source.kind, 'server_copy');
+    assert.equal(saved.local_file_path, undefined);
+    const video = await fetch(`${base}/jobs/job_fixture/video`);
+    assert.equal(video.status, 200, 'legacy job video still streams from its server copy');
+    assert.equal(await video.text(), 'abc');
   } finally {
     child.kill('SIGTERM');
     await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);

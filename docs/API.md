@@ -19,7 +19,11 @@ A job response contains a `job` object. The fields below describe the current Ty
 
 | Field | Type or values |
 |---|---|
+| `schema_version` | `2`. Jobs saved before this field existed are read as version 2 Generate Mode jobs and rewritten on their next save |
 | `job_id` | Opaque string ID |
+| `mode` | `generate` or `review` |
+| `video_source` | Where the video lives: `{ kind: "server_copy", local_file_path }`, `{ kind: "url", url }`, or `{ kind: "local_file", file_name, file_size }`. Generate Mode jobs use `server_copy` |
+| `srt_source` | Optional imported SRT details for Review Mode: `file_name`, `cue_count`, `imported_at` |
 | `created_at`, `updated_at` | ISO timestamp strings |
 | `status` | `IDLE`, `VIDEO_READY`, `DETECTING`, `VAD_READY`, `ANALYZING`, `READY`, or `FAILED` |
 | `video_metadata` | File name, byte size, MIME type, width, height, duration, video codec, audio codec, and `hasAudioTrack`. Optional `sampleRate` and `channelCount` |
@@ -28,7 +32,6 @@ A job response contains a `job` object. The fields below describe the current Ty
 | `vad_output` | `duration_ms`, `speech_segments`, and `candidate_spots`. Optional `signal_analysis` contains acoustic measurements and the recommended VAD configuration. Optional `waveform` holds the Waveform Envelope as `sampleIntervalMs` (10 to 1000) and `peaksBase64` (base64 of one byte per bucket, at most 200,000 characters) |
 | `batches` | Array of analysis batches |
 | `spots` | Array of `ADSpot` objects |
-| `local_file_path` | Optional server path to the uploaded MP4 |
 | `gemini_file_uri`, `gemini_file_name`, `gemini_file_mime_type`, `gemini_file_expires_at` | Optional Gemini Files API metadata |
 | `progress_stage`, `progress_percent`, `active_model`, `error_message` | Optional processing feedback |
 
@@ -97,7 +100,7 @@ An unknown or unreadable job returns HTTP 404:
 
 ### GET /api/jobs/:jobId/video
 
-Streams `job.local_file_path`, normally `.data/jobs/<jobId>/source_video.mp4`.
+Streams the job's server copy (`video_source.local_file_path`, normally `.data/jobs/<jobId>/source_video.mp4`). Jobs whose `video_source.kind` is not `server_copy` return HTTP 404.
 
 | Request | Response |
 |---|---|
