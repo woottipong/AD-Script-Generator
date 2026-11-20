@@ -14,7 +14,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { ADSpot, SpeechSegment, VideoMetadata, WaveformEnvelope } from '../types/ad';
+import { ADSpot, SpeechSegment, WaveformEnvelope } from '../types/ad';
 import { getProcessingFeedback, type ProcessingProgress } from '../utils/processingFeedback';
 import {
   formatCompactTime,
@@ -46,7 +46,6 @@ interface ActiveSpotDrag {
 
 interface VideoPreviewTimelineProps {
   videoUrl: string | null;
-  videoMetadata: VideoMetadata | null;
   durationMs: number;
   currentTimeMs: number;
   onTimeUpdateMs: (ms: number) => void;
@@ -64,7 +63,6 @@ interface VideoPreviewTimelineProps {
 
 export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   videoUrl,
-  videoMetadata,
   durationMs,
   currentTimeMs,
   onTimeUpdateMs,
@@ -126,7 +124,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  const effectiveDurationMs = Math.max(1, durationMs || videoMetadata?.durationMs || 0);
+  const effectiveDurationMs = Math.max(1, durationMs);
 
   const drawWaveform = useCallback(() => {
     const canvas = waveformCanvasRef.current;

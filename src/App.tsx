@@ -767,7 +767,6 @@ export default function App() {
         <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
           <VideoPreviewTimeline
             videoUrl={videoUrl}
-            videoMetadata={videoMetadata}
             durationMs={vadOutput?.duration_ms || videoMetadata?.durationMs || 0}
             currentTimeMs={currentTimeMs}
             onTimeUpdateMs={setCurrentTimeMs}

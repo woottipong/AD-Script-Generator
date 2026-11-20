@@ -19,7 +19,6 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "mp4box": "^2.5.0",
     "multer": "^2.5.0",
     "onnxruntime-web": "^1.31.1",

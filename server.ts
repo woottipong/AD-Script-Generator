@@ -48,10 +48,6 @@ const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 let primaryModelCooldownUntil = 0;
 const verifiedActiveFileNames = new Set<string>();
 
-function getServerConfig(): ServerConfig {
-  return FIXED_SERVER_CONFIG;
-}
-
 /**
  * Prevents returning HTTP 403, 502, 503, or 504 from Express /api routes,
  * because the container Nginx proxy intercepts those status codes and replaces
@@ -418,7 +414,6 @@ async function runJobInBackground(jobId: string): Promise<void> {
 
     uploadAi = getGeminiClient({ fastFail: false });
     const fastAi = getGeminiClient({ fastFail: true });
-    const serverConfig = getServerConfig();
 
     job.status = 'ANALYZING';
     job.error_message = undefined;
@@ -467,7 +462,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
         uploadAi,
         job,
         batch,
-        serverConfig,
+        FIXED_SERVER_CONFIG,
         (stage, activeModel) => {
           job.progress_stage = stage;
           job.active_model = activeModel;
@@ -547,9 +542,8 @@ async function startServer() {
 
   // 1. GET /api/config — Return server default configuration (no secrets)
   app.get('/api/config', (_req: Request, res: Response) => {
-    const config = getServerConfig();
     res.json({
-      config,
+      config: FIXED_SERVER_CONFIG,
       hasActiveJob: Boolean(store.loadActive()),
     });
   });
@@ -837,14 +831,13 @@ async function startServer() {
       }
       ({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings } = validated.data);
 
-      const serverConfig = getServerConfig();
 
       const batches = buildAnalysisBatches(
         vadOutput.candidate_spots,
         vadOutput.duration_ms,
-        serverConfig.analysisBatchSeconds,
-        serverConfig.contextBeforeSeconds,
-        serverConfig.contextAfterSeconds
+        FIXED_SERVER_CONFIG.analysisBatchSeconds,
+        FIXED_SERVER_CONFIG.contextBeforeSeconds,
+        FIXED_SERVER_CONFIG.contextAfterSeconds
       );
 
       const initialSpots: ADSpot[] = vadOutput.candidate_spots.map((spot) => ({
@@ -1017,13 +1010,12 @@ async function startServer() {
       store.save(job);
       uploadAi = getGeminiClient({ fastFail: false });
       const fastAi = getGeminiClient({ fastFail: true });
-      const serverConfig = getServerConfig();
       const spotResults = await analyzeBatchWithGemini(
         fastAi,
         uploadAi,
         job,
         batch,
-        serverConfig
+        FIXED_SERVER_CONFIG
       );
 
       batch.status = 'completed';

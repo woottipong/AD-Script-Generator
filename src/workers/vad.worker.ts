@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { createFile } from 'mp4box';
 import * as ort from 'onnxruntime-web';
-import { AudioSignalAnalysis, VADConfig, VADOutput, WaveformEnvelope } from '../types/ad';
+import { VADConfig, VADOutput } from '../types/ad';
 import {
   analyzeAudioSignalAndRecommendVad,
   computeVadOutputFromProbabilities,
@@ -20,10 +20,6 @@ const VAD_FRAME_SAMPLES = 512; // 32 ms @ 16kHz
 const VAD_CONTEXT_SAMPLES = 64; // Silero v5 context window @ 16kHz
 
 let cachedSession: ort.InferenceSession | null = null;
-let lastProbabilities: Float32Array | null = null;
-let lastSignalAnalysis: AudioSignalAnalysis | undefined = undefined;
-let lastWaveform: WaveformEnvelope | undefined = undefined;
-let lastDurationMs = 0;
 
 async function getVadSession(): Promise<ort.InferenceSession> {
   if (cachedSession) {
@@ -211,50 +207,15 @@ class StreamingResampler16k {
   }
 }
 
-export interface WorkerStartMessage {
+interface WorkerStartMessage {
   type: 'PROCESS_FILE';
   file: File;
   vadConfig: VADConfig;
   autoTuneOptimal?: boolean;
 }
 
-export interface WorkerRecomputeMessage {
-  type: 'RECOMPUTE';
-  vadConfig: VADConfig;
-}
-
-export type VadWorkerIncomingMessage = WorkerStartMessage | WorkerRecomputeMessage;
-
-self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
+self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
   const msg = event.data;
-
-  if (msg.type === 'RECOMPUTE') {
-    if (!lastProbabilities || lastDurationMs <= 0) {
-      self.postMessage({
-        type: 'ERROR',
-        error: 'ยังไม่มีข้อมูลการตรวจจับเสียงในหน่วยความจำ กรุณากดตรวจจับเสียงพูด (Detect Speech) ก่อน',
-      });
-      return;
-    }
-    const vadOutput: VADOutput = {
-      ...computeVadOutputFromProbabilities(
-        lastProbabilities,
-        lastDurationMs,
-        msg.vadConfig,
-        VAD_FRAME_SAMPLES,
-        TARGET_SAMPLE_RATE,
-        lastSignalAnalysis
-      ),
-      ...(lastWaveform ? { waveform: lastWaveform } : {}),
-    };
-    self.postMessage({
-      type: 'COMPLETE',
-      vadOutput,
-      appliedConfig: msg.vadConfig,
-      frameCount: lastProbabilities.length,
-    });
-    return;
-  }
 
   if (msg.type === 'PROCESS_FILE') {
     const { file, vadConfig, autoTuneOptimal } = msg;
@@ -601,25 +562,23 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
           ? totalDurationMs
           : Math.round(((frameProbabilities.length * VAD_FRAME_SAMPLES) / TARGET_SAMPLE_RATE) * 1000);
 
-      lastProbabilities = Float32Array.from(frameProbabilities);
-      lastDurationMs = computedDurationMs;
-      lastSignalAnalysis = analyzeAudioSignalAndRecommendVad(lastProbabilities, frameRmsValues);
-      lastWaveform = waveformAccumulator.finalize();
+      const probabilities = Float32Array.from(frameProbabilities);
+      const signalAnalysis = analyzeAudioSignalAndRecommendVad(probabilities, frameRmsValues);
 
       const effectiveConfig: VADConfig = autoTuneOptimal
-        ? lastSignalAnalysis.recommendedConfig
+        ? signalAnalysis.recommendedConfig
         : vadConfig;
 
       const vadOutput: VADOutput = {
         ...computeVadOutputFromProbabilities(
-          lastProbabilities,
+          probabilities,
           computedDurationMs,
           effectiveConfig,
           VAD_FRAME_SAMPLES,
           TARGET_SAMPLE_RATE,
-          lastSignalAnalysis
+          signalAnalysis
         ),
-        waveform: lastWaveform,
+        waveform: waveformAccumulator.finalize(),
       };
 
       self.postMessage({
