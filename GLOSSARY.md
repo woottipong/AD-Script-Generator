@@ -1,8 +1,16 @@
 # AD Script Generator
 
-Automated Thai Audio Description authoring workspace that detects non-speech gaps in video, generates Thai narration scripts, and lets authors review and adjust spot timing before exporting SRT.
+Thai Audio Description authoring workspace. Authors either generate a new Thai narration script for a video or review an existing SRT script against its video, then adjust text and timing and export SRT.
 
 ## Language
+
+**Generate Mode**:
+The workflow that finds Candidate Spots in a video and has Gemini write a new narration script for them.
+_Avoid_: Create mode, AI mode
+
+**Review Mode**:
+The workflow that opens an existing video and its existing SRT script so the author can check and correct the AD Spots against the audio, with no script generation.
+_Avoid_: Edit mode, import mode, SRT mode
 
 **Speech Segment**:
 A contiguous time interval in the video where human speech is detected.
@@ -17,7 +25,7 @@ A Non-Speech Gap at least as long as the VAD minimum AD gap (3,000 ms by default
 _Avoid_: Slot, opening
 
 **AD Spot**:
-A single narration placement inside a Non-Speech Gap with a start time, end time, narration decision (`generate`, `skip`, or `pending`), and Thai script text.
+A single narration placement with a start time, end time, narration decision (`generate`, `skip`, or `pending`), and Thai script text. In Generate Mode it sits inside a Non-Speech Gap; in Review Mode it may overlap a Speech Segment, which is flagged rather than forbidden.
 _Avoid_: Subtitle, caption block, clip
 
 **Waveform Envelope**:
