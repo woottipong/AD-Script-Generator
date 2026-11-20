@@ -3,6 +3,7 @@ import { formatCompactTime, formatFileSize } from './formatters';
 
 export interface ProcessingProgress {
   stage: string;
+  phase?: 'finalizing-detection' | 'saving-edits';
   percent: number;
   processedMs?: number;
   totalMs?: number;
@@ -24,7 +25,7 @@ export function getProcessingFeedback(
   errorMessage: string | null,
 ): ProcessingFeedback | null {
   if (status === 'DETECTING') {
-    if (progress?.stage.includes('คำนวณช่วงเสียงพูด')) {
+    if (progress?.phase === 'finalizing-detection') {
       return { title: 'กำลังจัดช่วงสำหรับบรรยาย', description: 'ตรวจเสียงครบแล้ว กำลังจัดรายการช่วงว่างให้คุณตรวจและสร้างบทบรรยาย' };
     }
     if (progress?.processedMs !== undefined && progress.totalMs !== undefined && progress.totalMs > 0) {
@@ -50,7 +51,7 @@ export function getProcessingFeedback(
       percent: Math.min(100, Math.round(progress.loadedBytes / progress.totalBytes * 100)),
     };
   }
-  if (progress?.stage.includes('บันทึกการแก้ไข')) {
+  if (progress?.phase === 'saving-edits') {
     return { title: 'กำลังบันทึกบทบรรยาย', description: 'รอให้บันทึกการแก้ไขสำเร็จก่อนดำเนินการต่อ' };
   }
   if (batches.length > 0 && batches.every((batch) => batch.status === 'completed')) {

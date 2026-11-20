@@ -82,6 +82,7 @@ export default function App() {
       if (data.type === 'PROGRESS') {
         setVadProgress({
           stage: data.stage,
+          phase: data.phase,
           percent: data.percent,
           processedMs: data.processedMs,
           totalMs: data.totalMs,
@@ -464,6 +465,7 @@ export default function App() {
       setErrorMessage(null);
       setVadProgress({
         stage: 'กำลังรอบันทึกการแก้ไขก่อนดำเนินการต่อ...',
+        phase: 'saving-edits',
         percent: 15,
       });
 

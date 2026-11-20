@@ -12,8 +12,8 @@ function batch(index: number, status: AnalysisBatch['status']): AnalysisBatch {
 }
 
 test('preparation and finalization do not present milestone percentages as measured progress', () => {
-  for (const stage of ['กำลังโหลดโมเดล Silero VAD', 'กำลังคำนวณช่วงเสียงพูด']) {
-    const feedback = getProcessingFeedback('DETECTING', { stage, percent: 98 }, [], null);
+  for (const progress of [{ stage: 'กำลังโหลดโมเดล Silero VAD' }, { stage: 'any wording', phase: 'finalizing-detection' as const }]) {
+    const feedback = getProcessingFeedback('DETECTING', { ...progress, percent: 98 }, [], null);
     assert.ok(feedback);
     assert.equal(feedback.percent, undefined);
     assert.doesNotMatch(feedback.title, /Silero|PCM|AAC/);
@@ -73,4 +73,11 @@ test('completed and failed jobs stop showing the loading feedback', () => {
   for (const status of ['IDLE', 'VAD_READY', 'READY', 'FAILED'] as const) {
     assert.equal(getProcessingFeedback(status, null, [], null), null);
   }
+});
+
+test('waiting for edits to save is shown as saving, not as server preparation', () => {
+  const feedback = getProcessingFeedback('ANALYZING', { stage: 'any wording', phase: 'saving-edits', percent: 15 }, [batch(1, 'pending')], null);
+  assert.ok(feedback);
+  assert.equal(feedback.title, 'กำลังบันทึกบทบรรยาย');
+  assert.equal(feedback.percent, undefined);
 });

@@ -7,6 +7,7 @@ import {
   computeVadOutputFromProbabilities,
 } from '../utils/vadPostProcess';
 import { WaveformPeakAccumulator } from '../utils/waveform';
+import type { ProcessingProgress } from '../utils/processingFeedback';
 
 // Configure ONNX Runtime Web WASM paths using absolute origin URL
 const workerOrigin = typeof location !== 'undefined' && location.origin ? location.origin : '';
@@ -591,8 +592,9 @@ self.onmessage = async (event: MessageEvent<VadWorkerIncomingMessage>) => {
       self.postMessage({
         type: 'PROGRESS',
         stage: 'กำลังคำนวณช่วงเสียงพูด (Speech Segments) และสร้าง Candidate AD Spots...',
+        phase: 'finalizing-detection',
         percent: 98,
-      });
+      } satisfies { type: 'PROGRESS' } & ProcessingProgress);
 
       const computedDurationMs =
         totalDurationMs > 0
