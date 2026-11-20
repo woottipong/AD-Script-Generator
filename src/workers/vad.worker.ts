@@ -17,7 +17,7 @@ ort.env.wasm.simd = true;
 
 const TARGET_SAMPLE_RATE = 16000;
 const VAD_FRAME_SAMPLES = 512; // 32 ms @ 16kHz
-const VAD_CONTEXT_SAMPLES = 64; // Silero v5 context window @ 16kHz
+const VAD_CONTEXT_SAMPLES = 64; // Silero v5+ context window @ 16kHz
 
 let cachedSession: ort.InferenceSession | null = null;
 

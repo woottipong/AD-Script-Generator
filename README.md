@@ -2,7 +2,7 @@
 
 เว็บแอปสร้างบทบรรยายภาพภาษาไทย (Audio Description หรือ AD) จากวิดีโอ MP4 ความละเอียด 480p โดยทำงานสองขั้นตอน:
 
-1. ตรวจจับเสียงพูดบนเบราว์เซอร์ด้วย Silero VAD v5 (ONNX Runtime Web และ WebCodecs AudioDecoder) ใน Web Worker เพื่อระบุช่วงว่างไร้เสียงพูด (Candidate AD Spots)
+1. ตรวจจับเสียงพูดบนเบราว์เซอร์ด้วย Silero VAD v6.2 (ONNX Runtime Web และ WebCodecs AudioDecoder) ใน Web Worker เพื่อระบุช่วงว่างไร้เสียงพูด (Candidate AD Spots)
 2. ส่งวิดีโอไปยัง Gemini Files API เพื่อวิเคราะห์ภาพและเสียงในช่วงว่าง แล้วสร้างบทบรรยายภาษาไทย เซิร์ฟเวอร์ใช้ `gemini-4-hydrogen` เป็นหลัก และสลับไป `gemini-3.5-flash-lite` เมื่อเกิดข้อผิดพลาดชั่วคราว
 
 ตรวจและแก้บทกับเวลาในไทม์ไลน์ก่อนส่งออกเป็น SRT ตรวจผลกับวิดีโอต้นฉบับก่อนนำไปใช้งาน

@@ -25,7 +25,7 @@ A job response contains a `job` object. The fields below describe the current Ty
 | `video_metadata` | File name, byte size, MIME type, width, height, duration, video codec, audio codec, and `hasAudioTrack`. Optional `sampleRate` and `channelCount` |
 | `vad_config` | `speechThreshold`, `minSpeechDurationMs`, `minSilenceDurationMs`, `speechPaddingMs`, and `minAdGapMs` |
 | `ad_settings` | Optional analysis settings. Defaults are listed under job initialization |
-| `vad_output` | `duration_ms`, `speech_segments`, and `candidate_spots`. Optional `signal_analysis` contains acoustic measurements and the recommended VAD configuration |
+| `vad_output` | `duration_ms`, `speech_segments`, and `candidate_spots`. Optional `signal_analysis` contains acoustic measurements and the recommended VAD configuration. Optional `waveform` holds the Waveform Envelope as `sampleIntervalMs` (10 to 1000) and `peaksBase64` (base64 of one byte per bucket, at most 200,000 characters) |
 | `batches` | Array of analysis batches |
 | `spots` | Array of `ADSpot` objects |
 | `local_file_path` | Optional server path to the uploaded MP4 |

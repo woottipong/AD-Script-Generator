@@ -10,7 +10,7 @@ We render the timeline's Waveform Envelope using a custom 2D `<canvas>` in its o
 
 - **`wavesurfer.js` / `peaks.js`**: Rejected because both libraries own their own audio playback, scroll container, zoom, and playhead, which would fight the existing `<video>` element and synchronized `1x–64x` multi-track timeline.
 - **Re-decoding `/api/jobs/:jobId/video` on every page reload**: Rejected because reloading a saved job would incur noticeable download and WebCodecs decode latency just to draw the waveform.
-- **JSON `number[]` peaks array**: Rejected in favor of base64 `Uint8Array`, which keeps a 30-minute video's 36,000 peaks at ~48 KB in `job.json` instead of ~150 KB+.
+- **JSON `number[]` peaks array**: Rejected in favor of base64 `Uint8Array`, which keeps a 30-minute video's 90,000 peaks (20 ms buckets) at ~120 KB of base64 in `job.json` instead of ~300 KB+ as a JSON number array.
 
 ## Consequences
 
