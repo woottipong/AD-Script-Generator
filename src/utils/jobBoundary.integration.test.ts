@@ -13,11 +13,7 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
   const port = (socket.address() as net.AddressInfo).port;
   await new Promise<void>(resolve => socket.close(() => resolve()));
   const root = process.cwd();
-  fs.symlinkSync(path.join(root, 'src'), path.join(dir, 'src'));
-  fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'));
-  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-  fs.writeFileSync(path.join(dir, 'server.ts'), fs.readFileSync(path.join(root, 'server.ts'), 'utf8').replace('const PORT = 3000;', `const PORT = ${port};`));
-  const child = spawn(process.execPath, [path.join(dir, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production' }, stdio: 'ignore' });
+  const child = spawn(process.execPath, [path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port) }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api`;
   const json = (route: string, method: string, body: unknown) => fetch(base + route, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   try {

@@ -53,12 +53,6 @@ async function withServer(twoBatches: boolean, action: (ctx: {
 }) => Promise<void>) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-test-'));
   const port = await availablePort();
-  fs.symlinkSync(path.join(root, 'src'), path.join(dir, 'src'));
-  fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'));
-  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-  const server = fs.readFileSync(path.join(root, 'server.ts'), 'utf8');
-  assert.ok(server.includes('const PORT = 3000;'));
-  fs.writeFileSync(path.join(dir, 'server.ts'), server.replace('const PORT = 3000;', `const PORT = ${port};`));
   fs.writeFileSync(path.join(dir, 'fake.ts'), `import fs from 'node:fs';
 const real = globalThis.fetch; let n = 0;
 let uploads = 0;
@@ -109,8 +103,8 @@ globalThis.fetch = async (input, init) => {
   const source = path.join(jobDir, 'source_video.mp4');
   fs.writeFileSync(source, '1');
   fs.writeFileSync(path.join(jobDir, 'job.json'), JSON.stringify({ ...makeJob(twoBatches), local_file_path: source }));
-  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(dir, 'server.ts')], {
-    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
+  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], {
+    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}/api/jobs/job_test`;
   const request = (suffix = '', method = 'GET', body?: unknown) => fetch(base + suffix, {

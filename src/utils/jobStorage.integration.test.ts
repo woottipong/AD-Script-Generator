@@ -15,10 +15,6 @@ test('storage only lists and deletes inactive persisted jobs', { timeout: 20000 
   await new Promise<void>(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = (socket.address() as net.AddressInfo).port;
   await new Promise<void>((resolve, reject) => socket.close(err => err ? reject(err) : resolve()));
-  fs.symlinkSync(path.join(root, 'src'), path.join(dir, 'src'));
-  fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'));
-  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-  fs.writeFileSync(path.join(dir, 'server.ts'), fs.readFileSync(path.join(root, 'server.ts'), 'utf8').replace('const PORT = 3000;', `const PORT = ${port};`));
   const data = path.join(dir, '.data/jobs');
   fs.mkdirSync(data, { recursive: true });
   const makeJob = (id: string) => {
@@ -56,7 +52,7 @@ globalThis.fetch = async (input, init) => {
   const outside = path.join(dir, 'outside'); fs.mkdirSync(outside);
   fs.writeFileSync(path.join(outside, 'job.json'), JSON.stringify({ job_id: 'job_link', video_metadata: { fileName: 'outside' } }));
   fs.symlinkSync(outside, path.join(data, 'job_link'));
-  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(dir, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api/jobs`;
   try {
     let ready = false;

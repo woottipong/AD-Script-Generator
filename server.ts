@@ -31,7 +31,7 @@ import { mergeProcessingState } from './src/utils/jobProcessing';
 import { validateEditedSpots, validateJobInitialization } from './src/utils/jobValidation';
 import { createJobStore, isJobId } from './src/utils/jobStore';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const store = createJobStore(path.resolve(process.cwd(), '.data', 'jobs'));
 
 const FIXED_SERVER_CONFIG: ServerConfig = {

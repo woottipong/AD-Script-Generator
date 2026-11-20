@@ -4,7 +4,7 @@ This reference describes the routes in [server.ts](../server.ts). Request and re
 
 ## Base configuration and conventions
 
-- The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`. The server does not read `PORT`.
+- The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`, or on `PORT` when it is set.
 - JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
 - Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
 - The application has no HTTP authentication or per-user job isolation. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.

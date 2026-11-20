@@ -125,7 +125,7 @@
 | `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ โดย Docker Compose ตั้งเป็น `true` |
 | `CHOKIDAR_USEPOLLING`, `CHOKIDAR_INTERVAL` | Docker Compose ส่งค่า `true` และ `300` ให้ file watcher ของเครื่องมือพัฒนา |
 | `APP_URL` | มีใน `.env.example` แต่โค้ดแอปปัจจุบันไม่อ่านค่านี้ |
-| `PORT` | Dockerfile กำหนดไว้ที่ `3000` แต่ `server.ts` ใช้ค่าคงที่ `3000` การเปลี่ยน environment นี้ไม่เปลี่ยนพอร์ตที่แอปฟัง |
+| `PORT` | พอร์ตที่ `server.ts` ฟัง ค่าเริ่มต้นคือ `3000` และ Dockerfile กำหนดไว้ที่ `3000` |
 
 `GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น แอปไม่มีระบบล็อกอินหรือ middleware ตรวจสิทธิ์ผู้เรียก HTTP API ดู [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions)
 
@@ -350,7 +350,7 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-perf close
 
 - หากพบ `UnknownLockfileVersion` ให้ตรวจ `bun --version` แล้วใช้ Bun 1.4 ขึ้นไป Bun 1.3.9 อ่าน lockfile เวอร์ชัน 2 ไม่ได้ อย่าสร้าง lockfile ใหม่ด้วยเวอร์ชันเก่า
 - หาก npm ติด peer dependency conflict ให้ใช้คำสั่ง `--legacy-peer-deps --package-lock=false` ตามขั้นตอนด้านบน และคง `bun.lock` เป็น lockfile ของโปรเจกต์
-- หาก `3000` ถูกใช้อยู่ ให้หยุด process ที่ใช้พอร์ตนั้นหรือเปลี่ยน host port ของ Docker เช่น `-p 13000:3000` การตั้ง `PORT` ไม่เปลี่ยนพอร์ตในแอป
+- หาก `3000` ถูกใช้อยู่ ให้หยุด process ที่ใช้พอร์ตนั้นหรือเปลี่ยน host port ของ Docker เช่น `-p 13000:3000` หรือตั้ง `PORT` เมื่อรันบนเครื่อง
 - หาก VAD ใช้งานไม่ได้ ให้ตรวจข้อความความเข้ากันได้ของเบราว์เซอร์ รวมถึงการโหลด `/models/silero_vad.onnx` และ `/ort/` จาก server เดียวกัน การเปิดไฟล์ HTML โดยตรงไม่เริ่ม API
 - หากสร้างบทบรรยายไม่ได้ ให้ตรวจ `GEMINI_API_KEY` และ log ของเซิร์ฟเวอร์ การเปิดหน้าเว็บได้ไม่ได้ยืนยันว่า key มีสิทธิ์ใช้โมเดลหรือมีโควตา
 - หาก backend รีสตาร์ตระหว่างวิเคราะห์ ให้เปิดงานเดิมแล้วกดทำต่อจากชุดที่ค้าง อย่าสแกนเสียงใหม่หากต้องการเก็บข้อความและเวลาที่แก้ไว้
