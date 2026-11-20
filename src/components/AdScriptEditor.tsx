@@ -19,7 +19,7 @@ import {
   formatTimestampDisplay,
   parseTimestampInput,
 } from '../utils/formatters';
-import { validateSpotTimestampEdit } from '../utils/spotTiming';
+import { computeClampedSpotDrag, validateSpotTimestampEdit } from '../utils/spotTiming';
 
 interface AdScriptEditorProps {
   spots: ADSpot[];
@@ -114,25 +114,22 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
     return true;
   };
 
-  // Nudge start or end timestamp by deltaMs (e.g. -200ms or +200ms) within valid non-speech bounds
-  const nudgeStartMs = (deltaMs: number) => {
-    const targetStart = Math.max(
-      spot.original_start_ms,
-      Math.min(spot.end_ms - 1000, spot.start_ms + deltaMs)
-    );
-    if (targetStart !== spot.start_ms) {
-      applyTimestampChange(targetStart, spot.end_ms);
-    }
-  };
+  const nudgeTargets = React.useMemo(() => {
+    const target = (mode: 'trim-start' | 'trim-end', deltaMs: number) =>
+      computeClampedSpotDrag(spot, mode, deltaMs, speechSegments, videoDurationMs, 1);
+    return {
+      startEarlier: target('trim-start', -200),
+      startLater: target('trim-start', 200),
+      endEarlier: target('trim-end', -200),
+      endLater: target('trim-end', 200),
+    };
+  }, [spot, speechSegments, videoDurationMs]);
 
-  const nudgeEndMs = (deltaMs: number) => {
-    const targetEnd = Math.min(
-      spot.original_end_ms,
-      Math.max(spot.start_ms + 1000, spot.end_ms + deltaMs)
-    );
-    if (targetEnd !== spot.end_ms) {
-      applyTimestampChange(spot.start_ms, targetEnd);
-    }
+  const isUnchanged = (next: { start_ms: number; end_ms: number }) =>
+    next.start_ms === spot.start_ms && next.end_ms === spot.end_ms;
+
+  const applyNudge = (next: { start_ms: number; end_ms: number }) => {
+    if (!isUnchanged(next)) applyTimestampChange(next.start_ms, next.end_ms);
   };
 
   const handleStartBlur = () => {
@@ -238,8 +235,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
                 <button
                   type="button"
-                  onClick={() => nudgeStartMs(-200)}
-                  disabled={spot.start_ms <= spot.original_start_ms}
+                  onClick={() => applyNudge(nudgeTargets.startEarlier)}
+                  disabled={isUnchanged(nudgeTargets.startEarlier)}
                   title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
                   className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
@@ -259,8 +256,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => nudgeStartMs(200)}
-                  disabled={spot.start_ms + 1000 >= spot.end_ms}
+                  onClick={() => applyNudge(nudgeTargets.startLater)}
+                  disabled={isUnchanged(nudgeTargets.startLater)}
                   title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
                   className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
@@ -272,8 +269,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
                 <button
                   type="button"
-                  onClick={() => nudgeEndMs(-200)}
-                  disabled={spot.end_ms - 1000 <= spot.start_ms}
+                  onClick={() => applyNudge(nudgeTargets.endEarlier)}
+                  disabled={isUnchanged(nudgeTargets.endEarlier)}
                   title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
                   className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
@@ -293,8 +290,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => nudgeEndMs(200)}
-                  disabled={spot.end_ms >= spot.original_end_ms}
+                  onClick={() => applyNudge(nudgeTargets.endLater)}
+                  disabled={isUnchanged(nudgeTargets.endLater)}
                   title="ขยายเวลาจบออกไป 0.2 วินาที"
                   aria-label="ขยายเวลาจบออกไป 0.2 วินาที"
                   className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"

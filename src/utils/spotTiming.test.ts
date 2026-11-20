@@ -53,6 +53,24 @@ test('Trim stops at a Speech Segment inside the original gap', () => {
   assert.deepEqual(computeClampedSpotDrag(spot, 'trim-start', -1500, speechInsideGap, 10000), { start_ms: 1600, end_ms: 5000, duration_ms: 3400 });
 });
 
+test('a 200 ms nudge keeps unaligned times and stops at the 500 ms minimum', () => {
+  const unaligned = { ...spot, start_ms: 2013, end_ms: 2713, duration_ms: 700 };
+  assert.deepEqual(computeClampedSpotDrag(unaligned, 'trim-start', -200, speech, 10000, 1), { start_ms: 1813, end_ms: 2713, duration_ms: 900 });
+  assert.deepEqual(computeClampedSpotDrag(unaligned, 'trim-start', 200, speech, 10000, 1), { start_ms: 2213, end_ms: 2713, duration_ms: 500 });
+  assert.deepEqual(computeClampedSpotDrag(unaligned, 'trim-end', -400, speech, 10000, 1), { start_ms: 2013, end_ms: 2513, duration_ms: 500 });
+});
+
+test('a nudge blocked by a Speech Segment, the video end, or the minimum leaves the times unchanged', () => {
+  const speechInsideGap = [...speech, { start_ms: 1200, end_ms: 1600 }];
+  const atSpeech = { ...spot, start_ms: 1600 };
+  assert.deepEqual(computeClampedSpotDrag(atSpeech, 'trim-start', -200, speechInsideGap, 10000, 1), { start_ms: 1600, end_ms: 5000, duration_ms: 3400 });
+  const atVideoEnd = { ...spot, end_ms: 5500 };
+  assert.deepEqual(computeClampedSpotDrag(atVideoEnd, 'trim-end', 200, [], 5500, 1), { start_ms: 2000, end_ms: 5500, duration_ms: 3500 });
+  const atMinimum = { ...spot, end_ms: 2500 };
+  assert.deepEqual(computeClampedSpotDrag(atMinimum, 'trim-start', 200, speech, 10000, 1), { start_ms: 2000, end_ms: 2500, duration_ms: 500 });
+  assert.deepEqual(computeClampedSpotDrag(atMinimum, 'trim-end', -200, speech, 10000, 1), { start_ms: 2000, end_ms: 2500, duration_ms: 500 });
+});
+
 test('every clamped result passes validation', () => {
   for (const mode of ['trim-start', 'trim-end', 'move'] as const) {
     for (let delta = -4000; delta <= 4000; delta += 130) {
