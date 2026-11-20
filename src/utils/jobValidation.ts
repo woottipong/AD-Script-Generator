@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ADSpot, PersistedJobState } from '../types/ad';
-import { validateSpotTimestampEdit } from './formatters';
+import { validateSpotTimestampEdit } from './spotTiming';
 
 const ms = z.number().int().finite().nonnegative();
 const interval = z.object({ start_ms: ms, end_ms: ms });

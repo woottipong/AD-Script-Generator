@@ -1,4 +1,4 @@
-import { ADSpot, AnalysisBatch, CandidateSpot, SpeechSegment } from '../types/ad';
+import { ADSpot, AnalysisBatch, CandidateSpot } from '../types/ad';
 
 export const DEFAULT_ANALYSIS_BATCH_SECONDS = 240;
 
@@ -80,51 +80,6 @@ export function estimateThaiSpeechDurationMs(text: string): number {
   if (baseChars.length === 0) return 0;
   // ~88 ms per base character + 350 ms breath/onset margin
   return Math.round(baseChars.length * 88 + 350);
-}
-
-/**
- * Validates whether a proposed [startMs, endMs] for an ADSpot stays within its original
- * non-speech gap and does not overlap any speech segments.
- */
-export function validateSpotTimestampEdit(
-  spot: ADSpot,
-  newStartMs: number,
-  newEndMs: number,
-  speechSegments: SpeechSegment[],
-  videoDurationMs: number
-): { valid: boolean; error?: string } {
-  if (isNaN(newStartMs) || isNaN(newEndMs)) {
-    return { valid: false, error: 'รูปแบบเวลาไม่ถูกต้อง (ใช้ HH:MM:SS.mmm)' };
-  }
-  if (newStartMs < 0 || newEndMs > videoDurationMs) {
-    return { valid: false, error: 'เวลาต้องอยู่ในช่วงความยาวของวิดีโอ' };
-  }
-  if (newEndMs <= newStartMs) {
-    return { valid: false, error: 'เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น' };
-  }
-  if (newEndMs - newStartMs < 500) {
-    return { valid: false, error: 'ความยาวของช่วงบรรยายต้องไม่น้อยกว่า 0.5 วินาที' };
-  }
-
-  // Must stay within original non-speech gap (with 1ms tolerance for rounding)
-  if (newStartMs < spot.original_start_ms - 1 || newEndMs > spot.original_end_ms + 1) {
-    return {
-      valid: false,
-      error: `แก้ไขเวลาได้เฉพาะภายในช่วงว่างต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`,
-    };
-  }
-
-  // Must not overlap any detected speech segment
-  for (const seg of speechSegments) {
-    if (newStartMs < seg.end_ms && newEndMs > seg.start_ms) {
-      return {
-        valid: false,
-        error: `เวลาทับซ้อนกับช่วงที่มีเสียงพูด (${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)})`,
-      };
-    }
-  }
-
-  return { valid: true };
 }
 
 /**

@@ -22,10 +22,9 @@ import {
 } from '../utils/formatters';
 import {
   DEFAULT_WAVEFORM_SAMPLE_INTERVAL_MS,
-  SpotDragMode,
-  computeClampedSpotDrag,
   decodeWaveformPeaks,
 } from '../utils/waveform';
+import { SpotDragMode, computeClampedSpotDrag } from '../utils/spotTiming';
 
 const controlBase = 'video-control inline-flex shrink-0 items-center justify-center gap-1 rounded px-1.5 text-xs transition-colors disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer';
 const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover:text-brand-900`;
@@ -310,10 +309,6 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       s.text.trim().length > 0 &&
       currentTimeMs >= s.start_ms &&
       currentTimeMs <= s.end_ms
-  );
-
-  const currentWindowSpot = spots.find(
-    (s) => currentTimeMs >= s.start_ms && currentTimeMs <= s.end_ms
   );
 
   const selectedSpotIndex = spots.findIndex((s) => s.spot_id === selectedSpotId);

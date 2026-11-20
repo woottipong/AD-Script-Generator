@@ -18,8 +18,8 @@ import {
   estimateThaiSpeechDurationMs,
   formatTimestampDisplay,
   parseTimestampInput,
-  validateSpotTimestampEdit,
 } from '../utils/formatters';
+import { validateSpotTimestampEdit } from '../utils/spotTiming';
 
 interface AdScriptEditorProps {
   spots: ADSpot[];
