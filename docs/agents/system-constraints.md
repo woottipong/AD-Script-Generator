@@ -28,7 +28,7 @@ Signal analysis can recommend different speech, silence, and padding values befo
 
 ## Gemini analysis pipeline
 
-Batching and Gemini interaction run in `server.ts` and `src/utils/formatters.ts`:
+Batching runs in `src/utils/formatters.ts`. Prompt building and response validation run in `src/utils/geminiBatch.ts`, the narration character budget in `src/utils/narrationBudget.ts`, and the Gemini calls with retry and fallback in `server.ts`:
 
 - Primary model: `gemini-4-hydrogen` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
 - Fallback model: `gemini-3.5-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.

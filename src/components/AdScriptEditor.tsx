@@ -15,11 +15,11 @@ import {
 import { ADSpot, AnalysisBatch, SpeechSegment } from '../types/ad';
 import {
   enableSpotNarration,
-  estimateThaiSpeechDurationMs,
   formatTimestampDisplay,
   parseTimestampInput,
 } from '../utils/formatters';
 import { computeClampedSpotDrag, validateSpotTimestampEdit } from '../utils/spotTiming';
+import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 
 interface AdScriptEditorProps {
   spots: ADSpot[];

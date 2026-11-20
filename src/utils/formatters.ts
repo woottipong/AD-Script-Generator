@@ -68,21 +68,6 @@ export function parseTimestampInput(value: string): number | null {
 }
 
 /**
- * Estimates Thai Audio Description speaking duration in milliseconds.
- * Excludes combining Thai vowel/tone marks so the phonetic character count is accurate.
- * Standard Thai AD narration pace is ~11.5 base characters per second.
- */
-export function estimateThaiSpeechDurationMs(text: string): number {
-  const cleaned = text.trim();
-  if (!cleaned) return 0;
-  // Strip Thai combining marks (above/below vowels and tone marks: U+0E31, U+0E34..U+0E3A, U+0E47..U+0E4E) and whitespace
-  const baseChars = cleaned.replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\s]/g, '');
-  if (baseChars.length === 0) return 0;
-  // ~88 ms per base character + 350 ms breath/onset margin
-  return Math.round(baseChars.length * 88 + 350);
-}
-
-/**
  * Builds Analysis Batches according to Section 06:
  * - Splits timeline into 240-second intervals by default
  * - Each Candidate Spot belongs to exactly one primary batch (by start_ms)
