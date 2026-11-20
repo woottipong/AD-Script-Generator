@@ -25,6 +25,7 @@ import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
+import { parseApiResponse } from './utils/apiResponse';
 import { createJobSaveQueue } from './utils/jobSaveQueue';
 import { pollJob } from './utils/jobPolling';
 
@@ -154,36 +155,6 @@ export default function App() {
     [getOrCreateWorker]
   );
 
-  // Helper to safely parse JSON responses or classify transient proxy warmup HTML
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parseResponseJson = async <T = any,>(response: Response): Promise<T> => {
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      return (await response.json()) as T;
-    }
-    const text = await response.text();
-    if (response.status === 413) {
-      throw new Error(
-        'ไฟล์วิดีโอมีขนาดใหญ่เกินกว่าที่เครือข่ายอนุญาตในคำขอเดียว (HTTP 413 Payload Too Large)'
-      );
-    }
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('<!doctype html') || lowerText.includes('<html')) {
-      const htmlErr = new Error(
-        'เซิร์ฟเวอร์กำลังสลับการเชื่อมต่อชั่วคราว กรุณาลองกดดำเนินการต่ออีกครั้ง'
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (htmlErr as any).isTransientHtml = true;
-      throw htmlErr;
-    }
-    if (!response.ok) {
-      throw new Error(
-        `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${response.status} (${response.statusText || 'Error'})`
-      );
-    }
-    throw new Error(`รูปแบบข้อมูลที่ได้รับจากเซิร์ฟเวอร์ไม่ถูกต้อง: ${text.slice(0, 100)}`);
-  };
-
   const pollJobUntilComplete = useCallback(async (activeJobId: string, startError?: string) => {
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
@@ -194,7 +165,7 @@ export default function App() {
     await pollJob({
       jobId: activeJobId,
       token,
-      parseResponse: parseResponseJson,
+      parseResponse: parseApiResponse,
       startError,
       onEvent: (event) => {
         switch (event.type) {
@@ -301,41 +272,44 @@ export default function App() {
     };
   }, [pollJobUntilComplete]);
 
+  const leaveCurrentJob = useCallback(() => {
+    pollAbortRef.current.aborted = true;
+    if (jobId) saveQueue.leave(jobId);
+    setJobId(null);
+    setVadOutput(null);
+    setBatches([]);
+    setSpots([]);
+    setSelectedSpotId(null);
+    setRestoredIncompleteJob(false);
+  }, [jobId, saveQueue]);
+
+  const clearVideo = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setVideoFile(null);
+    setVideoUrl(null);
+    setVideoMetadata(null);
+    setValidationIssues([]);
+    setCurrentTimeMs(0);
+  }, []);
+
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
     async (file: File) => {
       if (videoMetadata && !window.confirm('เปลี่ยนวิดีโอและออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
-      pollAbortRef.current.aborted = true;
+      leaveCurrentJob();
       const selectionToken = { aborted: false };
       pollAbortRef.current = selectionToken;
       if (workerRef.current) {
         workerRef.current.terminate();
         workerRef.current = null;
       }
+      clearVideo();
       setErrorMessage(null);
       setVadProgress(null);
-      setVadOutput(null);
-      setSpots([]);
-      setBatches([]);
-      setSelectedSpotId(null);
-      setRestoredIncompleteJob(false);
-
-      if (jobId) {
-        saveQueue.leave(jobId);
-        setJobId(null);
-      }
-
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-
       setCheckingFileName(file.name);
-      setVideoFile(null);
-      setVideoMetadata(null);
-      setVideoUrl(null);
-      setValidationIssues([]);
-      setCurrentTimeMs(0);
       setStatus('IDLE');
 
       const validation = await validateAndInspectMp4File(file, {
@@ -361,21 +335,14 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [jobId, videoMetadata, startVadForFile, saveQueue]
+    [videoMetadata, startVadForFile, leaveCurrentJob, clearVideo]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
   const handleRunVad = () => {
     if (!videoFile || !videoMetadata) return;
     if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !window.confirm('สแกนเสียงใหม่? บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
-    pollAbortRef.current.aborted = true;
-    if (jobId) saveQueue.leave(jobId);
-    setJobId(null);
-    setVadOutput(null);
-    setBatches([]);
-    setSpots([]);
-    setSelectedSpotId(null);
-    setRestoredIncompleteJob(false);
+    leaveCurrentJob();
     startVadForFile(videoFile);
   };
 
@@ -399,7 +366,7 @@ export default function App() {
       }),
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const initData = await parseResponseJson<any>(initRes);
+    const initData = await parseApiResponse<any>(initRes);
     if (!initRes.ok || !initData?.uploadId) {
       throw new Error(initData?.error || 'ไม่สามารถเริ่มต้นเซสชันอัปโหลดไฟล์วิดีโอได้');
     }
@@ -429,7 +396,7 @@ export default function App() {
             }
           );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const chunkData = await parseResponseJson<any>(chunkRes);
+          const chunkData = await parseApiResponse<any>(chunkRes);
           if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
           if (!chunkRes.ok || !chunkData?.ok) {
             throw new Error(chunkData?.error || `อัปโหลดส่วนที่ ${i + 1}/${totalChunks} ล้มเหลว`);
@@ -489,7 +456,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
-        const startData = await parseResponseJson<{ job?: PersistedJobState; error?: string }>(startRes);
+        const startData = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(startRes);
         if (!startRes.ok) {
           startError = startData?.error || 'ไม่สามารถเริ่มงานประมวลผลต่อบนเซิร์ฟเวอร์ได้';
           throw new Error('Start not confirmed');
@@ -600,7 +567,7 @@ export default function App() {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const initData = await parseResponseJson<any>(initRes);
+      const initData = await parseApiResponse<any>(initRes);
       if (token.aborted) {
         if (initData?.job?.job_id) {
           void fetch(`/api/jobs/${encodeURIComponent(initData.job.job_id)}`, { method: 'DELETE' }).catch(() => {});
@@ -708,27 +675,10 @@ export default function App() {
   // 8. Reset Job
   const handleResetJob = () => {
     if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
-    pollAbortRef.current.aborted = true;
-    if (jobId) {
-      saveQueue.leave(jobId);
-    }
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-    setJobId(null);
-    setVideoFile(null);
-    setVideoUrl(null);
-    setVideoMetadata(null);
-    setValidationIssues([]);
-    setVadOutput(null);
+    leaveCurrentJob();
+    clearVideo();
     setVadProgress(null);
-    setBatches([]);
-    setSpots([]);
-    setSelectedSpotId(null);
-    setCurrentTimeMs(0);
     setErrorMessage(null);
-    setRestoredIncompleteJob(false);
     setStatus('IDLE');
   };
 
