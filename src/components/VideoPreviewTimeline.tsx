@@ -171,7 +171,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     unplayedGrad.addColorStop(0.5, '#475569');
     unplayedGrad.addColorStop(1, '#94a3b8');
 
-    for (let x = 0; x < cssWidth; x += barStep) {
+    // One path per fill style: four fill() calls per frame instead of one per bar
+    const quietPlayed = new Path2D();
+    const quietUnplayed = new Path2D();
+    const loudPlayed = new Path2D();
+    const loudUnplayed = new Path2D();
+
+    // Anchor bars to absolute timeline pixels so each bar keeps its time window while scrolling
+    for (let x = -(scrollLeft % barStep); x < cssWidth; x += barStep) {
       const tStart = ((scrollLeft + x) / totalTrackWidth) * effectiveDurationMs;
       const tEnd = ((scrollLeft + x + barStep) / totalTrackWidth) * effectiveDurationMs;
       const bucketStart = Math.max(0, Math.floor(tStart / waveformIntervalMs));
@@ -193,18 +200,25 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       const y = midY - barHalf;
 
       const isPlayed = tStart <= currentTimeMs;
-      ctx.fillStyle = normalized < 0.12
-        ? (isPlayed ? '#bae6fd' : '#cbd5e1')
-        : (isPlayed ? playedGrad : unplayedGrad);
+      const path = normalized < 0.12
+        ? (isPlayed ? quietPlayed : quietUnplayed)
+        : (isPlayed ? loudPlayed : loudUnplayed);
 
       if (barH <= 2) {
-        ctx.fillRect(x, y, barWidth, barH);
+        path.rect(x, y, barWidth, barH);
       } else {
-        ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, barH, 1);
-        ctx.fill();
+        path.roundRect(x, y, barWidth, barH, 1);
       }
     }
+
+    ctx.fillStyle = '#bae6fd';
+    ctx.fill(quietPlayed);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fill(quietUnplayed);
+    ctx.fillStyle = playedGrad;
+    ctx.fill(loudPlayed);
+    ctx.fillStyle = unplayedGrad;
+    ctx.fill(loudUnplayed);
   }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth, currentTimeMs]);
 
   useEffect(() => {
