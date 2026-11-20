@@ -34,6 +34,7 @@ test('speech estimate counts Thai base characters only, plus the onset margin', 
   assert.equal(estimateThaiSpeechDurationMs('กา'), estimateThaiSpeechDurationMs('ก้า'));
   assert.equal(estimateThaiSpeechDurationMs('ที่ นี่'), estimateThaiSpeechDurationMs('ทน'));
   assert.ok(estimateThaiSpeechDurationMs('กข') > estimateThaiSpeechDurationMs('ก'));
+  assert.equal(estimateThaiSpeechDurationMs('ก'.repeat(23)), 2000 + 350);
 });
 
 test('prompt covers the clip window, every candidate budget, and only earlier narration', () => {

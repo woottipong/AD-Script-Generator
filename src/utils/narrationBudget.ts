@@ -12,8 +12,7 @@ export function estimateThaiSpeechDurationMs(text: string): number {
   // Strip Thai combining marks (above/below vowels and tone marks: U+0E31, U+0E34..U+0E3A, U+0E47..U+0E4E) and whitespace
   const baseChars = cleaned.replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\s]/g, '');
   if (baseChars.length === 0) return 0;
-  // ~88 ms per base character + 350 ms breath/onset margin
-  return Math.round(baseChars.length * 88 + SPEECH_ONSET_MARGIN_MS);
+  return Math.round((baseChars.length * 1000) / NARRATION_PACE_CHARS_PER_SEC + SPEECH_ONSET_MARGIN_MS);
 }
 
 /**
