@@ -18,6 +18,11 @@ export type StoredJobSummary = {
   title?: string;
   mode?: JobMode;
   status?: JobStatus;
+  duration_ms?: number;
+  spot_count?: number;
+  edited_spot_count?: number;
+  progress_percent?: number;
+  error_message?: string;
 };
 
 /** Everything a Job holds except its VAD output and AD Spots. */
@@ -198,7 +203,14 @@ export function createJobStore(dataDir: string) {
       is_edited, original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const selectJob = db.prepare('SELECT * FROM jobs WHERE job_id = ?');
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
-  const selectSummaries = db.prepare('SELECT job_id, title, mode, status, file_name, updated_at FROM jobs ORDER BY updated_at DESC');
+  const selectSummaries = db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
+      j.progress_percent, j.error_message, j.updated_at,
+      COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' THEN 1 END) AS spot_count,
+      COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' AND s.is_edited = 1 THEN 1 END) AS edited_spot_count
+    FROM jobs j
+    LEFT JOIN job_spots s ON s.job_id = j.job_id
+    GROUP BY j.job_id
+    ORDER BY j.updated_at DESC`);
   const updateTitle = db.prepare('UPDATE jobs SET title = ?, updated_at = ? WHERE job_id = ?');
   const deleteJobRow = db.prepare('DELETE FROM jobs WHERE job_id = ?');
 
@@ -304,11 +316,21 @@ export function createJobStore(dataDir: string) {
 
   /** Every stored Job and Unfinished Upload, most recently changed first. */
   function list(): StoredJobSummary[] {
-    const jobs = (selectSummaries.all() as JobRow[]).map((found): StoredJobSummary => ({
-      job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
-      size_bytes: folderSize(found.job_id as string), is_upload: false,
-      title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
-    }));
+    const jobs = (selectSummaries.all() as JobRow[]).map((found): StoredJobSummary => {
+      const summary: StoredJobSummary = {
+        job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
+        size_bytes: folderSize(found.job_id as string), is_upload: false,
+        title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
+        duration_ms: Number(found.duration_ms),
+        spot_count: Number(found.spot_count),
+        edited_spot_count: Number(found.edited_spot_count),
+      };
+      const progressPercent = optional<number>(found.progress_percent);
+      if (progressPercent !== undefined) summary.progress_percent = progressPercent;
+      const errorMessage = optional<string>(found.error_message);
+      if (errorMessage !== undefined) summary.error_message = errorMessage;
+      return summary;
+    });
     const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobSummary[] => {
       const upload = findUnfinishedUpload(name);
       if (!upload) return [];

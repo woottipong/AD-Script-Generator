@@ -15,6 +15,8 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground not-disabled:hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "not-disabled:hover:bg-muted not-disabled:hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:not-disabled:hover:bg-muted/50",
+        "ghost-destructive":
+          "text-muted-foreground not-disabled:hover:bg-destructive/10 not-disabled:hover:text-destructive dark:not-disabled:hover:bg-destructive/20",
         destructive:
           "bg-destructive/10 text-destructive not-disabled:hover:bg-destructive/20 dark:bg-destructive/20 dark:not-disabled:hover:bg-destructive/30",
         warning:

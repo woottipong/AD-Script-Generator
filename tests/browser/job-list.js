@@ -4,9 +4,9 @@ async page => {
   const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate', text: 'บทเดิม', is_edited: false };
   const job = { schema_version: 3, job_id: 'job_old', title: 'old', mode: 'generate', status: 'READY', video_metadata: { fileName: 'old.mp4', fileSize: 1, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true }, vad_output: { duration_ms: 10000, speech_segments: [], candidate_spots: [] }, batches: [], spots: [spot] };
   let jobs = [
-    { job_id: 'job_old', file_name: 'old.mp4', updated_at: '2026-11-20T03:00:00Z', size_bytes: 1234, is_upload: false, is_processing: false, mode: 'generate', status: 'READY' },
-    { job_id: 'job_busy', file_name: 'busy.mp4', updated_at: '2026-11-19T03:00:00Z', size_bytes: 5678, is_upload: false, is_processing: true, mode: 'generate', status: 'ANALYZING' },
-    { job_id: 'job_review', title: 'บทเรียนที่ 1', file_name: 'lesson.mp4', updated_at: '2026-11-18T03:00:00Z', size_bytes: 0, is_upload: false, is_processing: false, mode: 'review', status: 'READY' },
+    { job_id: 'job_old', file_name: 'old.mp4', updated_at: '2026-11-20T03:00:00Z', size_bytes: 1234, is_upload: false, is_processing: false, mode: 'generate', status: 'READY', duration_ms: 754000, spot_count: 14, edited_spot_count: 3 },
+    { job_id: 'job_busy', file_name: 'busy.mp4', updated_at: '2026-11-19T03:00:00Z', size_bytes: 5678, is_upload: false, is_processing: true, mode: 'generate', status: 'ANALYZING', duration_ms: 360000, spot_count: 0, edited_spot_count: 0, progress_percent: 60 },
+    { job_id: 'job_review', title: 'บทเรียนที่ 1', file_name: 'lesson.mp4', updated_at: '2026-11-18T03:00:00Z', size_bytes: 0, is_upload: false, is_processing: false, mode: 'review', status: 'READY', duration_ms: 185000, spot_count: 8, edited_spot_count: 0 },
     { job_id: 'job_upload', file_name: 'อัปโหลดไม่เสร็จ (job_upload)', updated_at: '2026-11-17T03:00:00Z', size_bytes: 99, is_upload: true, is_processing: false },
   ];
   let deleted = [], listFails = false;
@@ -38,28 +38,26 @@ async page => {
   const heightOf = async (locator) => Math.round((await locator.boundingBox()).height);
   assert(await heightOf(page.getByRole('button', { name: 'งานใหม่' })) === 40, 'The page action is a 40px button (DESIGN › Buttons)');
   assert(await heightOf(page.getByRole('button', { name: 'ทำต่อ old.mp4' })) === 36, 'Row actions are 36px buttons');
-  assert(await heightOf(page.getByRole('button', { name: 'ตัวเลือกงาน old.mp4' })) === 36, 'Icon buttons are 36px square');
+  assert(await heightOf(page.getByRole('button', { name: 'ลบงาน old.mp4' })) === 36, 'Delete action is an exposed 36px button');
   assert((await rows.first().textContent()).includes('old.mp4'), 'Most recently changed Job comes first');
   assert(await list.getByText('ตรวจแก้ SRT').filter({ visible: true }).count() === 1, 'Review Mode Job is tagged with its mode');
   assert(await page.getByRole('button', { name: 'ทำต่อ บทเรียนที่ 1' }).count() === 1 && await list.getByText('lesson.mp4').count() === 1, 'A titled Job shows its title with the file name below');
-  assert(await list.getByText('กำลังวิเคราะห์').count() === 1, 'An analysing Job shows its status');
-  await page.getByRole('button', { name: 'ตัวเลือกงาน busy.mp4' }).click();
-  assert(await page.getByRole('menuitem', { name: 'ลบงาน' }).getAttribute('aria-disabled') === 'true', 'A Job being analysed cannot be deleted');
-  await page.keyboard.press('Escape');
+  assert(await list.getByText('กำลังวิเคราะห์ 60%').filter({ visible: true }).count() === 1, 'An analysing Job shows its status and progress');
+  assert(await list.getByText('12:34').filter({ visible: true }).count() === 1, 'A saved Job shows its video duration');
+  assert(await list.getByText('14 จุด · แก้ 3').filter({ visible: true }).count() === 1, 'A saved Job shows its AD spot count and edited count');
+  assert(await page.getByRole('button', { name: 'ลบงาน busy.mp4' }).isDisabled(), 'A Job being analysed cannot be deleted');
   assert(await page.getByRole('button', { name: 'ทำต่อ อัปโหลดไม่เสร็จ' }).count() === 0, 'An Unfinished Upload can only be deleted');
 
-  const uploadMenu = page.getByRole('button', { name: 'ตัวเลือกงาน อัปโหลดไม่เสร็จ' });
+  const uploadDelete = page.getByRole('button', { name: 'ลบงาน อัปโหลดไม่เสร็จ' });
   const confirmDialog = page.getByRole('alertdialog', { name: 'ลบงานนี้?' });
-  await uploadMenu.click();
-  await page.getByRole('menuitem', { name: 'ลบงาน' }).click();
+  await uploadDelete.click();
   await confirmDialog.waitFor();
   await confirmDialog.getByRole('button', { name: 'ยกเลิก' }).click();
   await confirmDialog.waitFor({ state: 'hidden' });
   assert(deleted.length === 0, 'Cancelling the confirm sends no delete');
-  await uploadMenu.click();
-  await page.getByRole('menuitem', { name: 'ลบงาน' }).click();
+  await uploadDelete.click();
   await confirmDialog.getByRole('button', { name: 'ลบงาน' }).click();
-  await uploadMenu.waitFor({ state: 'hidden' });
+  await uploadDelete.waitFor({ state: 'hidden' });
   assert(JSON.stringify(deleted) === '["job_upload"]', 'Confirmed delete removes the Unfinished Upload');
 
   await page.getByRole('button', { name: 'ทำต่อ old.mp4' }).click();
