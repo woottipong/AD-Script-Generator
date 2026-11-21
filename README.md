@@ -93,7 +93,7 @@
 
 ## วิธีใช้งานและคีย์ลัด
 
-หน้าแรกให้เลือกโหมด **สร้างบทบรรยาย** (ขั้นตอนด้านล่าง) หรือ **แก้ไข SRT ที่มีอยู่** ซึ่งเลือกวิดีโอ MP4 กับไฟล์ SRT จากเครื่องแล้วกดประมวลผล ระบบสแกนเสียงบนเครื่อง เปิดบทใน SRT ในหน้าตัดต่อเดิม และส่งออกเป็น `<ชื่อไฟล์>_edited.srt` โหมดนี้ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์และไม่ใช้ Gemini รับวิดีโอทุกความละเอียดที่มีเสียง AAC ยาวไม่เกิน 60 นาที
+หน้าแรกให้เลือกโหมด **สร้างบทบรรยาย** (ขั้นตอนด้านล่าง) หรือ **แก้ไข SRT ที่มีอยู่** ซึ่งเลือกวิดีโอ MP4 จากเครื่องหรือวางลิงก์ `.mp4` กับไฟล์ SRT จากเครื่อง แล้วกดประมวลผล ลิงก์ต้องเปิดจากเบราว์เซอร์ได้ (CORS) และรองรับ HTTP Range ระบบเล่นวิดีโอจากลิงก์โดยตรงและดึงข้อมูลไปสแกนเสียงทีละช่วงโดยไม่เก็บลงเครื่อง ระบบสแกนเสียงบนเครื่อง เปิดบทใน SRT ในหน้าตัดต่อเดิม และส่งออกเป็น `<ชื่อไฟล์>_edited.srt` โหมดนี้ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์และไม่ใช้ Gemini รับวิดีโอทุกความละเอียดที่มีเสียง AAC ยาวไม่เกิน 60 นาที
 
 1. **เลือกวิดีโอ** ลากไฟล์ MP4 มาวางหรือกดเลือกไฟล์ เมื่อไฟล์ผ่านการตรวจสเปก ระบบถอดรหัสเสียงและประมวลผล VAD บนเครื่อง สถานะการทำงานแสดงโดยไม่ต้องเปิดรายละเอียด
 2. **สร้างบทบรรยายภาพ** เมื่อ VAD เสร็จและพบช่วงว่าง กดสร้างบทบรรยายภาพ ระบบอัปโหลดวิดีโอส่วนละ 8 MiB ไปยังเซิร์ฟเวอร์ แล้ววิเคราะห์ทีละชุด 240 วินาที กดสถานะบน header เพื่อดูคิวและเลือกชุดที่ต้องการตรวจ
@@ -316,18 +316,21 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filena
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-storage.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode-url.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check close
 ```
 
-`review-mode.js` ต้องมีไฟล์ตัวอย่าง `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt` สร้างได้ด้วย FFmpeg:
+`review-mode.js` ต้องมีไฟล์ตัวอย่าง (ไม่ใส่ `+faststart` โดยตั้งใจ เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt` สร้างได้ด้วย FFmpeg:
 
 ```bash
-ffmpeg -f lavfi -i color=c=navy:s=1920x1080:r=25 -f lavfi -i sine=frequency=220:sample_rate=48000 -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/ad-review-1080p.mp4
+ffmpeg -f lavfi -i color=c=navy:s=1920x1080:r=25 -f lavfi -i sine=frequency=220:sample_rate=48000 -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/ad-review-1080p.mp4
 ```
 
 ```bash
 printf '1\n00:00:01,000 --> 00:00:03,000\n<i>ชายเปิดประตู</i>\n\n2\n00:00:02,500 --> 00:00:04,000\nทับบรรทัดแรก\n\n3\n00:00:05,000 --> 00:00:07,500\nหญิงยิ้ม\nแล้วเดินออกไป\n\n4\n00:00:09,000 --> 00:00:09,300\nสั้น\n\n5\n00:00:10,000 --> 00:00:10,000\nไม่มีความยาว\n\n6\n00:00:20,000 --> 00:00:21,000\nเลยท้ายวิดีโอ\n' > /tmp/ad-review.srt
 ```
+
+`review-mode-url.js` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และใช้เวลาราวครึ่งนาที
 
 ตรวจผล `Result` และข้อผิดพลาดของแต่ละคำสั่ง จากนั้นหยุด preview ใน terminal แรก การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
 

@@ -1,5 +1,6 @@
 import { createFile } from 'mp4box';
 import { JobMode, VideoMetadata, VideoValidationIssue } from '../types/ad';
+import type { ByteSource } from './byteSource';
 
 export interface BrowserCompatibilityResult {
   supported: boolean;
@@ -96,7 +97,7 @@ export async function checkBrowserCompatibility(): Promise<BrowserCompatibilityR
  * without loading the entire 2 GB file into memory.
  */
 export async function validateAndInspectMp4File(
-  file: File,
+  file: ByteSource,
   options: {
     maxDurationSeconds?: number;
     maxFileSizeMb?: number;
@@ -266,7 +267,7 @@ export async function validateAndInspectMp4File(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function parseMp4HeaderChunked(file: File): Promise<any> {
+async function parseMp4HeaderChunked(file: ByteSource): Promise<any> {
   const CHUNK_SIZE = 1024 * 1024; // 1 MB chunks
   const mp4boxfile = createFile();
 
@@ -290,8 +291,7 @@ async function parseMp4HeaderChunked(file: File): Promise<any> {
   while (offset < file.size && !resolvedInfo && !parseError && safetyCounter < maxChunksToInspect) {
     safetyCounter++;
     const end = Math.min(offset + CHUNK_SIZE, file.size);
-    const slice = file.slice(offset, end);
-    const arrayBuffer = await slice.arrayBuffer();
+    const arrayBuffer = await file.read(offset, end);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mp4Buffer = arrayBuffer as any;
     mp4Buffer.fileStart = offset;

@@ -11,6 +11,7 @@ import {
   REVIEW_MAX_DURATION_MS,
   VADOutput,
   VideoMetadata,
+  VideoSource,
   VideoValidationIssue,
 } from './types/ad';
 import {
@@ -28,6 +29,7 @@ import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { ModeChooser } from './components/ModeChooser';
 import { ReviewIntake } from './components/ReviewIntake';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
+import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
@@ -41,7 +43,7 @@ const FIXED_CONTEXT_BEFORE_SECONDS = 20;       // 20s context before
 const FIXED_CONTEXT_AFTER_SECONDS = 10;        // 10s context after
 
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
-type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoFile: File; metadata: VideoMetadata };
+type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoSource: VideoSource; vadInput: ByteSourceInput; metadata: VideoMetadata };
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
@@ -91,7 +93,7 @@ export default function App() {
           video_metadata: review.metadata,
           vad_config: output.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG,
           vad_output: output,
-          video_source: { kind: 'local_file', file_name: review.videoFile.name, file_size: review.videoFile.size },
+          video_source: review.videoSource,
           srt_source: { file_name: review.srtFileName, cue_count: review.spots.length },
           spots: review.spots,
         }),
@@ -188,8 +190,8 @@ export default function App() {
     return worker;
   }, [createReviewJob]);
 
-  const startVadForFile = useCallback(
-    (file: File) => {
+  const startVad = useCallback(
+    (source: ByteSourceInput) => {
       setErrorMessage(null);
       setStatus('DETECTING');
       setVadProgress({
@@ -200,7 +202,7 @@ export default function App() {
       const worker = getOrCreateWorker();
       worker.postMessage({
         type: 'PROCESS_FILE',
-        file,
+        source,
         vadConfig: DEFAULT_VAD_CONFIG,
         autoTuneOptimal: true,
       });
@@ -351,7 +353,8 @@ export default function App() {
     setCurrentTimeMs(0);
   }, []);
 
-  const handleProcessReview = useCallback(async (file: File, srtFile: File) => {
+  const handleProcessReview = useCallback(async (video: File | string, srtFile: File) => {
+    const vadInput: ByteSourceInput = typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'file', file: video };
     reviewImportRef.current = null;
     setImportSkipped([]);
     leaveCurrentJob();
@@ -364,10 +367,21 @@ export default function App() {
     clearVideo();
     setErrorMessage(null);
     setVadProgress(null);
-    setCheckingFileName(file.name);
+    setCheckingFileName(typeof video === 'string' ? video : video.name);
     setStatus('IDLE');
 
-    const validation = await validateAndInspectMp4File(file, {
+    let source: ByteSource;
+    try {
+      source = await openByteSource(vadInput);
+    } catch (err) {
+      if (token.aborted) return;
+      setCheckingFileName(null);
+      setStatus('FAILED');
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (token.aborted) return;
+    const validation = await validateAndInspectMp4File(source, {
       mode: 'review',
       maxDurationSeconds: REVIEW_MAX_DURATION_MS / 1000,
     });
@@ -397,15 +411,25 @@ export default function App() {
     setCheckingFileName(null);
     setSrtFileName(srtFile.name);
     setImportSkipped(skippedCues);
-    reviewImportRef.current = { spots: spotsFromSrt, srtFileName: srtFile.name, videoFile: file, metadata: validation.metadata };
-    setVideoFile(file);
+    reviewImportRef.current = {
+      spots: spotsFromSrt,
+      srtFileName: srtFile.name,
+      videoSource: typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'local_file', file_name: video.name, file_size: video.size },
+      vadInput,
+      metadata: validation.metadata,
+    };
     setVideoMetadata(validation.metadata);
-    const blobUrl = URL.createObjectURL(file);
-    objectUrlRef.current = blobUrl;
-    setVideoUrl(blobUrl);
+    if (typeof video === 'string') {
+      setVideoUrl(video);
+    } else {
+      setVideoFile(video);
+      const blobUrl = URL.createObjectURL(video);
+      objectUrlRef.current = blobUrl;
+      setVideoUrl(blobUrl);
+    }
     setStatus('VIDEO_READY');
-    startVadForFile(file);
-  }, [leaveCurrentJob, clearVideo, startVadForFile]);
+    startVad(vadInput);
+  }, [leaveCurrentJob, clearVideo, startVad]);
 
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
@@ -425,7 +449,7 @@ export default function App() {
       setCheckingFileName(file.name);
       setStatus('IDLE');
 
-      const validation = await validateAndInspectMp4File(file, {
+      const validation = await validateAndInspectMp4File(fileByteSource(file), {
         maxDurationSeconds: FIXED_MAX_VIDEO_DURATION_SECONDS,
         maxFileSizeMb: FIXED_MAX_UPLOAD_SIZE_MB,
       });
@@ -442,21 +466,22 @@ export default function App() {
         setVideoUrl(blobUrl);
         setCurrentTimeMs(0);
         setStatus('VIDEO_READY');
-        startVadForFile(file);
+        startVad({ kind: 'file', file });
       } else {
         setVideoUrl(null);
         setStatus('FAILED');
       }
     },
-    [videoMetadata, startVadForFile, leaveCurrentJob, clearVideo]
+    [videoMetadata, startVad, leaveCurrentJob, clearVideo]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
   const handleRunVad = () => {
-    if (!videoFile || !videoMetadata) return;
+    const input: ByteSourceInput | undefined = videoFile ? { kind: 'file', file: videoFile } : reviewImportRef.current?.vadInput;
+    if (!input || !videoMetadata) return;
     if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !window.confirm('สแกนเสียงใหม่? บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
     leaveCurrentJob();
-    startVadForFile(videoFile);
+    startVad(input);
   };
 
   // Upload large MP4 videos in 8MB chunks to stay well below Cloud Run's 32MB request body limit

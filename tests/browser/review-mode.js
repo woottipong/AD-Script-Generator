@@ -30,6 +30,7 @@ async page => {
   assert(created, 'Review Mode job was created on the server');
   assert(created.video_source.kind === 'local_file' && created.video_source.file_name === 'ad-review-1080p.mp4', 'Video source is the local file');
   assert(created.video_metadata.height === 1080, '1080p video is accepted');
+  assert(created.vad_output.waveform && created.vad_output.waveform.peaksBase64.length > 0, 'Audio of a moov-at-end MP4 was decoded');
   assert(created.spots.length === 4 && created.srt_source.cue_count === 4, 'Cues after the video end or without duration are left out');
   assert(created.spots[2].text === 'หญิงยิ้ม\nแล้วเดินออกไป', 'Multi-line cue text is kept');
   assert(await page.getByText('ไม่ได้นำเข้า 2 บรรทัดจาก SRT').isVisible(), 'Skipped lines are reported');

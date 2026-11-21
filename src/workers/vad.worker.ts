@@ -8,6 +8,7 @@ import {
 } from '../utils/vadPostProcess';
 import { WaveformPeakAccumulator } from '../utils/waveform';
 import type { ProcessingProgress } from '../utils/processingFeedback';
+import { openByteSource, type ByteSourceInput } from '../utils/byteSource';
 
 // Configure ONNX Runtime Web WASM paths using absolute origin URL
 const workerOrigin = typeof location !== 'undefined' && location.origin ? location.origin : '';
@@ -209,7 +210,7 @@ class StreamingResampler16k {
 
 interface WorkerStartMessage {
   type: 'PROCESS_FILE';
-  file: File;
+  source: ByteSourceInput;
   vadConfig: VADConfig;
   autoTuneOptimal?: boolean;
 }
@@ -218,7 +219,7 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
   const msg = event.data;
 
   if (msg.type === 'PROCESS_FILE') {
-    const { file, vadConfig, autoTuneOptimal } = msg;
+    const { source: sourceInput, vadConfig, autoTuneOptimal } = msg;
     let decoder = null as AudioDecoder | null;
     const getDecoder = (): AudioDecoder | null => decoder;
 
@@ -457,14 +458,16 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
       // Stream file in 2 MB chunks to keep memory footprint minimal even for 2 GB videos
       const CHUNK_SIZE = 2 * 1024 * 1024;
       let offset = 0;
+      let rewoundToSamples = false;
 
+      const file = await openByteSource(sourceInput);
       while (offset < file.size) {
         if (decoderError) {
           throw decoderError;
         }
 
         const end = Math.min(offset + CHUNK_SIZE, file.size);
-        const chunkBuffer = await file.slice(offset, end).arrayBuffer();
+        const chunkBuffer = await file.read(offset, end);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mp4Buffer = chunkBuffer as any;
         mp4Buffer.fileStart = offset;
@@ -504,7 +507,12 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
 
         reportVadProgress();
 
+        // When moov sits after mdat, mp4box only learns where the audio samples are once it reaches the
+        // end of the file, then asks to go back to them. Allow that one rewind; any other request moves forward.
         if (typeof nextOffset === 'number' && nextOffset > offset && nextOffset < file.size) {
+          offset = nextOffset;
+        } else if (typeof nextOffset === 'number' && nextOffset < offset && !rewoundToSamples) {
+          rewoundToSamples = true;
           offset = nextOffset;
         } else {
           offset = end;
