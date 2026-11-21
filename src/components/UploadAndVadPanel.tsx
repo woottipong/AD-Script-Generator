@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
+import { IntakeShell } from './IntakeShell';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -264,9 +266,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   // If no video is loaded yet, show a clean studio intake workspace bar
   if (!hasLoadedProject) {
     return (
-      <section
-        className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
-      >
+      <IntakeShell backLabel="เลือกโหมดอื่น" onBack={onChangeMode} title="สร้างบทบรรยายภาพ" description="ระบบหาช่วงว่างบนเครื่องของคุณ">
         <input
           ref={fileInputRef}
           type="file"
@@ -277,14 +277,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           className="hidden"
         />
 
-        <button type="button" onClick={onChangeMode} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />เลือกโหมดอื่น
-        </button>
-        <div className="mb-7">
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">สร้างบทบรรยายภาพ</h1>
-          <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">ระบบหาช่วงว่างบนเครื่องของคุณ</p>
-        </div>
-        <div className="flex flex-col gap-7">
+        <div className="mt-7 flex flex-col gap-7">
           <div>
             {checkingFileName ? (
               <div className="w-full max-w-lg mx-auto">
@@ -319,28 +312,28 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </div>
 
               <div className="flex flex-wrap justify-center items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="btn-primary flex items-center gap-2 px-6 py-3 text-sm">
-                  <Upload className="w-4 h-4" aria-hidden="true" />
+                <Button size="lg" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'}>
+                  <Upload data-icon="inline-start" />
                   เลือกวิดีโอ
-                </button>
+                </Button>
               </div>
             </div>}
 
             {(errorMessage || hasBlockingErrors) && (
-              <div id="upload-feedback" role="alert" className="alert-error mt-3 p-3 text-sm">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p className="font-semibold">{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</p>
-                  {errorMessage ? <p className="mt-1">{errorMessage}</p> : (
-                    <ul className="mt-1 list-disc pl-5 space-y-1">
+              <Alert id="upload-feedback" variant="destructive" className="mt-3">
+                <AlertCircle />
+                <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</AlertTitle>
+                <AlertDescription>
+                  {errorMessage ? <p>{errorMessage}</p> : (
+                    <ul className="list-disc pl-5">
                       {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
                         <li key={`${issue.field}-${index}`}>{issue.message}</li>
                       ))}
                     </ul>
                   )}
                   {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
-                </div>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
 
@@ -348,8 +341,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
           </div>
         </div>
-
-      </section>
+      </IntakeShell>
     );
   }
 

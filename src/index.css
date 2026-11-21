@@ -271,6 +271,14 @@
   animation: progress-indeterminate-secondary 2.1s cubic-bezier(0.165, 0.84, 0.44, 1) 1.05s infinite;
 }
 
+/* shadcn Progress with no value yet: the same Material Design 3 sweep as the hairline bar (DESIGN › Status Pill). */
+[data-slot="progress-indicator"][data-indeterminate] {
+  width: 100%;
+  transform-origin: left center;
+  will-change: transform;
+  animation: progress-indeterminate-primary 2.1s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
 .progress-shimmer-sweep {
   will-change: transform;
   background: linear-gradient(90deg, transparent 0%, oklch(98% 0.02 236 / 0.55) 50%, transparent 100%);
@@ -287,7 +295,9 @@
     animation: none;
   }
 
-  .progress-indeterminate-primary {
+  .progress-indeterminate-primary,
+  [data-slot="progress-indicator"][data-indeterminate] {
+    animation: none;
     transform: none;
   }
 

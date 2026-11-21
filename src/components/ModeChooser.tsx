@@ -1,5 +1,7 @@
-import { ArrowLeft, FileText, Sparkles } from 'lucide-react';
+import { FileText, Sparkles } from 'lucide-react';
 import type { JobMode } from '../types/ad';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { IntakeShell } from './IntakeShell';
 
 const modes: { mode: JobMode; title: string; description: string; Icon: typeof Sparkles }[] = [
   { mode: 'generate', title: 'สร้างบทบรรยาย', description: 'หาช่วงว่างในวิดีโอ แล้วให้ Gemini เขียนบทบรรยายภาพใหม่ให้ตรวจแก้', Icon: Sparkles },
@@ -11,26 +13,28 @@ export function ModeChooser({ onChoose, onBack }: {
   onBack: () => void;
 }) {
   return (
-    <section className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0">
-      <button type="button" onClick={onBack} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />รายการงาน
-      </button>
-      <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">เริ่มงานบทบรรยายภาพ</h1>
-      <p className="mt-3 text-base text-slate-600 leading-relaxed">เลือกว่าจะสร้างบทใหม่ หรือแก้บทที่มีอยู่แล้ว</p>
+    <IntakeShell backLabel="รายการงาน" onBack={onBack} title="เริ่มงานบทบรรยายภาพ" description="เลือกว่าจะสร้างบทใหม่ หรือแก้บทที่มีอยู่แล้ว">
       <div className="mt-7 grid gap-4 sm:grid-cols-2">
         {modes.map(({ mode, title, description, Icon }) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onChoose(mode)}
-            className="flex flex-col items-start gap-3 rounded-lg border border-slate-300 bg-white p-5 text-left hover:border-brand-500 hover:bg-brand-50 focus-visible:outline-brand-700 cursor-pointer"
-          >
-            <Icon className="h-6 w-6 text-brand-700" aria-hidden="true" />
-            <span className="text-lg font-semibold text-slate-900">{title}</span>
-            <span className="text-sm leading-relaxed text-slate-600">{description}</span>
-          </button>
+          // The title's button stretches over the whole card, so the card is one control and its ring shows hover and focus.
+          <Card key={mode} className="relative transition-shadow hover:ring-2 hover:ring-brand-300 has-[button:focus-visible]:ring-2 has-[button:focus-visible]:ring-ring">
+            <CardHeader className="gap-3">
+              <Icon className="size-6 text-primary" aria-hidden="true" />
+              <CardTitle>
+                <button
+                  type="button"
+                  onClick={() => onChoose(mode)}
+                  aria-describedby={`mode-${mode}-description`}
+                  className="cursor-pointer text-left after:absolute after:inset-0 focus-visible:outline-none"
+                >
+                  {title}
+                </button>
+              </CardTitle>
+              <CardDescription id={`mode-${mode}-description`} className="leading-relaxed">{description}</CardDescription>
+            </CardHeader>
+          </Card>
         ))}
       </div>
-    </section>
+    </IntakeShell>
   );
 }

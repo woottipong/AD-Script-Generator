@@ -24,6 +24,10 @@ async page => {
   await page.getByRole('button', { name: /แก้ไข SRT ที่มีอยู่/ }).click();
   const process = page.getByRole('button', { name: 'ประมวลผล' });
   assert(await process.isDisabled(), 'Process waits for both files');
+  const link = page.getByLabel('หรือวางลิงก์วิดีโอ .mp4');
+  await link.fill('https://example.com/video.mov');
+  assert(await link.getAttribute('aria-invalid') === 'true' && await page.getByText('ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4').isVisible(), 'A non-.mp4 link is marked invalid with the reason');
+  await link.fill('');
   await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles('/tmp/ad-review-1080p.mp4');
   await page.getByLabel('เลือกไฟล์ SRT').setInputFiles('/tmp/ad-review.srt');
   const titleField = page.getByRole('textbox', { name: 'ชื่องาน' });
