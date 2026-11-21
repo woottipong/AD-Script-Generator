@@ -10,10 +10,10 @@ const alertVariants = cva(
         default: "bg-card text-card-foreground",
         // DESIGN › Semantic States: error surface, ink and border.
         destructive:
-          "border-red-200 bg-red-50 text-red-800 *:data-[slot=alert-description]:text-red-800 *:[svg]:text-red-600",
+          "border-error-border bg-error-surface text-error-foreground *:data-[slot=alert-description]:text-error-foreground *:[svg]:text-destructive",
         // DESIGN › Semantic States: amber for warnings that do not block the author.
         warning:
-          "border-amber-200 bg-amber-50 text-amber-800 *:data-[slot=alert-description]:text-amber-800 *:[svg]:text-amber-600",
+          "border-warning-border bg-warning text-warning-foreground *:data-[slot=alert-description]:text-warning-foreground *:[svg]:text-warning-foreground",
       },
       // DESIGN › Layout: a full-width strip under the navbar, square and divided from the workspace by one hairline.
       placement: {

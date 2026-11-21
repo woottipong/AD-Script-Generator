@@ -151,13 +151,13 @@ test('list shows jobs and unfinished uploads newest first, and deleteJob removes
   fs.symlinkSync(outside, path.join(jobsDir, 'job_link'));
 
   assert.deepEqual(
-    store.list().map(({ job_id, title, mode, status, is_upload, duration_ms, spot_count, edited_spot_count, progress_percent }) => ({
-      job_id, title, mode, status, is_upload, duration_ms, spot_count, edited_spot_count, progress_percent,
+    store.list().map(({ job_id, title, mode, status, is_upload, duration_ms, spot_count, progress_percent }) => ({
+      job_id, title, mode, status, is_upload, duration_ms, spot_count, progress_percent,
     })),
     [
-      { job_id: 'job_new', title: 'งาน job_new', mode: 'generate', status: 'ANALYZING', is_upload: false, duration_ms: 20000, spot_count: 0, edited_spot_count: 0, progress_percent: 12.5 },
-      { job_id: 'job_old', title: 'บทเรียน', mode: 'review', status: 'READY', is_upload: false, duration_ms: 20000, spot_count: 1, edited_spot_count: 1, progress_percent: undefined },
-      { job_id: 'job_upload', title: undefined, mode: undefined, status: undefined, is_upload: true, duration_ms: undefined, spot_count: undefined, edited_spot_count: undefined, progress_percent: undefined },
+      { job_id: 'job_new', title: 'งาน job_new', mode: 'generate', status: 'ANALYZING', is_upload: false, duration_ms: 20000, spot_count: 0, progress_percent: 12.5 },
+      { job_id: 'job_old', title: 'บทเรียน', mode: 'review', status: 'READY', is_upload: false, duration_ms: 20000, spot_count: 1, progress_percent: undefined },
+      { job_id: 'job_upload', title: undefined, mode: undefined, status: undefined, is_upload: true, duration_ms: undefined, spot_count: undefined, progress_percent: undefined },
     ],
   );
   assert.ok(store.list()[0].size_bytes > 0, 'size counts the job folder');

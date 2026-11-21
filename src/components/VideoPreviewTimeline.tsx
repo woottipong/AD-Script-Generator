@@ -449,9 +449,9 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       : 0;
 
   return (
-    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden">
+    <section aria-label="วิดีโอและไทม์ไลน์" className="flex flex-col lg:h-full min-h-0 bg-card lg:overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-col bg-slate-950 lg:flex-1">
+      <div className="flex min-h-0 flex-col bg-stage lg:flex-1">
         <div className="relative aspect-video min-h-0 max-h-[38vh] w-full overflow-hidden lg:aspect-auto lg:max-h-none lg:flex-1">
           {videoUrl ? (
             <>
@@ -475,24 +475,24 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 }}
               />
               {videoError || isVideoLoading ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 px-6 py-4 text-center text-white">
-                  {videoError ? <AlertTriangle className="h-6 w-6 text-amber-300" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stage px-6 py-4 text-center text-white">
+                  {videoError ? <AlertTriangle className="h-6 w-6 text-warning-strong-border" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
                   <div role={videoError ? 'alert' : 'status'} className="w-full max-w-xs space-y-2">
                     <p className="text-sm font-semibold">{videoError === 'load' ? 'ยังเปิดวิดีโอไม่ได้' : videoError === 'play' ? 'ยังเล่นวิดีโอไม่ได้' : 'กำลังโหลดวิดีโอ'}</p>
                     {!videoError && (
-                      <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-slate-800">
+                      <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-white/15">
                         <div className="progress-indeterminate-primary absolute inset-0" />
                         <div className="progress-indeterminate-secondary absolute inset-0" />
                       </div>
                     )}
-                    {videoError && <p className="text-xs leading-relaxed text-slate-300">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
+                    {videoError && <p className="text-xs leading-relaxed text-white/80">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
                   </div>
                   {videoError && <button type="button" onClick={() => {
                     if (videoError === 'play') { playVideo(); return; }
                     setVideoError(null);
                     setIsVideoLoading(true);
                     videoRef.current?.load();
-                  }} className="rounded-md border border-slate-500 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
+                  }} className="rounded-md border border-white/30 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
                 </div>
               ) : null}
               {showCaptionOverlay && !videoError && !isVideoLoading && activeSubtitleSpot && (
@@ -504,7 +504,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectSpot(activeSubtitleSpot.spot_id, false)}
-                    className="pointer-events-auto flex max-h-[48%] max-w-[min(94%,42rem)] items-start gap-2.5 overflow-y-auto rounded-lg border border-white/15 bg-slate-950/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-slate-950/90 focus-visible:outline-brand-400 cursor-pointer"
+                    className="pointer-events-auto flex max-h-[48%] max-w-[min(94%,42rem)] items-start gap-2.5 overflow-y-auto rounded-lg border border-white/15 bg-stage/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-stage/90 focus-visible:outline-brand-400 cursor-pointer"
                   >
                     <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-xs font-semibold leading-none tracking-wide text-white tabular-nums">
                       AD {spots.indexOf(activeSubtitleSpot) + 1}
@@ -517,15 +517,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               )}
             </>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-300">
-              <Film className="mb-2 h-8 w-8 text-slate-500" aria-hidden="true" />
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center text-white/80">
+              <Film className="mb-2 h-8 w-8 text-white/50" aria-hidden="true" />
               <p className="text-sm font-medium">ยังเปิดวิดีโอไม่ได้</p>
               <p className="mt-1 text-xs">ตรวจสอบข้อความแจ้งปัญหา หรือเลือกวิดีโออีกครั้ง</p>
             </div>
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 bg-white px-3 py-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border bg-card px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
             <WithTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="font-mono tabular-nums">−5s</Button></WithTooltip>
             <WithTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="font-mono tabular-nums">−1s</Button></WithTooltip>
@@ -537,42 +537,42 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <WithTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="font-mono tabular-nums">+1s</Button></WithTooltip>
             <WithTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="font-mono tabular-nums">+5s</Button></WithTooltip>
           </div>
-          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-slate-200 pl-2">
+          <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-border pl-2">
             <WithTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า"><SkipBack aria-hidden="true" /></Button></WithTooltip>
             <WithTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป"><SkipForward aria-hidden="true" /></Button></WithTooltip>
           </div>
-          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-slate-200 sm:pl-2">
+          <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-border sm:pl-2">
             <WithTooltip label="วนซ้ำช่วงที่เลือก"><Toggle size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก"><Repeat aria-hidden="true" /></Toggle></WithTooltip>
             <WithTooltip label={captionLabel}><Toggle size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel}><Subtitles aria-hidden="true" /></Toggle></WithTooltip>
             <WithTooltip label={muteLabel}><Toggle size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel}>{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></WithTooltip>
           </div>
-          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600">
+          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
             <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-y border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-y border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
         <div className="flex min-w-0 items-center gap-3">
           {selectedSpot ? (
-            <span className="font-semibold text-slate-900 tabular-nums" aria-label={`ช่วงที่เลือก ${selectedSpotIndex + 1} จาก ${spots.length}`}>
+            <span className="font-semibold text-foreground tabular-nums" aria-label={`ช่วงที่เลือก ${selectedSpotIndex + 1} จาก ${spots.length}`}>
               ช่วง {selectedSpotIndex + 1}/{spots.length}
             </span>
           ) : (
-            <span className="text-slate-500">ไทม์ไลน์</span>
+            <span className="text-muted-foreground">ไทม์ไลน์</span>
           )}
-          <div className="hidden xl:flex items-center gap-3 text-slate-600" aria-label="สถานะช่วงบรรยาย">
+          <div className="hidden xl:flex items-center gap-3 text-muted-foreground" aria-label="สถานะช่วงบรรยาย">
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-brand-700" aria-hidden="true" />บรรยาย</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-amber-300" aria-hidden="true" />รอ</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-slate-300" aria-hidden="true" />ข้าม</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-warning-strong-border" aria-hidden="true" />รอ</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-input" aria-hidden="true" />ข้าม</span>
           </div>
           {activeDrag?.hasMoved ? (
-            <span className="inline-flex items-center gap-1.5 rounded bg-slate-900 px-2 py-0.5 font-mono text-xs tabular-nums text-white">
+            <span className="inline-flex items-center gap-1.5 rounded bg-foreground px-2 py-0.5 font-mono text-xs tabular-nums text-background">
               <span>{monitorTime(activeDrag.previewStartMs)} – {monitorTime(activeDrag.previewEndMs)}</span>
               <span className="text-brand-300">{((activeDrag.previewEndMs - activeDrag.previewStartMs) / 1000).toFixed(1)}s</span>
             </span>
           ) : hoverTimeMs !== null && (
-            <span className="hidden sm:inline font-mono tabular-nums text-slate-500" aria-hidden="true">
+            <span className="hidden sm:inline font-mono tabular-nums text-muted-foreground" aria-hidden="true">
               {monitorTime(hoverTimeMs)}
             </span>
           )}
@@ -583,19 +583,19 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           )}
           <WithTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="sm" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ">พอดี</Button></WithTooltip>
           <WithTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์"><ZoomOut aria-hidden="true" /></Button></WithTooltip>
-          <span className="min-w-11 text-center text-xs text-slate-600 tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
+          <span className="min-w-11 text-center text-xs text-muted-foreground tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
           <WithTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์"><ZoomIn aria-hidden="true" /></Button></WithTooltip>
         </div>
       </div>
 
-      <div className="flex shrink-0 min-w-0 overflow-hidden bg-white">
-        <div className="w-20 sm:w-24 shrink-0 whitespace-nowrap border-r border-slate-200 bg-slate-50 text-xs">
-          <div className="flex h-7 items-center border-b border-slate-200 px-3 font-medium text-slate-500">เวลา</div>
+      <div className="flex shrink-0 min-w-0 overflow-hidden bg-card">
+        <div className="w-20 sm:w-24 shrink-0 whitespace-nowrap border-r border-border bg-muted/40 text-xs">
+          <div className="flex h-7 items-center border-b border-border px-3 font-medium text-muted-foreground">เวลา</div>
           {showWaveformTrack && (
-            <div className="flex h-14 items-center border-b border-slate-200 px-3 text-slate-600">คลื่นเสียง</div>
+            <div className="flex h-14 items-center border-b border-border px-3 text-muted-foreground">คลื่นเสียง</div>
           )}
-          <div className="flex h-7 items-center justify-between gap-1.5 border-b border-slate-200 px-3 text-slate-600"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-400">{speechSegments.length}</span></div>
-          <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-slate-700"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-slate-500">{spots.length}</span></div>
+          <div className="flex h-7 items-center justify-between gap-1.5 border-b border-border px-3 text-muted-foreground"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground/80">{speechSegments.length}</span></div>
+          <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-secondary-foreground"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground">{spots.length}</span></div>
         </div>
         <div
           ref={timelineScrollContainerRef}

@@ -4,8 +4,8 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { IntakeShell } from './IntakeShell';
 
 const modes: { mode: JobMode; title: string; description: string; Icon: typeof Sparkles }[] = [
-  { mode: 'generate', title: 'สร้างบทบรรยาย', description: 'หาช่วงว่างในวิดีโอ แล้วให้ Gemini เขียนบทบรรยายภาพใหม่ให้ตรวจแก้', Icon: Sparkles },
-  { mode: 'review', title: 'แก้ไข SRT ที่มีอยู่', description: 'เปิดวิดีโอกับไฟล์ SRT ที่ทำไว้แล้ว เพื่อตรวจและแก้บทเทียบกับเสียงพูด', Icon: FileText },
+  { mode: 'generate', title: 'สร้างบทบรรยาย', description: 'วิเคราะห์ช่วงว่างเสียงพูดในวิดีโอ และสร้างร่างบทบรรยายภาพด้วย AI', Icon: Sparkles },
+  { mode: 'review', title: 'ตรวจแก้ไฟล์ SRT', description: 'เปิดวิดีโอกับไฟล์ SRT ที่ทำไว้แล้ว เพื่อตรวจและแก้บทเทียบกับเสียงพูด', Icon: FileText },
 ];
 
 export function ModeChooser({ onChoose, onBack }: {

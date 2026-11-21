@@ -10,7 +10,7 @@ const textareaVariants = cva(
         default:
           "field-sizing-content min-h-16 px-2.5 py-2 text-base disabled:bg-input/50 disabled:opacity-50 md:text-sm",
         script:
-          "field-sizing-fixed min-h-0 resize-none px-3 py-2.5 font-script text-[length:var(--text-script)] leading-[var(--text-script--line-height)] font-normal tracking-normal text-foreground disabled:border-border disabled:bg-muted/80 disabled:text-slate-400 disabled:opacity-100",
+          "field-sizing-fixed min-h-0 resize-none px-3 py-2.5 font-script text-[length:var(--text-script)] leading-[var(--text-script--line-height)] font-normal tracking-normal text-foreground disabled:border-border disabled:bg-muted/80 disabled:text-muted-foreground disabled:opacity-100",
       },
     },
     defaultVariants: {

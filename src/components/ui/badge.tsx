@@ -12,14 +12,14 @@ const badgeVariants = cva(
         secondary:
           "border-border bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:
-          "border-red-200 bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "border-error-border bg-error-surface text-error-foreground focus-visible:ring-destructive/20 [a]:hover:bg-destructive/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         // Brand states (DESIGN.md › Status Micro-Badges): live work in cerulean, waiting in amber.
         info: "border-brand-200 bg-brand-50 text-brand-900",
         "info-strong": "border-brand-200 bg-brand-100 text-brand-900",
-        warning: "border-amber-200 bg-amber-50 text-amber-800",
-        "warning-strong": "border-amber-300 bg-amber-100 font-semibold text-amber-900",
+        warning: "border-warning-border bg-warning text-warning-foreground",
+        "warning-strong": "border-warning-strong-border bg-warning-strong font-semibold text-warning-strong-foreground",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",

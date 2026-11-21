@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, FileText, FileVideo, Loader2, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  FileText,
+  FileVideo,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { JobMode } from '../types/ad';
 import { formatCompactTime, formatFileSize } from '../utils/formatters';
 import type { StoredJobSummary } from '../utils/jobStore';
@@ -21,27 +36,93 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from 'cn';
 
 /** A `GET /api/jobs` row: the stored summary plus whether the server is analysing or uploading it right now. */
 type StoredJob = StoredJobSummary & { is_processing: boolean };
 
 const MODE_LABEL: Record<JobMode, string> = { generate: 'สร้างบทบรรยาย', review: 'ตรวจแก้ SRT' };
 
-function statusBadge(job: StoredJob): {
+type JobVisualState = {
   label: string;
-  variant: 'info-strong' | 'secondary' | 'destructive' | 'warning';
+  variant: 'info' | 'info-strong' | 'destructive' | 'warning';
+  icon: LucideIcon;
+  tileIcon: LucideIcon;
+  tileClass: string;
+  rowClass: string;
   spinning?: boolean;
   tooltip?: string;
-} {
+};
+
+function jobVisualState(job: StoredJob): JobVisualState {
+  const modeIcon = job.mode === 'review' ? FileText : FileVideo;
   if (job.is_processing) {
-    if (job.is_upload) return { label: 'กำลังอัปโหลด', variant: 'info-strong', spinning: true };
-    const pct = typeof job.progress_percent === 'number' && job.progress_percent > 0 ? ` ${Math.round(job.progress_percent)}%` : '';
-    return { label: `กำลังวิเคราะห์${pct}`, variant: 'info-strong', spinning: true };
+    const pct = !job.is_upload && typeof job.progress_percent === 'number' && job.progress_percent > 0
+      ? ` ${Math.round(job.progress_percent)}%`
+      : '';
+    return {
+      label: job.is_upload ? 'กำลังอัปโหลด' : `กำลังวิเคราะห์${pct}`,
+      variant: 'info-strong',
+      icon: Loader2,
+      tileIcon: job.is_upload ? Upload : modeIcon,
+      tileClass: 'border-brand-200 bg-brand-50 text-brand-700',
+      rowClass: 'hover:bg-accent/60',
+      spinning: true,
+    };
   }
-  if (job.is_upload) return { label: 'อัปโหลดไม่เสร็จ', variant: 'warning' };
-  if (job.status === 'READY') return { label: 'พร้อมแก้', variant: 'secondary' };
-  if (job.status === 'FAILED') return { label: 'ผิดพลาด', variant: 'destructive', tooltip: job.error_message };
-  return { label: 'รอวิเคราะห์', variant: 'warning' };
+  if (job.is_upload) {
+    return {
+      label: 'อัปโหลดไม่สมบูรณ์',
+      variant: 'warning',
+      icon: AlertTriangle,
+      tileIcon: Upload,
+      tileClass: 'border-warning-border bg-warning text-warning-foreground',
+      rowClass: 'bg-warning/60 hover:bg-warning',
+    };
+  }
+  if (job.status === 'FAILED') {
+    return {
+      label: 'วิเคราะห์ไม่สำเร็จ',
+      variant: 'destructive',
+      icon: AlertCircle,
+      tileIcon: modeIcon,
+      tileClass: 'border-error-border bg-error-surface text-error-foreground',
+      rowClass: 'bg-error-surface/60 hover:bg-error-surface',
+      tooltip: job.error_message,
+    };
+  }
+  if (job.status === 'READY') {
+    return {
+      label: 'พร้อมแก้',
+      variant: 'info',
+      icon: CheckCircle2,
+      tileIcon: modeIcon,
+      tileClass: job.mode === 'review'
+        ? 'border-border bg-secondary text-secondary-foreground'
+        : 'border-brand-200 bg-brand-50 text-brand-700',
+      rowClass: 'hover:bg-accent/60',
+    };
+  }
+  return {
+    label: 'รอวิเคราะห์',
+    variant: 'warning',
+    icon: Clock,
+    tileIcon: modeIcon,
+    tileClass: 'border-warning-border bg-warning text-warning-foreground',
+    rowClass: 'hover:bg-accent/60',
+  };
+}
+
+function ModeTag({ mode, className }: { mode: JobMode; className?: string }) {
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 text-xs font-medium text-secondary-foreground', className)}>
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${mode === 'generate' ? 'bg-brand-600' : 'bg-muted-foreground'}`}
+      />
+      {MODE_LABEL[mode]}
+    </span>
+  );
 }
 
 function formatDuration(job: StoredJob): string {
@@ -55,7 +136,7 @@ function formatUpdatedAt(iso: string): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-const jobName = (job: StoredJob) => (job.is_upload ? 'อัปโหลดไม่เสร็จ' : job.title || job.file_name);
+const jobName = (job: StoredJob) => (job.is_upload ? 'อัปโหลดไม่สมบูรณ์' : job.title || job.file_name);
 
 function deleteConfirmationCopy(job: StoredJob): string {
   if (job.is_upload) {
@@ -127,7 +208,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">เปิดงานที่ทำค้างไว้ หรือเริ่มงานบทบรรยายใหม่</p>
+          <p className="text-sm text-muted-foreground">จัดการงานบทบรรยายภาพทั้งหมด หรือสร้างงานใหม่</p>
         </div>
         {jobs?.length !== 0 && (
           <div className="flex items-center gap-2">
@@ -234,10 +315,12 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                 ))
                 : jobs.map((job) => {
                   const name = jobName(job);
-                  const status = statusBadge(job);
+                  const status = jobVisualState(job);
+                  const StatusIcon = status.icon;
+                  const TileIcon = status.tileIcon;
                   const badge = (
-                    <Badge variant={status.variant}>
-                      {status.spinning && <Loader2 className="animate-spin" aria-hidden="true" />}
+                    <Badge variant={status.variant} className="tabular-nums">
+                      <StatusIcon className={status.spinning ? 'animate-spin' : undefined} aria-hidden="true" />
                       {status.label}
                     </Badge>
                   );
@@ -248,7 +331,6 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                     </Tooltip>
                   ) : badge;
                   const spotCount = !job.is_upload && typeof job.spot_count === 'number' && job.spot_count > 0 ? job.spot_count : 0;
-                  const editedCount = typeof job.edited_spot_count === 'number' ? job.edited_spot_count : 0;
                   const deleteButton = (
                     <Button
                       variant="ghost-destructive"
@@ -262,20 +344,14 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                     </Button>
                   );
                   return (
-                    <TableRow key={job.job_id} className="hover:bg-brand-50/40">
+                    <TableRow key={job.job_id} className={status.rowClass}>
                       <TableCell className="max-w-0 py-3.5 pl-4 whitespace-normal sm:pl-5">
                         <div className="flex items-center gap-3">
                           <span
                             aria-hidden="true"
-                            className="hidden size-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-muted/40 sm:inline-flex"
+                            className={`hidden size-9 shrink-0 items-center justify-center rounded-md border sm:inline-flex ${status.tileClass}`}
                           >
-                            {job.is_upload ? (
-                              <Upload className="size-4 text-amber-700" />
-                            ) : job.mode === 'review' ? (
-                              <FileText className="size-4 text-muted-foreground" />
-                            ) : (
-                              <FileVideo className="size-4 text-primary" />
-                            )}
+                            <TileIcon className="size-4" />
                           </span>
                           <div className="min-w-0 flex-1">
                             {job.is_upload ? (
@@ -295,16 +371,16 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                             )}
                             <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
                               {statusNode}
-                              {job.mode && <span className="text-xs text-muted-foreground">{MODE_LABEL[job.mode]}</span>}
+                              {job.mode && <ModeTag mode={job.mode} />}
                             </div>
                             {job.mode && (
-                              <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block md:hidden">{MODE_LABEL[job.mode]}</p>
+                              <ModeTag mode={job.mode} className="mt-0.5 hidden sm:inline-flex md:hidden" />
                             )}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden px-4 text-xs text-muted-foreground md:table-cell">
-                        {job.mode ? MODE_LABEL[job.mode] : '—'}
+                      <TableCell className="hidden px-4 text-xs md:table-cell">
+                        {job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="hidden px-4 sm:table-cell">
                         {statusNode}
@@ -314,10 +390,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                       </TableCell>
                       <TableCell className="hidden px-4 text-right text-xs tabular-nums lg:table-cell">
                         {spotCount > 0 ? (
-                          <span className="whitespace-nowrap text-foreground">
-                            {spotCount} จุด
-                            {editedCount > 0 && <span className="text-muted-foreground"> · แก้ {editedCount}</span>}
-                          </span>
+                          <span className="whitespace-nowrap text-foreground">{spotCount} จุด</span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -329,11 +402,11 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                         <div className="flex items-center justify-end gap-2">
                           {!job.is_upload && (
                             <Button
-                              variant="outline"
+                              variant="outline-primary"
                               onClick={() => onOpen(job.job_id)}
-                              aria-label={`ทำต่อ ${name}`}
+                              aria-label={`เปิดงาน ${name}`}
                             >
-                              <span>ทำต่อ</span>
+                              <span>เปิดงาน</span>
                               <ArrowRight data-icon="inline-end" aria-hidden="true" />
                             </Button>
                           )}
@@ -358,7 +431,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ลบงานนี้?</AlertDialogTitle>
+            <AlertDialogTitle>ยืนยันการลบงาน</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete ? deleteConfirmationCopy(pendingDelete) : ''}
             </AlertDialogDescription>

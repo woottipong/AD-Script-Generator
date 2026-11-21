@@ -21,8 +21,8 @@ async page => {
   await page.goto('http://127.0.0.1:4173/new');
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   assert(await page.getByRole('button', { name: /สร้างบทบรรยาย/ }).isVisible(), 'Generate Mode card is offered');
-  await page.getByRole('button', { name: /แก้ไข SRT ที่มีอยู่/ }).click();
-  const process = page.getByRole('button', { name: 'ประมวลผล' });
+  await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
+  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
   assert(await process.isDisabled(), 'Process waits for both files');
   const link = page.getByLabel('หรือวางลิงก์วิดีโอ .mp4');
   await link.fill('https://example.com/video.mov');

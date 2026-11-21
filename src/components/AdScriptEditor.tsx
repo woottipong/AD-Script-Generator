@@ -248,13 +248,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       className={`px-4 py-3.5 transition-colors ${isSelected ? 'cursor-default' : 'cursor-pointer'} ${
         isSkipped
           ? isSelected
-            ? 'relative z-10 bg-slate-100 ring-1 ring-inset ring-slate-300'
-            : 'bg-slate-50/85 hover:bg-slate-100/70'
+            ? 'relative z-10 bg-muted ring-1 ring-inset ring-input'
+            : 'bg-muted/60 hover:bg-muted'
           : isSelected
           ? 'relative z-10 bg-brand-50/90 ring-1 ring-inset ring-brand-200'
           : isPlayingNow
           ? 'bg-brand-50/35 hover:bg-brand-50/60'
-          : 'bg-white hover:bg-slate-50/80'
+          : 'bg-card hover:bg-muted/50'
       }`}
     >
       <div className="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-x-2.5 gap-y-2">
@@ -264,10 +264,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
             aria-pressed={isSelected}
             aria-label={`เลือกช่วงที่ ${spotOrder} เวลา ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)}`}
             onClick={(event) => { event.stopPropagation(); onSelect(spot.spot_id, true); }}
-            className="min-w-0 inline-flex items-center gap-2 rounded text-left text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+            className="min-w-0 inline-flex items-center gap-2 rounded text-left text-xs text-muted-foreground hover:text-foreground cursor-pointer"
           >
-            <span className={`text-sm font-semibold leading-none whitespace-nowrap ${isSkipped ? 'text-slate-500' : isSelected ? 'text-brand-900' : 'text-slate-900'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
-            {!isExpanded && <span className={`whitespace-nowrap font-mono leading-none tabular-nums ${isSkipped ? 'text-slate-400' : ''}`}>{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
+            <span className={`text-sm font-semibold leading-none whitespace-nowrap ${isSkipped ? 'text-muted-foreground' : isSelected ? 'text-brand-900' : 'text-foreground'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
+            {!isExpanded && <span className="whitespace-nowrap font-mono leading-none tabular-nums text-muted-foreground">{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
           </button>
 
           {isExpanded && nudgeTargets && (
@@ -315,7 +315,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   <Plus className="size-3" aria-hidden="true" />
                 </Button>
               </div>
-              <span aria-hidden="true" className="text-slate-400">–</span>
+              <span aria-hidden="true" className="text-muted-foreground">–</span>
               <div className="inline-flex items-center rounded-md border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
                 <Button
                   type="button"
@@ -356,7 +356,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
             </fieldset>
           )}
 
-          <span className="inline-flex items-center rounded border border-slate-200 bg-slate-100/80 px-1.5 py-1 font-mono text-xs leading-none tabular-nums text-slate-600" title="ความยาวช่วงว่าง">
+          <span className="inline-flex items-center rounded border border-border bg-muted/80 px-1.5 py-1 font-mono text-xs leading-none tabular-nums text-muted-foreground" title="ความยาวช่วงว่าง">
             {(spot.duration_ms / 1000).toFixed(1)}s
           </span>
         </div>
@@ -431,7 +431,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               {SPOT_CHECK_LABELS.over_duration}
             </Badge>
           )}
-          {!isExpanded && spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
+          {!isExpanded && spot.is_edited && <span className="text-muted-foreground">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
             <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
               <span className="h-1.5 w-1.5 rounded-full bg-brand-600" aria-hidden="true" />
@@ -472,13 +472,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
 
               {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
               <div className="space-y-1.5">
-                <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-150 ${
                       isOverDurationWarning
-                        ? 'bg-amber-500'
+                        ? 'bg-warning-foreground'
                         : speechRatio > 0.85
-                        ? 'bg-amber-400'
+                        ? 'bg-warning-strong-border'
                         : 'bg-brand-600'
                     }`}
                     style={{
@@ -487,13 +487,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 tabular-nums">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span
                       className={
                         isOverDurationWarning
-                          ? 'text-amber-800 font-medium'
-                          : 'text-slate-700 font-medium'
+                          ? 'text-warning-foreground font-medium'
+                          : 'text-secondary-foreground font-medium'
                       }
                     >
                       พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
@@ -501,10 +501,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                         <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
                       )}
                     </span>
-                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <span aria-hidden="true" className="text-muted-foreground/60">·</span>
                     <span>{spot.text.trim().length} อักษร</span>
                     {spot.is_edited && <>
-                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span aria-hidden="true" className="text-muted-foreground/60">·</span>
                       <span>แก้ไขแล้ว</span>
                     </>}
                   </div>
@@ -535,13 +535,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                 aria-label={`บทบรรยายที่ ${spotOrder} (ข้ามช่วงนี้)`}
                 value={spot.text}
               />
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
                 {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 py-1 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 py-1 text-xs text-muted-foreground">
               <span>
                 {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
               </span>
@@ -567,10 +567,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
         <p
           className={`line-clamp-2 ${
             spot.decision === 'generate'
-              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-800'
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-foreground'
               : hasSavedText
-              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-400'
-              : 'text-sm leading-relaxed text-slate-500'
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-muted-foreground'
+              : 'text-sm leading-relaxed text-muted-foreground'
           }`}
         >
           {spot.decision === 'generate'
@@ -764,11 +764,11 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   return (
     <section
       aria-label="บทบรรยาย"
-      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
+      className="flex flex-col lg:h-full min-h-0 bg-card lg:overflow-hidden"
     >
       <h1 className="sr-only">บทบรรยายภาพ</h1>
       {spots.length > 0 && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
           <InputGroup className="flex-1">
             <InputGroupAddon align="inline-start">
               <Search className="size-3.5" aria-hidden="true" />
@@ -823,7 +823,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                       <span className="flex min-w-0 items-center gap-1.5">
                         {check === 'over_duration'
                           ? <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          : <AlertTriangle className="size-3.5 shrink-0 text-amber-600" aria-hidden="true" />}
+                          : <AlertTriangle className="size-3.5 shrink-0 text-warning-foreground" aria-hidden="true" />}
                         <span className={check === 'over_duration' ? 'text-foreground' : 'font-medium text-foreground'}>
                           {SPOT_CHECK_LABELS[check]}
                           {check === 'over_duration' && <span className="block font-normal text-muted-foreground">ใช้ได้ถ้าเป็น Extended AD</span>}
@@ -855,7 +855,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       <div ref={listScrollRef} className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
           emptyState === 'preparing' ? (
-            <div role="status" className="divide-y divide-slate-200 border-b border-slate-200 bg-white">
+            <div role="status" className="divide-y divide-border border-b border-border bg-card">
               <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-600" aria-hidden="true" />
                 <span>กำลังตรวจช่วงเสียงพูดเพื่อสร้างรายการบทบรรยาย…</span>
@@ -869,44 +869,44 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                 >
                   <div className="mb-2.5 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <div className="soft-shimmer h-4 w-12 rounded bg-slate-200/80" />
-                      <div className="soft-shimmer h-3.5 w-28 rounded bg-slate-100" />
-                      <div className="soft-shimmer h-4 w-10 rounded bg-slate-100" />
+                      <div className="soft-shimmer h-4 w-12 rounded bg-border/80" />
+                      <div className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
+                      <div className="soft-shimmer h-4 w-10 rounded bg-muted" />
                     </div>
                     <div className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
                   </div>
                   <div className="w-full space-y-2">
-                    <div className="soft-shimmer h-3.5 w-full rounded bg-slate-100" />
-                    <div className="soft-shimmer h-3.5 rounded bg-slate-100/70" style={{ width: `${secondLineWidth}%` }} />
+                    <div className="soft-shimmer h-3.5 w-full rounded bg-muted" />
+                    <div className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
-              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
-              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-slate-900">
+              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-destructive mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-muted-foreground/60 mb-2" aria-hidden="true" />}
+              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
                 {emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
               </p>
-              <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
+              <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
                 {emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
               </p>
               {emptyState === 'failed' && <Button onClick={onRetryVad} className="mt-5">ลองตรวจเสียงอีกครั้ง</Button>}
               {emptyState === 'failed' && errorMessage && (
-                <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
-                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
-                  <p className="mt-2 rounded-md bg-slate-50 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+                <details className="mt-4 w-full max-w-sm text-left text-sm text-muted-foreground">
+                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-foreground">รายละเอียดข้อผิดพลาด</summary>
+                  <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
                 </details>
               )}
             </div>
           )
         ) : filteredSpots.length === 0 ? (
-          <div className="py-12 px-6 text-center text-sm text-slate-600 space-y-3">
+          <div className="py-12 px-6 text-center text-sm text-muted-foreground space-y-3">
             <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>
             <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
           </div>
         ) : (
-          <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-slate-200 border-b border-slate-200 bg-white">
+          <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-border border-b border-border bg-card">
             {filteredSpots.map((spot) => {
               const globalIdx = spotOrder.get(spot.spot_id)!;
               const isPlayingNow =
@@ -933,12 +933,12 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       </div>
 
       {/* 3. Compact Editor Shortcut Footer */}
-      {spots.length > 0 && <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 shrink-0">
+      {spots.length > 0 && <div className="px-4 py-3 border-t border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground shrink-0">
         <span>
-          <strong className="font-mono text-slate-700">Alt + ↑/↓</strong> เลือกช่วง ·{' '}
-          <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุด
+          <strong className="font-mono text-secondary-foreground">Alt + ↑/↓</strong> เลือกช่วง ·{' '}
+          <strong className="font-mono text-secondary-foreground">Alt + P</strong> เล่น/หยุด
         </span>
-        <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-red-700' : ''}`}>
+        <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
           {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-700" aria-hidden="true" />
             : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
             : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertOctagon, ChevronDown, FileVideo, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -31,16 +31,17 @@ import {
   formatTimestampDisplay,
   generateSrtContent,
 } from './utils/formatters';
-import { UploadAndVadPanel } from './components/UploadAndVadPanel';
-import { ModeChooser } from './components/ModeChooser';
 import { JobList } from './components/JobList';
-import { useConfirm } from './components/ConfirmDialog';
+import { ModeChooser } from './components/ModeChooser';
 import { ReviewIntake } from './components/ReviewIntake';
+import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
-import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
-import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
+
+const UploadAndVadPanel = lazy(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
+const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
+const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
 import { parseApiResponse } from './utils/apiResponse';
 import { defaultJobTitle, resolveJobTitle } from './utils/jobValidation';
 import { createJobSaveQueue } from './utils/jobSaveQueue';
@@ -986,17 +987,17 @@ export default function App() {
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
 
   return (
-    <div className={`min-h-screen flex flex-col bg-canvas text-slate-900 ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
-      <header className="min-h-16 shrink-0 bg-white border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
+      <header className="min-h-16 shrink-0 bg-card border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
           <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void openJobList(); }} aria-label="TCC Envisio รายการงาน" className="inline-flex min-w-0 items-center gap-2.5 rounded-md">
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
             <span className="min-w-0">
-              <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-slate-900">
+              <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-foreground">
                 <span className="text-brand-700">TCC</span> Envisio
               </span>
-              <span className="hidden truncate text-xs font-medium leading-tight text-slate-600 sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
+              <span className="hidden truncate text-xs font-medium leading-tight text-muted-foreground sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
             </span>
           </a>
 
@@ -1006,8 +1007,8 @@ export default function App() {
 
       {/* Browser Compatibility Blocking Banner */}
       {browserCompat && !browserCompat.supported && (
-        <div className="px-4 py-3 border-b border-red-300 bg-red-50 text-red-900 flex items-center gap-3 shrink-0">
-          <AlertOctagon className="w-4 h-4 text-red-600 shrink-0" />
+        <div className="px-4 py-3 border-b border-error-border bg-error-surface text-error-foreground flex items-center gap-3 shrink-0">
+          <AlertOctagon className="w-4 h-4 text-destructive shrink-0" />
           <div className="text-xs">
             <strong className="font-bold">
               เบราว์เซอร์นี้ไม่รองรับการวิเคราะห์เสียง:
@@ -1063,6 +1064,7 @@ export default function App() {
       )}
 
       {/* Top Studio Project & Queue Command Bar */}
+      <Suspense fallback={null}>
       {jobLoad === 'loading' && !hasProject ? (
         <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
           <Spinner aria-hidden="true" />
@@ -1119,7 +1121,7 @@ export default function App() {
 
       {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Caption Strip, Transport & Multi-Track Timeline (6 cols) */}
-        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
+        <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-border lg:overflow-hidden">
           <VideoPreviewTimeline
             mode={mode ?? 'generate'}
             videoUrl={videoUrl}
@@ -1168,6 +1170,7 @@ export default function App() {
           />
         </div>
       </section>}
+      </Suspense>
       </main>
       {confirmDialog}
     </div>

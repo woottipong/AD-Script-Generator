@@ -48,10 +48,10 @@ import {
 
 const batchColors = {
   pending: {
-    surface: 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50',
-    foreground: 'text-slate-900',
-    secondary: 'text-slate-600',
-    badge: 'bg-amber-100 text-amber-900',
+    surface: 'border-border bg-card hover:border-warning-strong-border hover:bg-warning',
+    foreground: 'text-foreground',
+    secondary: 'text-muted-foreground',
+    badge: 'bg-warning-strong text-warning-strong-foreground',
   },
   processing: {
     surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
@@ -60,16 +60,16 @@ const batchColors = {
     badge: 'bg-brand-800 text-white',
   },
   completed: {
-    surface: 'border-brand-200 bg-white hover:border-brand-300 hover:bg-brand-50',
-    foreground: 'text-slate-900',
-    secondary: 'text-slate-600',
-    badge: 'bg-emerald-100 text-emerald-900',
+    surface: 'border-brand-200 bg-card hover:border-brand-300 hover:bg-brand-50',
+    foreground: 'text-foreground',
+    secondary: 'text-muted-foreground',
+    badge: 'bg-brand-100 text-brand-900',
   },
   failed: {
-    surface: 'border-red-300 bg-red-50 hover:border-red-400 hover:bg-red-100',
-    foreground: 'text-red-950',
-    secondary: 'text-red-800',
-    badge: 'bg-red-100 text-red-900',
+    surface: 'border-error-border bg-error-surface hover:bg-destructive/15',
+    foreground: 'text-error-foreground',
+    secondary: 'text-error-foreground',
+    badge: 'bg-destructive/15 text-error-foreground',
   },
 };
 
@@ -265,7 +265,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           <div>
             {checkingFileName ? (
               <div className="w-full max-w-lg mx-auto">
-                <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-slate-700">{checkingFileName}</p>
+                <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-secondary-foreground">{checkingFileName}</p>
                 <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
               </div>
             ) : <div
@@ -283,14 +283,14 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               className={`border-2 border-dashed rounded-lg p-6 sm:p-10 transition-colors flex flex-col items-center text-center gap-5 ${
                 isDragging
                   ? 'border-brand-500 bg-brand-50'
-                  : 'border-slate-300 hover:border-slate-500 bg-white'
+                  : 'border-input hover:border-muted-foreground bg-card'
               }`}
             >
               <div className="min-w-0">
-                  <p className="text-base font-semibold text-slate-900">
+                  <p className="text-base font-semibold text-foreground">
                     ลากวิดีโอ MP4 มาวางที่นี่
                   </p>
-                  <p id="upload-requirements" className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  <p id="upload-requirements" className="text-sm text-muted-foreground mt-2 leading-relaxed">
                     ความสูง 480p · H.264 + AAC · ไม่เกิน 30 นาที และ 2 GB
                   </p>
               </div>
@@ -321,7 +321,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             )}
           </div>
 
-          <div className="text-sm leading-relaxed text-slate-600">
+          <div className="text-sm leading-relaxed text-muted-foreground">
             <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
           </div>
         </div>
@@ -357,11 +357,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 )}
             </Field>
           </form>
-          <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
-          {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
-            <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
-            <dt>ความยาว</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(totalDurationMs)}</dd>
-            {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-slate-900">{formatFileSize(videoMetadata.fileSize)}</dd></>}
+          <p className="[overflow-wrap:anywhere] font-semibold text-foreground">{fileName}</p>
+          {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-muted-foreground">
+            <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-foreground">{videoMetadata.width} × {videoMetadata.height}</dd>
+            <dt>ความยาว</dt><dd className="text-right tabular-nums text-foreground">{formatCompactTime(totalDurationMs)}</dd>
+            {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-foreground">{formatFileSize(videoMetadata.fileSize)}</dd></>}
           </dl>}
         </PopoverContent>
       </Popover>
@@ -376,11 +376,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
               className={`max-w-full text-xs ${
                 errorMessage || failedBatchesCount > 0
-                  ? 'border-transparent bg-red-50 text-red-800 hover:bg-red-100'
+                  ? 'border-transparent bg-error-surface text-error-foreground hover:bg-destructive/15'
                   : activityFeedback
                   ? 'border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
                   : status === 'READY' || !vadOutput?.candidate_spots.length
-                  ? 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                  ? 'border-border bg-secondary text-secondary-foreground hover:bg-muted/80'
                   : 'border-transparent bg-brand-50 text-brand-900 hover:bg-brand-100'
               }`}
             />
@@ -409,43 +409,43 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </PopoverTrigger>
         <PopoverContent align="end" aria-labelledby="analysis-details-title" className={`w-[calc(100vw-1.5rem)] gap-0 p-0 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}>
           <div className="max-h-[50vh] overflow-y-auto rounded-lg">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
-              <h2 id="analysis-details-title" className="font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-card px-4 pb-1 pt-3">
+              <h2 id="analysis-details-title" className="font-semibold text-foreground">รายละเอียดการทำงาน</h2>
               <Button variant="ghost" size="icon-sm" className="-mr-1" onClick={() => setIsQueueExpanded(false)} aria-label="ปิดรายละเอียดการทำงาน">
                 <X aria-hidden="true" />
               </Button>
             </div>
             <div className="space-y-3 px-4 pb-4 pt-2">
               {activityFeedback && (
-                <p className="leading-relaxed text-slate-600">
+                <p className="leading-relaxed text-muted-foreground">
                   {activityFeedback.detail || activityFeedback.description}
                 </p>
               )}
               {vadOutput ? (
-                <dl className={`grid gap-x-6 gap-y-2 text-slate-600 ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
-                  <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
+                <dl className={`grid gap-x-6 gap-y-2 text-muted-foreground ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
+                  <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-foreground">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
                   {isReview
-                    ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-slate-900">{spots.length} บรรทัด</dd></>
-                    : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.candidate_spots.length} ช่วง</dd></>}
-                  <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(nonSpeechDurationMs)}</dd>
+                    ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-foreground">{spots.length} บรรทัด</dd></>
+                    : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-foreground">{vadOutput.candidate_spots.length} ช่วง</dd></>}
+                  <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-foreground">{formatCompactTime(nonSpeechDurationMs)}</dd>
                 </dl>
-              ) : <p className="text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
+              ) : <p className="text-muted-foreground">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
               {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
-                <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
               )}
             </div>
             {batches.length > 0 && (
-              <div className="border-t border-slate-200 px-4 py-3">
+              <div className="border-t border-border px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                  <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
-                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
+                  <h3 className="text-xs font-semibold text-foreground">คิววิเคราะห์</h3>
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
                     <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
                     <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
-                    <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
-                    {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
+                    <span className={pendingBatchesCount > 0 ? 'font-medium text-warning-foreground' : undefined}>รอคิว {pendingBatchesCount}</span>
+                    {failedBatchesCount > 0 && <span className="font-medium text-destructive">ไม่สำเร็จ {failedBatchesCount}</span>}
                   </p>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
+                <p className="mt-1 text-xs text-muted-foreground">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
                 <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
                   {batches.map((batch) => {
                     const firstSpotId = batch.candidate_spots[0]?.spot_id;

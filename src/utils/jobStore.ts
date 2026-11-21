@@ -20,7 +20,6 @@ export type StoredJobSummary = {
   status?: JobStatus;
   duration_ms?: number;
   spot_count?: number;
-  edited_spot_count?: number;
   progress_percent?: number;
   error_message?: string;
 };
@@ -205,8 +204,7 @@ export function createJobStore(dataDir: string) {
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
   const selectSummaries = db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
       j.progress_percent, j.error_message, j.updated_at,
-      COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' THEN 1 END) AS spot_count,
-      COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' AND s.is_edited = 1 THEN 1 END) AS edited_spot_count
+      COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' THEN 1 END) AS spot_count
     FROM jobs j
     LEFT JOIN job_spots s ON s.job_id = j.job_id
     GROUP BY j.job_id
@@ -323,7 +321,6 @@ export function createJobStore(dataDir: string) {
         title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
         duration_ms: Number(found.duration_ms),
         spot_count: Number(found.spot_count),
-        edited_spot_count: Number(found.edited_spot_count),
       };
       const progressPercent = optional<number>(found.progress_percent);
       if (progressPercent !== undefined) summary.progress_percent = progressPercent;

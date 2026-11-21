@@ -42,7 +42,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
   );
 
   return (
-    <IntakeShell backLabel="เลือกโหมดอื่น" onBack={onBack} title="แก้ไข SRT ที่มีอยู่" description="ระบบสแกนเสียงพูดบนเครื่องของคุณ แล้วเปิดบทใน SRT ให้แก้เทียบกับวิดีโอ ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์">
+    <IntakeShell backLabel="เลือกโหมดอื่น" onBack={onBack} title="ตรวจแก้ไฟล์ SRT" description="ระบบสแกนเสียงพูดบนเครื่องของคุณ แล้วเปิดบทใน SRT ให้แก้เทียบกับวิดีโอ ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์">
 
         {checkingFileName ? (
           <div className="mt-7 w-full max-w-lg mx-auto">
@@ -67,7 +67,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               />
               {linkInvalid
                 ? <FieldError>ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4</FieldError>
-                : <FieldDescription>ถ้าวางลิงก์ ระบบใช้ลิงก์แทนไฟล์ และเล่นวิดีโอจากลิงก์โดยไม่ดาวน์โหลดเก็บ</FieldDescription>}
+                : <FieldDescription>หากระบุลิงก์ ระบบจะเล่นวิดีโอจากลิงก์โดยตรงแทนไฟล์ในเครื่อง</FieldDescription>}
             </Field>
             {fileButton('ไฟล์ SRT', srt, () => srtInputRef.current?.click(), FileText)}
             <Field>
@@ -89,7 +89,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               onClick={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}
             >
               <Play data-icon="inline-start" />
-              ประมวลผล
+              เริ่มตรวจแก้
             </Button>
           </FieldGroup>
         )}
