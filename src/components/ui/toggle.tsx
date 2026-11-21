@@ -5,12 +5,18 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 const toggleVariants = cva(
-  "group/toggle inline-flex items-center justify-center gap-1 rounded-lg text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 aria-pressed:bg-brand-100 aria-pressed:text-brand-900 aria-pressed:ring-1 aria-pressed:ring-brand-300 aria-pressed:ring-inset aria-pressed:hover:bg-brand-200/70 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/toggle inline-flex items-center justify-center gap-1 rounded-lg text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-transparent",
-        outline: "border border-input bg-transparent hover:bg-muted",
+        default:
+          "bg-transparent aria-pressed:bg-brand-100 aria-pressed:text-brand-900 aria-pressed:ring-1 aria-pressed:ring-brand-300 aria-pressed:ring-inset aria-pressed:hover:bg-brand-200/70",
+        outline:
+          "border border-input bg-transparent hover:bg-muted aria-pressed:bg-brand-100 aria-pressed:text-brand-900 aria-pressed:ring-1 aria-pressed:ring-brand-300 aria-pressed:ring-inset aria-pressed:hover:bg-brand-200/70",
+        "solid-primary":
+          "rounded-[4px] bg-transparent text-muted-foreground hover:bg-background/80 hover:text-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-xs aria-pressed:hover:bg-primary",
+        "solid-muted":
+          "rounded-[4px] bg-transparent text-muted-foreground hover:bg-background/80 hover:text-foreground aria-pressed:bg-slate-700 aria-pressed:text-white aria-pressed:shadow-xs aria-pressed:hover:bg-slate-700",
       },
       size: {
         default:

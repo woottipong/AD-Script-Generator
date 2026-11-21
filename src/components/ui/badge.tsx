@@ -17,7 +17,9 @@ const badgeVariants = cva(
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         // Brand states (DESIGN.md › Status Micro-Badges): live work in cerulean, waiting in amber.
         info: "border-brand-200 bg-brand-50 text-brand-900",
+        "info-strong": "border-brand-200 bg-brand-100 text-brand-900",
         warning: "border-amber-200 bg-amber-50 text-amber-800",
+        "warning-strong": "border-amber-300 bg-amber-100 font-semibold text-amber-900",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
