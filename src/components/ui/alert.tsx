@@ -8,8 +8,9 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-card text-card-foreground",
+        // DESIGN › Semantic States: error surface, ink and border.
         destructive:
-          "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
+          "border-red-200 bg-red-50 text-red-800 *:data-[slot=alert-description]:text-red-800 *:[svg]:text-red-600",
         // DESIGN › Semantic States: amber for warnings that do not block the author.
         warning:
           "border-amber-200 bg-amber-50 text-amber-800 *:data-[slot=alert-description]:text-amber-800 *:[svg]:text-amber-600",

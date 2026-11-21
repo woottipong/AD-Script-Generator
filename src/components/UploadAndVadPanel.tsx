@@ -4,6 +4,17 @@ import { VideoProcessingStatus } from './VideoProcessingStatus';
 import { IntakeShell } from './IntakeShell';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
@@ -115,8 +126,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 }) => {
   const isReview = mode === 'review';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const videoDetailsRef = useRef<HTMLDetailsElement | null>(null);
-  const managementRef = useRef<HTMLDetailsElement | null>(null);
   const [titleDraft, setTitleDraft] = useState(jobTitle);
   const [renameState, setRenameState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'local' | 'error'; message?: string }>({ status: 'idle' });
   useEffect(() => {
@@ -131,8 +140,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       setRenameState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
     }
   };
-  const analysisDetailsRef = useRef<HTMLDivElement | null>(null);
-  const statusButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [isWideHeader, setIsWideHeader] = useState(false);
@@ -164,29 +171,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     query.addEventListener('change', updateLayout);
     return () => query.removeEventListener('change', updateLayout);
   }, []);
-
-  useEffect(() => {
-    const dismissDisclosures = (event: PointerEvent | KeyboardEvent) => {
-      const isEscape = event instanceof KeyboardEvent && event.key === 'Escape';
-      if (event instanceof KeyboardEvent && !isEscape) return;
-      if (isQueueExpanded && (isEscape || (!analysisDetailsRef.current?.contains(event.target as Node) && !statusButtonRef.current?.contains(event.target as Node)))) {
-        setIsQueueExpanded(false);
-        if (isEscape) statusButtonRef.current?.focus();
-      }
-      for (const disclosure of [videoDetailsRef.current, managementRef.current]) {
-        if (disclosure?.open && (isEscape || !disclosure.contains(event.target as Node))) {
-          disclosure.open = false;
-          if (isEscape) disclosure.querySelector('summary')?.focus();
-        }
-      }
-    };
-    document.addEventListener('pointerdown', dismissDisclosures);
-    document.addEventListener('keydown', dismissDisclosures);
-    return () => {
-      document.removeEventListener('pointerdown', dismissDisclosures);
-      document.removeEventListener('keydown', dismissDisclosures);
-    };
-  }, [isQueueExpanded]);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -347,25 +331,31 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const projectControls = (
     <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
-      <details ref={videoDetailsRef} name="project-header" className="group relative min-w-0 flex-1 basis-36 lg:max-w-xs">
-        <summary aria-label={`รายละเอียดงาน: ${jobTitle || fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
-          <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
-          <span className="truncate font-medium">{jobTitle || fileName}</span>
-          <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
-        </summary>
-        <div className="menu-panel left-0 w-80 p-4 lg:left-auto lg:right-0">
-          <form onSubmit={(event) => void renameJob(event)} className="mb-4 flex flex-col gap-1.5 border-b border-slate-200 pb-4">
-            <label htmlFor="job-title" className="font-semibold text-slate-900">ชื่องาน</label>
-            <div className="flex gap-2">
-              <input id="job-title" type="text" value={titleDraft} maxLength={120} onChange={(event) => { setTitleDraft(event.target.value); setRenameState({ status: 'idle' }); }} className="field min-w-0 flex-1 px-2.5 py-2" />
-              <button type="submit" disabled={!titleDraft.trim() || titleDraft.trim() === jobTitle || renameState.status === 'saving'} className="btn-primary shrink-0 px-3 py-2">บันทึกชื่อ</button>
-            </div>
-            <p role="status" className={renameState.status === 'error' ? 'text-red-700' : 'text-slate-600'}>
-              {renameState.status === 'saving' ? 'กำลังบันทึกชื่อ…'
-                : renameState.status === 'saved' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
-                : renameState.status === 'local' ? 'ชื่อนี้จะบันทึกเมื่อสร้างงานบนเซิร์ฟเวอร์'
-                : renameState.status === 'error' ? renameState.message : ''}
-            </p>
+      <Popover>
+        <PopoverTrigger render={<Button variant="ghost" size="lg" className="min-w-0 flex-1 basis-36 justify-start lg:max-w-xs" aria-label={`รายละเอียดงาน: ${jobTitle || fileName}`} />}>
+          <FileVideo data-icon="inline-start" aria-hidden="true" />
+          <span className="truncate">{jobTitle || fileName}</span>
+          <ChevronDown data-icon="inline-end" aria-hidden="true" />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 gap-0 p-4">
+          <form onSubmit={(event) => void renameJob(event)} className="mb-2 flex flex-col gap-1.5 border-b border-border pb-4">
+            <Field data-invalid={renameState.status === 'error' || undefined}>
+              <FieldLabel htmlFor="job-title">ชื่องาน</FieldLabel>
+              <div className="flex gap-2">
+                <Input id="job-title" type="text" value={titleDraft} maxLength={120} onChange={(event) => { setTitleDraft(event.target.value); setRenameState({ status: 'idle' }); }} aria-invalid={renameState.status === 'error'} className="min-w-0 flex-1" />
+                <Button type="submit" disabled={!titleDraft.trim() || titleDraft.trim() === jobTitle || renameState.status === 'saving'}>บันทึกชื่อ</Button>
+              </div>
+              {renameState.status === 'error'
+                ? <FieldError>{renameState.message}</FieldError>
+                : (
+                  <FieldDescription role="status">
+                    {renameState.status === 'saving' ? 'กำลังบันทึกชื่อ…'
+                      : renameState.status === 'saved' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
+                      : renameState.status === 'local' ? 'ชื่อนี้จะบันทึกเมื่อสร้างงานบนเซิร์ฟเวอร์'
+                      : ''}
+                  </FieldDescription>
+                )}
+            </Field>
           </form>
           <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
           {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
@@ -373,86 +363,160 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             <dt>ความยาว</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(totalDurationMs)}</dd>
             {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-slate-900">{formatFileSize(videoMetadata.fileSize)}</dd></>}
           </dl>}
-        </div>
-      </details>
+        </PopoverContent>
+      </Popover>
 
-      <button
-        ref={statusButtonRef}
-        type="button"
-        onClick={() => setIsQueueExpanded((prev) => !prev)}
-        aria-expanded={isQueueExpanded}
-        aria-controls="analysis-details"
-        aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
-        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
-          errorMessage || failedBatchesCount > 0
-            ? 'bg-red-50 text-red-800 hover:bg-red-100'
-            : activityFeedback
-            ? 'border border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
-            : status === 'READY' || !vadOutput?.candidate_spots.length
-            ? 'border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-            : 'bg-brand-50 text-brand-900 hover:bg-brand-100'
-        }`}
-      >
-        {isBusy ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-brand-700" aria-hidden="true" />
-        ) : (
-          <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-        )}
-        {activityFeedback ? (
-          <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
-            <span className="truncate font-semibold">{activityFeedback.title}</span>
-            {isAnalyzing && batches.length > 0 && processingBatch && (
-              <span className="hidden md:inline text-brand-800">· ชุด {processingBatch.batch_index}/{batches.length}</span>
+      {/* The status pill (DESIGN › Status Pill) keeps its state colours; it opens the processing details below it. */}
+      <Popover open={isQueueExpanded} onOpenChange={setIsQueueExpanded}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="outline"
+              size="lg"
+              aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
+              className={`max-w-full text-xs ${
+                errorMessage || failedBatchesCount > 0
+                  ? 'border-transparent bg-red-50 text-red-800 hover:bg-red-100'
+                  : activityFeedback
+                  ? 'border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
+                  : status === 'READY' || !vadOutput?.candidate_spots.length
+                  ? 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                  : 'border-transparent bg-brand-50 text-brand-900 hover:bg-brand-100'
+              }`}
+            />
+          }
+        >
+          {isBusy ? (
+            <Loader2 data-icon="inline-start" className="animate-spin text-brand-700" aria-hidden="true" />
+          ) : (
+            <Layers data-icon="inline-start" aria-hidden="true" />
+          )}
+          {activityFeedback ? (
+            <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
+              <span className="truncate font-semibold">{activityFeedback.title}</span>
+              {isAnalyzing && batches.length > 0 && processingBatch && (
+                <span className="hidden md:inline text-brand-800">· ชุด {processingBatch.batch_index}/{batches.length}</span>
+              )}
+              {activityFeedback.percent !== undefined && (
+                <span className="font-semibold text-brand-800">· {activityFeedback.percent}%</span>
+              )}
+              <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
+            </span>
+          ) : (
+            <span role="status" className="min-w-0 text-left">{statusText}</span>
+          )}
+          <ChevronDown data-icon="inline-end" className={`transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </PopoverTrigger>
+        <PopoverContent align="end" aria-labelledby="analysis-details-title" className={`w-[calc(100vw-1.5rem)] gap-0 p-0 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}>
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
+              <h2 id="analysis-details-title" className="font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
+              <Button variant="ghost" size="icon-sm" className="-mr-1" onClick={() => setIsQueueExpanded(false)} aria-label="ปิดรายละเอียดการทำงาน">
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="space-y-3 px-4 pb-4 pt-2">
+              {activityFeedback && (
+                <p className="leading-relaxed text-slate-600">
+                  {activityFeedback.detail || activityFeedback.description}
+                </p>
+              )}
+              {vadOutput ? (
+                <dl className={`grid gap-x-6 gap-y-2 text-slate-600 ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
+                  <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
+                  {isReview
+                    ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-slate-900">{spots.length} บรรทัด</dd></>
+                    : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.candidate_spots.length} ช่วง</dd></>}
+                  <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(nonSpeechDurationMs)}</dd>
+                </dl>
+              ) : <p className="text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
+              {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
+                <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+              )}
+            </div>
+            {batches.length > 0 && (
+              <div className="border-t border-slate-200 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
+                    <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
+                    <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
+                    <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
+                    {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
+                  </p>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
+                <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+                  {batches.map((batch) => {
+                    const firstSpotId = batch.candidate_spots[0]?.spot_id;
+                    const colors = batchColors[batch.status];
+                    return (
+                      <button
+                        key={batch.batch_id}
+                        type="button"
+                        disabled={!firstSpotId}
+                        onClick={() => { if (firstSpotId) onSelectSpot(firstSpotId, true); }}
+                        aria-label={`ชุดที่ ${batch.batch_index} · ${formatCompactTime(batch.batch_start_ms)} ถึง ${formatCompactTime(batch.batch_end_ms)} · ${batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}`}
+                        className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 text-left text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-60 ${colors.surface} ${colors.foreground}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
+                          <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
+                          {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
-            {activityFeedback.percent !== undefined && (
-              <span className="font-semibold text-brand-800">· {activityFeedback.percent}%</span>
-            )}
-            <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
-          </span>
-        ) : (
-          <span role="status" className="min-w-0 text-left">{statusText}</span>
-        )}
-        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
-      </button>
+          </div>
+        </PopoverContent>
+      </Popover>
 
       {canShowGenerate && !isBusy && !isRegenerating && (
-        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="btn-primary flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap px-4 py-2 text-sm sm:grow-0">
-          <Sparkles className="w-4 h-4" aria-hidden="true" />
+        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="grow sm:grow-0">
+          <Sparkles data-icon="inline-start" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
-        </button>
+        </Button>
       )}
 
       {generatedSpotsCount > 0 && !isBusy && (
-        <button
-          type="button"
-          onClick={onExportSrt}
-          className={`flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer ${
-            canShowGenerate && !isRegenerating
-              ? 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-50'
-              : 'btn-primary'
-          }`}
-        >
-          <FileText className="w-4 h-4" aria-hidden="true" />
-          <span>ส่งออก SRT</span>
-        </button>
+        // One cerulean action in the navbar (DESIGN › Status Pill): export steps down to outline while generating is offered.
+        <Button size="lg" variant={canShowGenerate && !isRegenerating ? 'outline' : 'default'} onClick={onExportSrt}>
+          <FileText data-icon="inline-start" aria-hidden="true" />
+          ส่งออก SRT
+        </Button>
       )}
     </div>
   );
 
   const managementMenu = (
-    <details key="project-management" ref={managementRef} name="project-header" className="group relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-300 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
-        จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
-      </summary>
-      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="menu-panel right-0 w-60 p-1.5">
-        {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="menu-item"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
-        {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="menu-item"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-        {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
-        {(!isReview || (canShowGenerate && isRegenerating)) && <div className="my-1.5 border-t border-slate-200" />}
-        <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
-        <button type="button" onClick={onOpenJobList} className="menu-item"><List className="w-4 h-4" aria-hidden="true" />รายการงาน</button>
-      </div>
-    </details>
+    <DropdownMenu key="project-management">
+      <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="col-start-2 row-start-1 justify-self-end lg:col-start-3" />}>
+        จัดการ
+        <ChevronDown data-icon="inline-end" aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        {(canShowGenerate && isRegenerating) || !isReview ? (
+          <>
+            <DropdownMenuGroup>
+              {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+              {!isReview && videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
+              {!isReview && <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenJobList}><List aria-hidden="true" />รายการงาน</DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   // Keep project controls in the header and processing details beside the workspace.
@@ -475,15 +539,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
       {/* Validation Issues or Error Banner */}
       {(validationIssues.length > 0 || errorMessage) && !(status === 'FAILED' && !vadOutput) && (
-        <div role={errorMessage || hasBlockingErrors ? 'alert' : 'status'} className={`px-4 py-3 border-t flex flex-wrap items-center justify-between gap-2 text-sm ${errorMessage || hasBlockingErrors ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>
-              {errorMessage ||
-                validationIssues.map((i) => i.message).join(' · ')}
-            </span>
-          </div>
-        </div>
+        <Alert variant={errorMessage || hasBlockingErrors ? 'destructive' : 'warning'} placement="strip" role={errorMessage || hasBlockingErrors ? 'alert' : 'status'} className="border-t">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>{errorMessage || validationIssues.map((i) => i.message).join(' · ')}</AlertDescription>
+        </Alert>
       )}
 
       {activityFeedback && (
@@ -517,81 +576,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </div>
       )}
 
-      <div
-        id="analysis-details"
-        ref={analysisDetailsRef}
-        role="region"
-        aria-labelledby="analysis-details-title"
-        hidden={!isQueueExpanded}
-        className={`menu-panel z-40 left-3 right-3 sm:left-auto sm:right-4 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}
-      >
-        <div className="max-h-[50vh] overflow-y-auto rounded-lg">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
-            <h2 id="analysis-details-title" className="font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
-            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-brand-700 cursor-pointer">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="space-y-3 px-4 pb-4 pt-2">
-            {activityFeedback && (
-              <p className="leading-relaxed text-slate-600">
-                {activityFeedback.detail || activityFeedback.description}
-              </p>
-            )}
-            {vadOutput ? (
-              <dl className={`grid gap-x-6 gap-y-2 text-slate-600 ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
-                <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
-                {isReview
-                  ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-slate-900">{spots.length} บรรทัด</dd></>
-                  : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.candidate_spots.length} ช่วง</dd></>}
-                <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(nonSpeechDurationMs)}</dd>
-              </dl>
-            ) : <p className="text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
-            {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
-              <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
-            )}
-          </div>
-          {batches.length > 0 && (
-            <div className="border-t border-slate-200 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
-                <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
-                  <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
-                  <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
-                  <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
-                  {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
-                </p>
-              </div>
-              <p className="mt-1 text-xs text-slate-600">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
-              <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-                {batches.map((batch) => {
-                  const firstSpotId = batch.candidate_spots[0]?.spot_id;
-                  const colors = batchColors[batch.status];
-                  return (
-                    <button
-                      key={batch.batch_id}
-                      type="button"
-                      disabled={!firstSpotId}
-                      onClick={() => { if (firstSpotId) onSelectSpot(firstSpotId, true); }}
-                      aria-label={`ชุดที่ ${batch.batch_index} · ${formatCompactTime(batch.batch_start_ms)} ถึง ${formatCompactTime(batch.batch_end_ms)} · ${batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}`}
-                      className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 text-left text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-60 ${colors.surface} ${colors.foreground}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
-                        <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
-                      </div>
-                      <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
-                        {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
-                        {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </section>
   );
 };

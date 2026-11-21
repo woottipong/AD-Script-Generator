@@ -210,7 +210,7 @@ Shared classes in `src/index.css` own each recurring look on those older screens
 - `.compact-action`: quiet secondary action inside a dense row.
 - `--shadow-popover` (`shadow-popover`): the only floating shadow.
 
-Every dropdown and popover uses the shared `.menu-panel` (8px radius, 1px `slate-200` hairline, white, Popover Elevation, 8px below its trigger) and `.menu-item` (6px radius, `slate-100` hover, 16px `slate-500` icon) classes in `src/index.css`. Triggers carry one `ChevronDown` that rotates 180° when open and take a tinted surface while open.
+Dropdowns and popovers are shadcn `DropdownMenu` and `Popover` (white, 1px hairline, Popover Elevation, below their trigger); the script editor's `ต้องตรวจ` menu still uses the older `.menu-panel` and `.menu-item` classes until it moves over. Triggers carry one `ChevronDown` that rotates 180° when open and take a tinted surface while open.
 
 ### Named Rules
 **The Flat-By-Default Rule.** Docked panes, toolbars, and script cards never carry drop shadows. Shadows appear only on floating popovers and the video CC overlay.

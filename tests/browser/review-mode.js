@@ -86,12 +86,13 @@ async page => {
   for (let i = 0; i < 100 && !patched; i++) await page.waitForTimeout(50);
   assert(patched && patched[0].text === 'ชายเปิดประตูห้อง', 'Text edit is saved to the Review Mode job');
   await page.getByText('บันทึกบนเซิร์ฟเวอร์แล้ว').waitFor();
-  await page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1' }).click();
+  await page.getByRole('button', { name: 'รายละเอียดงาน: ตรวจบท ตอนที่ 1' }).click();
   const rename = page.locator('#job-title');
   await rename.fill('ตรวจบท ตอนที่ 1 (แก้)');
   await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
   await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
   assert(renamed === 'ตรวจบท ตอนที่ 1 (แก้)', 'Renaming in the editor saves the Job Title');
-  assert(await page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1 (แก้)' }).count() === 1, 'The header shows the new title');
+  assert(await page.getByRole('button', { name: 'รายละเอียดงาน: ตรวจบท ตอนที่ 1 (แก้)' }).count() === 1, 'The header shows the new title');
+  await page.keyboard.press('Escape');
   return { titled: true, renamed: true, modeChooser: true, reviewJobCreated: true, generateHidden: true, warnings: warningCount, skippedReported: true, savedEdit: true };
 }

@@ -83,10 +83,20 @@ async page => {
 
   await page.getByRole('button', { name: 'ทำต่อ old.mp4' }).click();
   await line.waitFor();
-  await page.locator('summary', { hasText: 'old' }).first().click();
+  const details = page.getByRole('button', { name: 'รายละเอียดงาน: old' });
+  await details.click();
   await page.locator('#job-title').fill('งานเก่าที่เปลี่ยนชื่อ');
   await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
   await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('#job-title').waitFor({ state: 'hidden' });
+  const renamedDetails = page.getByRole('button', { name: 'รายละเอียดงาน: งานเก่าที่เปลี่ยนชื่อ' });
+  assert(await renamedDetails.evaluate((el) => el === document.activeElement), 'Escape closes the Job details and returns focus to its button');
+  const statusPill = page.getByRole('button', { name: /ดูรายละเอียดการทำงาน$/ });
+  await statusPill.click();
+  await page.getByRole('heading', { name: 'รายละเอียดการทำงาน' }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('heading', { name: 'รายละเอียดการทำงาน' }).waitFor({ state: 'hidden' });
   await page.getByRole('link', { name: 'TCC Envisio รายการงาน' }).click();
   await listed();
   assert(new URL(page.url()).pathname === '/', 'The logo leads back to the Job List');
