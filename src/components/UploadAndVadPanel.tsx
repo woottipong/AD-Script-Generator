@@ -5,6 +5,7 @@ import { JobStorageManager } from './JobStorageManager';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -22,6 +23,7 @@ import {
 import {
   ADSpot,
   AnalysisBatch,
+  JobMode,
   JobStatus,
   VADOutput,
   VideoMetadata,
@@ -60,6 +62,8 @@ const batchColors = {
 };
 
 interface UploadAndVadPanelProps {
+  mode: JobMode;
+  onChangeMode: () => void;
   headerActionsElement: HTMLDivElement | null;
   checkingFileName: string | null;
   processingFeedback: ProcessingFeedback | null;
@@ -81,6 +85,8 @@ interface UploadAndVadPanelProps {
 }
 
 export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
+  mode,
+  onChangeMode,
   headerActionsElement,
   checkingFileName,
   processingFeedback,
@@ -100,6 +106,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onExportSrt,
   errorMessage,
 }) => {
+  const isReview = mode === 'review';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const managementRef = useRef<HTMLDetailsElement | null>(null);
@@ -209,7 +216,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     (s) => s.decision === 'generate' && s.text.trim().length > 0
   ).length;
 
-  const canShowGenerate = Boolean(vadOutput?.candidate_spots.length) &&
+  const canShowGenerate = !isReview && Boolean(vadOutput?.candidate_spots.length) &&
     Boolean(videoFile || completedBatchesCount < batches.length);
   const needsResume = failedBatchesCount > 0 ||
     (completedBatchesCount > 0 && completedBatchesCount < batches.length) ||
@@ -221,6 +228,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     ? `${activityFeedback.title}${activityFeedback.percent !== undefined ? ` ${activityFeedback.percent}%` : ''}`
     : errorMessage || failedBatchesCount > 0
     ? 'ต้องตรวจสอบการทำงาน'
+    : isReview
+    ? `ตรวจแก้ SRT · ${spots.length} บรรทัด`
     : status === 'READY'
     ? 'วิเคราะห์เสร็จแล้ว'
     : vadOutput?.candidate_spots.length === 0
@@ -253,6 +262,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           className="hidden"
         />
 
+        <button type="button" onClick={onChangeMode} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />เลือกโหมดอื่น
+        </button>
         <div className="mb-7">
           <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">สร้างบทบรรยายภาพ</h1>
           <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">ระบบหาช่วงว่างบนเครื่องของคุณ</p>
@@ -414,8 +426,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       </summary>
       <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
         {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
-        {videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>
+        {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
+        {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
         <div className="my-1 border-t border-slate-200" />
         <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
         <div data-job-storage><JobStorageManager /></div>
@@ -509,11 +521,13 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             {vadOutput ? (
               <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd></div>
-                <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-brand-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>
+                {isReview
+                  ? <div className="flex items-center gap-2"><dt className="text-slate-600">บรรทัดใน SRT</dt><dd className="font-semibold tabular-nums text-brand-800">{spots.length} บรรทัด</dd></div>
+                  : <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-brand-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>}
                 <div className="flex items-center gap-2"><dt className="text-slate-600">เวลาที่ไม่มีเสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{formatCompactTime(nonSpeechDurationMs)}</dd></div>
               </dl>
             ) : <p className="text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
-            {videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
+            {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
               <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
             )}
           </div>

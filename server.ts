@@ -27,7 +27,7 @@ import {
   formatTimestampDisplay,
 } from './src/utils/formatters';
 import { mergeProcessingState } from './src/utils/jobProcessing';
-import { validateEditedSpots, validateJobInitialization } from './src/utils/jobValidation';
+import { validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
 import { createJobStore, isJobId } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
 
@@ -45,6 +45,7 @@ const FIXED_SERVER_CONFIG: ServerConfig = {
   contextAfterSeconds: 10,
 };
 
+const REVIEW_MODE_GEMINI_ERROR = 'งานตรวจแก้ SRT ไม่ใช้การสร้างบทด้วย Gemini';
 const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 let primaryModelCooldownUntil = 0;
 const verifiedActiveFileNames = new Set<string>();
@@ -911,6 +912,40 @@ async function startServer() {
     }
   });
 
+  // POST /api/jobs/review — Register a Review Mode job: the author's SRT plus VAD output, with no video on the server
+  app.post('/api/jobs/review', (req: Request, res: Response) => {
+    if (activeProcessingLock) {
+      res.status(409).json({
+        error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
+      });
+      return;
+    }
+    const checked = validateReviewJobCreation(req.body);
+    if (!checked.success) {
+      res.status(400).json({ error: checked.error.issues[0]?.message || 'ข้อมูลงานตรวจแก้ SRT ไม่ถูกต้อง' });
+      return;
+    }
+    const { video_metadata, vad_config, vad_output, video_source, srt_source, spots } = checked.data;
+    const now = new Date().toISOString();
+    const job: PersistedJobState = {
+      schema_version: JOB_SCHEMA_VERSION,
+      job_id: `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      mode: 'review',
+      video_source,
+      srt_source: { ...srt_source, imported_at: now },
+      created_at: now,
+      updated_at: now,
+      status: 'READY',
+      video_metadata,
+      vad_config,
+      vad_output,
+      batches: [],
+      spots,
+    };
+    store.save(job);
+    res.json({ job, isRunning: false });
+  });
+
   // 6a. POST /api/jobs/:jobId/start — Start or resume background batch processing immediately
   app.post('/api/jobs/:jobId/start', (req: Request, res: Response) => {
     const { jobId } = req.params;
@@ -928,6 +963,10 @@ async function startServer() {
     const job = store.load(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+      return;
+    }
+    if (job.mode === 'review') {
+      res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
       return;
     }
 
@@ -989,6 +1028,10 @@ async function startServer() {
     const job = store.load(jobId);
     if (!job) {
       res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+      return;
+    }
+    if (job.mode === 'review') {
+      res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
       return;
     }
 

@@ -53,6 +53,30 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     const video = await fetch(`${base}/jobs/job_fixture/video`);
     assert.equal(video.status, 200, 'legacy job video still streams from its server copy');
     assert.equal(await video.text(), 'abc');
+
+    const cue = { spot_id: 'cue_001', start_ms: 5500, end_ms: 6500, duration_ms: 1000, original_start_ms: 5500, original_end_ms: 6500, decision: 'generate', text: 'ทับเสียงพูด', is_edited: false };
+    const reviewBody = {
+      video_metadata: { fileName: 'lesson.mp4', fileSize: 71225137, mimeType: 'video/mp4', width: 1920, height: 1080, durationMs: 10000, videoCodec: 'avc1.640028', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
+      vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
+      vad_output: { duration_ms: 10000, speech_segments: [{ start_ms: 6000, end_ms: 7000 }], candidate_spots: [] },
+      video_source: { kind: 'local_file', file_name: 'lesson.mp4', file_size: 71225137 },
+      srt_source: { file_name: 'lesson.srt', cue_count: 1 },
+      spots: [cue],
+    };
+    assert.equal((await json('/jobs/review', 'POST', { ...reviewBody, spots: [] })).status, 400);
+    const created = await json('/jobs/review', 'POST', reviewBody);
+    assert.equal(created.status, 200);
+    const { job: reviewJob } = await created.json() as { job: { job_id: string; mode: string; status: string; batches: unknown[] } };
+    assert.equal(reviewJob.mode, 'review');
+    assert.equal(reviewJob.status, 'READY');
+    assert.deepEqual(reviewJob.batches, []);
+    const reviewDir = path.join(dir, '.data/jobs', reviewJob.job_id);
+    assert.deepEqual(fs.readdirSync(reviewDir), ['job.json'], 'Review Mode keeps no video on the server');
+    assert.equal((await fetch(`${base}/jobs/current`).then(r => r.json()) as { job: { job_id: string } }).job.job_id, reviewJob.job_id);
+    assert.equal((await json(`/jobs/${reviewJob.job_id}/spots`, 'PATCH', { spots: [{ ...cue, text: 'แก้คำผิด', is_edited: true }] })).status, 200, 'text edit on a line overlapping speech saves');
+    assert.equal((await json(`/jobs/${reviewJob.job_id}/start`, 'POST', {})).status, 409);
+    assert.equal((await json(`/jobs/${reviewJob.job_id}/analyze-batch`, 'POST', { batch_id: 'batch_1' })).status, 409);
+    assert.equal((await fetch(`${base}/jobs/${reviewJob.job_id}/video`)).status, 404);
   } finally {
     child.kill('SIGTERM');
     await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);

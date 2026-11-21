@@ -93,6 +93,8 @@
 
 ## วิธีใช้งานและคีย์ลัด
 
+หน้าแรกให้เลือกโหมด **สร้างบทบรรยาย** (ขั้นตอนด้านล่าง) หรือ **แก้ไข SRT ที่มีอยู่** ซึ่งเลือกวิดีโอ MP4 กับไฟล์ SRT จากเครื่องแล้วกดประมวลผล ระบบสแกนเสียงบนเครื่อง เปิดบทใน SRT ในหน้าตัดต่อเดิม และส่งออกเป็น `<ชื่อไฟล์>_edited.srt` โหมดนี้ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์และไม่ใช้ Gemini รับวิดีโอทุกความละเอียดที่มีเสียง AAC ยาวไม่เกิน 60 นาที
+
 1. **เลือกวิดีโอ** ลากไฟล์ MP4 มาวางหรือกดเลือกไฟล์ เมื่อไฟล์ผ่านการตรวจสเปก ระบบถอดรหัสเสียงและประมวลผล VAD บนเครื่อง สถานะการทำงานแสดงโดยไม่ต้องเปิดรายละเอียด
 2. **สร้างบทบรรยายภาพ** เมื่อ VAD เสร็จและพบช่วงว่าง กดสร้างบทบรรยายภาพ ระบบอัปโหลดวิดีโอส่วนละ 8 MiB ไปยังเซิร์ฟเวอร์ แล้ววิเคราะห์ทีละชุด 240 วินาที กดสถานะบน header เพื่อดูคิวและเลือกชุดที่ต้องการตรวจ
 3. **ตรวจและส่งออก** เลือกช่วงจากไทม์ไลน์หรือรายการบทบรรยาย แก้ข้อความ ปรับเวลา แล้วส่งออก SRT
@@ -266,6 +268,7 @@ NODE_ENV=production npx tsx server.ts
 | `POST` | `/api/upload/:uploadId/abandon` | จบเซสชันอัปโหลดเพื่อให้จัดการไฟล์ที่ค้างได้ |
 | `POST` | `/api/upload/chunk` | เขียนข้อมูลไบนารีตาม byte offset จำกัด 25 MiB ต่อ request |
 | `POST` | `/api/jobs/init` | ลงทะเบียนงานและเริ่มวิเคราะห์ Gemini เบื้องหลัง |
+| `POST` | `/api/jobs/review` | ลงทะเบียนงานแก้ไข SRT ที่มีอยู่ โดยไม่เก็บวิดีโอ |
 | `POST` | `/api/jobs/:jobId/start` | เริ่มหรือทำงานต่อจากชุดที่ค้างอยู่แบบ Asynchronous |
 | `POST` | `/api/jobs/:jobId/analyze-batch` | วิเคราะห์ชุดข้อมูลทีละชุดแบบ Synchronous |
 | `PATCH` | `/api/jobs/:jobId/spots` | แทนรายการบทบรรยายทั้งชุด พร้อมตรวจเวลา |
@@ -312,7 +315,18 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filena
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-storage.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check close
+```
+
+`review-mode.js` ต้องมีไฟล์ตัวอย่าง `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt` สร้างได้ด้วย FFmpeg:
+
+```bash
+ffmpeg -f lavfi -i color=c=navy:s=1920x1080:r=25 -f lavfi -i sine=frequency=220:sample_rate=48000 -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/ad-review-1080p.mp4
+```
+
+```bash
+printf '1\n00:00:01,000 --> 00:00:03,000\n<i>ชายเปิดประตู</i>\n\n2\n00:00:05,000 --> 00:00:07,500\nหญิงยิ้ม\nแล้วเดินออกไป\n\n3\n00:00:20,000 --> 00:00:21,000\nเลยท้ายวิดีโอ\n' > /tmp/ad-review.srt
 ```
 
 ตรวจผล `Result` และข้อผิดพลาดของแต่ละคำสั่ง จากนั้นหยุด preview ใน terminal แรก การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่

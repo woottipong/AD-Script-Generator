@@ -12,6 +12,10 @@ The client validator (`src/utils/videoValidator.ts`) rejects files that violate 
 - File size: Maximum 2,000 MiB (`2000 × 1024 × 1024` bytes).
 - Track count: Must contain at least one video track and one audio track.
 
+## Review Mode
+
+Review Mode opens an existing video and SRT. `src/utils/videoValidator.ts` (with `mode: 'review'`) skips the upload size, H.264, and 480p checks and allows up to `REVIEW_MAX_DURATION_MS` (60 minutes); an AAC audio track is still required. `src/utils/srtImport.ts` decodes UTF-8 (BOM allowed) or falls back to Windows-874, keeps multi-line cue text, strips `<i>`, `<b>`, `<u>`, and `<font>` tags, and leaves out cues that start after the video ends. `POST /api/jobs/review` stores the job with no video copy; Gemini routes return HTTP 409 for it. The spec and remaining tickets live in `.scratch/review-mode/`.
+
 ## Voice activity detection pipeline
 
 VAD runs in `src/workers/vad.worker.ts` and post-processes in `src/utils/vadPostProcess.ts`:

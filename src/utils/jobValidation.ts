@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ADSpot, PersistedJobState } from '../types/ad';
+import { REVIEW_MAX_DURATION_MS, type ADSpot, type PersistedJobState } from '../types/ad';
 import { validateSpotTimestampEdit } from './spotTiming';
 
 const ms = z.number().int().finite().nonnegative();
@@ -31,7 +31,7 @@ const vadOutput = z.object({
   }).optional(),
   waveform: z.object({
     sampleIntervalMs: z.number().int().min(10).max(1000),
-    peaksBase64: z.string().max(200_000),
+    peaksBase64: z.string().max(250_000),
   }).optional(),
 });
 
@@ -67,6 +67,37 @@ const editedSpot = z.object({
   text: z.string(), reason: z.string().optional(), is_edited: z.boolean(),
 });
 
+const reviewDuration = ms.positive().max(REVIEW_MAX_DURATION_MS);
+const reviewCreation = z.object({
+  video_metadata: metadata.extend({
+    fileSize: z.number().int().nonnegative(), height: z.number().int().positive(), durationMs: reviewDuration, videoCodec: z.string(),
+  }),
+  vad_config: vadConfig,
+  vad_output: vadOutput.extend({ duration_ms: reviewDuration }),
+  video_source: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('url'), url: z.string().url().regex(/^https?:\/\//i) }),
+    z.object({ kind: z.literal('local_file'), file_name: z.string().min(1), file_size: z.number().int().nonnegative() }),
+  ]),
+  srt_source: z.object({ file_name: z.string().min(1), cue_count: z.number().int().nonnegative() }),
+  spots: z.array(editedSpot).min(1),
+});
+
+/** Review Mode imports the author's SRT as-is: spots may overlap speech or each other, but must start inside the video. */
+export function validateReviewJobCreation(input: unknown) {
+  return reviewCreation.superRefine(({ vad_output, video_metadata, spots }, ctx) => {
+    const duration = vad_output.duration_ms;
+    const invalid = (message: string) => ctx.addIssue({ code: 'custom', message });
+    if (Math.abs(duration - video_metadata.durationMs) > 1000) invalid('ความยาวเสียงและวิดีโอไม่ตรงกัน');
+    const seen = new Set<string>();
+    for (const spot of spots) {
+      if (seen.has(spot.spot_id)) invalid('spot_id ซ้ำ');
+      seen.add(spot.spot_id);
+      if (spot.start_ms >= duration || spot.end_ms <= spot.start_ms || spot.duration_ms !== spot.end_ms - spot.start_ms
+        || spot.original_start_ms !== spot.start_ms || spot.original_end_ms !== spot.end_ms) invalid(`บรรทัด ${spot.spot_id} ไม่ถูกต้อง`);
+    }
+  }).safeParse(input);
+}
+
 export function validateEditedSpots(input: unknown, job: PersistedJobState):
   { success: true; spots: ADSpot[] } | { success: false; error: string } {
   const parsed = z.array(editedSpot).safeParse(input);
@@ -77,6 +108,8 @@ export function validateEditedSpots(input: unknown, job: PersistedJobState):
     const original = existing.get(spot.spot_id);
     if (!original || seen.has(spot.spot_id) || spot.original_start_ms !== original.original_start_ms || spot.original_end_ms !== original.original_end_ms || spot.duration_ms !== spot.end_ms - spot.start_ms) return { success: false, error: `Spot ${spot.spot_id}: ข้อมูลช่วงต้นทางไม่ถูกต้อง` };
     seen.add(spot.spot_id);
+    const timingUnchanged = spot.start_ms === original.start_ms && spot.end_ms === original.end_ms;
+    if (job.mode === 'review' && timingUnchanged) continue;
     const check = validateSpotTimestampEdit(original, spot.start_ms, spot.end_ms, job.vad_output.speech_segments, job.vad_output.duration_ms);
     if (!check.valid) return { success: false, error: `Spot ${spot.spot_id}: ${check.error}` };
   }

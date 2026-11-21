@@ -25,6 +25,6 @@ async page => {
   for (let i = 0; i < 100 && deletes < 2; i++) await page.waitForTimeout(50);
   if (deletes !== 2 || active) throw new Error('Late resume restored the old job');
   await page.reload();
-  if (!await page.getByRole('heading', { name: 'สร้างบทบรรยายภาพ' }).isVisible()) throw new Error('Old job returned after reload');
+  if (!await page.getByRole('heading', { name: 'เริ่มงานบทบรรยายภาพ' }).isVisible()) throw new Error('Old job returned after reload');
   return { lateResumeCleared: true, oldJobRestored: false };
 }

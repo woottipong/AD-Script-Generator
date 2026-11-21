@@ -5,8 +5,10 @@ import {
   AnalysisBatch,
   DEFAULT_AD_ANALYSIS_SETTINGS,
   DEFAULT_VAD_CONFIG,
+  JobMode,
   JobStatus,
   PersistedJobState,
+  REVIEW_MAX_DURATION_MS,
   VADOutput,
   VideoMetadata,
   VideoValidationIssue,
@@ -22,6 +24,9 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
+import { ModeChooser } from './components/ModeChooser';
+import { ReviewIntake } from './components/ReviewIntake';
+import { cuesToSpots, decodeSrtBytes, parseSrt } from './utils/srtImport';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
@@ -33,6 +38,9 @@ const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
 const FIXED_MAX_UPLOAD_SIZE_MB = 2000;         // 2 GB
 const FIXED_CONTEXT_BEFORE_SECONDS = 20;       // 20s context before
 const FIXED_CONTEXT_AFTER_SECONDS = 10;        // 10s context after
+
+/** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
+type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoFile: File; metadata: VideoMetadata };
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
@@ -55,6 +63,9 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [restoredIncompleteJob, setRestoredIncompleteJob] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
+  const [mode, setMode] = useState<JobMode | null>(null);
+  const [srtFileName, setSrtFileName] = useState<string | null>(null);
+  const reviewImportRef = useRef<ReviewImport | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -67,6 +78,34 @@ export default function App() {
     saveQueue.invalidate();
     setSaveStatus('saved');
   }, [jobId, saveQueue]);
+
+  const createReviewJob = useCallback(async (review: ReviewImport, output: VADOutput) => {
+    const token = pollAbortRef.current;
+    try {
+      const response = await fetch('/api/jobs/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_metadata: review.metadata,
+          vad_config: output.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG,
+          vad_output: output,
+          video_source: { kind: 'local_file', file_name: review.videoFile.name, file_size: review.videoFile.size },
+          srt_source: { file_name: review.srtFileName, cue_count: review.spots.length },
+          spots: review.spots,
+        }),
+      });
+      const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
+      if (token.aborted) {
+        if (data?.job?.job_id) void fetch(`/api/jobs/${encodeURIComponent(data.job.job_id)}`, { method: 'DELETE' }).catch(() => {});
+        return;
+      }
+      if (!response.ok || !data?.job) throw new Error(data?.error || 'บันทึกงานตรวจแก้ SRT บนเซิร์ฟเวอร์ไม่สำเร็จ');
+      setJobId(data.job.job_id);
+    } catch (err) {
+      if (token.aborted) return;
+      setErrorMessage(`${err instanceof Error ? err.message : String(err)} การแก้ไขจะอยู่ในหน้านี้เท่านั้น กรุณาส่งออก SRT ก่อนปิดหน้า`);
+    }
+  }, []);
 
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
@@ -92,6 +131,18 @@ export default function App() {
         const output: VADOutput = data.vadOutput;
         setVadProgress(null);
         setVadOutput(output);
+
+        const review = reviewImportRef.current;
+        if (review) {
+          reviewImportRef.current = null;
+          setSpots(review.spots);
+          setBatches([]);
+          setSelectedSpotId(review.spots[0]?.spot_id || null);
+          setStatus('READY');
+          setErrorMessage(null);
+          void createReviewJob(review, output);
+          return;
+        }
 
         const initialSpots: ADSpot[] = output.candidate_spots.map((cand) => ({
           spot_id: cand.spot_id,
@@ -133,7 +184,7 @@ export default function App() {
 
     workerRef.current = worker;
     return worker;
-  }, []);
+  }, [createReviewJob]);
 
   const startVadForFile = useCallback(
     (file: File) => {
@@ -230,7 +281,10 @@ export default function App() {
         setVadOutput(savedJob.vad_output);
         setBatches(savedJob.batches);
         setSpots(savedJob.spots);
-        setVideoUrl(`/api/jobs/${savedJob.job_id}/video`);
+        setMode(savedJob.mode ?? 'generate');
+        setSrtFileName(savedJob.srt_source?.file_name ?? null);
+        const source = savedJob.video_source;
+        setVideoUrl(source?.kind === 'url' ? source.url : source?.kind === 'local_file' ? null : `/api/jobs/${savedJob.job_id}/video`);
         if (savedJob.spots.length > 0) {
           setSelectedSpotId(savedJob.spots[0].spot_id);
         }
@@ -295,10 +349,64 @@ export default function App() {
     setCurrentTimeMs(0);
   }, []);
 
+  const handleProcessReview = useCallback(async (file: File, srtFile: File) => {
+    reviewImportRef.current = null;
+    leaveCurrentJob();
+    const token = { aborted: false };
+    pollAbortRef.current = token;
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
+    clearVideo();
+    setErrorMessage(null);
+    setVadProgress(null);
+    setCheckingFileName(file.name);
+    setStatus('IDLE');
+
+    const validation = await validateAndInspectMp4File(file, {
+      mode: 'review',
+      maxDurationSeconds: REVIEW_MAX_DURATION_MS / 1000,
+    });
+    if (token.aborted) return;
+    setValidationIssues(validation.issues);
+    if (!validation.valid || !validation.metadata) {
+      setCheckingFileName(null);
+      setStatus('FAILED');
+      return;
+    }
+
+    let spotsFromSrt: ADSpot[];
+    try {
+      const cues = parseSrt(decodeSrtBytes(new Uint8Array(await srtFile.arrayBuffer())));
+      spotsFromSrt = cuesToSpots(cues, validation.metadata.durationMs).spots;
+      if (spotsFromSrt.length === 0) throw new Error('ทุกบรรทัดในไฟล์ SRT เริ่มหลังจากวิดีโอจบแล้ว กรุณาตรวจว่าเลือกไฟล์คู่กันถูกต้อง');
+    } catch (err) {
+      if (token.aborted) return;
+      setCheckingFileName(null);
+      setStatus('FAILED');
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (token.aborted) return;
+
+    setCheckingFileName(null);
+    setSrtFileName(srtFile.name);
+    reviewImportRef.current = { spots: spotsFromSrt, srtFileName: srtFile.name, videoFile: file, metadata: validation.metadata };
+    setVideoFile(file);
+    setVideoMetadata(validation.metadata);
+    const blobUrl = URL.createObjectURL(file);
+    objectUrlRef.current = blobUrl;
+    setVideoUrl(blobUrl);
+    setStatus('VIDEO_READY');
+    startVadForFile(file);
+  }, [leaveCurrentJob, clearVideo, startVadForFile]);
+
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
     async (file: File) => {
       if (videoMetadata && !window.confirm('เปลี่ยนวิดีโอและออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+      reviewImportRef.current = null;
       leaveCurrentJob();
       const selectionToken = { aborted: false };
       pollAbortRef.current = selectionToken;
@@ -675,11 +783,14 @@ export default function App() {
   // 8. Reset Job
   const handleResetJob = () => {
     if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+    reviewImportRef.current = null;
     leaveCurrentJob();
     clearVideo();
     setVadProgress(null);
     setErrorMessage(null);
     setStatus('IDLE');
+    setMode(null);
+    setSrtFileName(null);
   };
 
   // 9. Export SRT
@@ -688,10 +799,11 @@ export default function App() {
     if (!srtContent) return;
     const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const baseName = (videoMetadata?.fileName || 'video').replace(/\.mp4$/i, '');
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${baseName}_thai_ad.srt`;
+    a.download = mode === 'review' && srtFileName
+      ? `${srtFileName.replace(/\.srt$/i, '')}_edited.srt`
+      : `${(videoMetadata?.fileName || 'video').replace(/\.mp4$/i, '')}_thai_ad.srt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -741,7 +853,20 @@ export default function App() {
       )}
 
       {/* Top Studio Project & Queue Command Bar */}
-      <UploadAndVadPanel
+      {!hasProject && mode === null ? (
+        <ModeChooser headerActionsElement={headerActionsElement} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
+      ) : !hasProject && mode === 'review' ? (
+        <ReviewIntake
+          headerActionsElement={headerActionsElement}
+          checkingFileName={checkingFileName}
+          errorMessage={errorMessage}
+          validationIssues={validationIssues}
+          onProcess={handleProcessReview}
+          onBack={() => { setMode(null); setErrorMessage(null); setValidationIssues([]); }}
+        />
+      ) : <UploadAndVadPanel
+        mode={mode ?? 'generate'}
+        onChangeMode={() => { setMode(null); setErrorMessage(null); setValidationIssues([]); }}
         headerActionsElement={headerActionsElement}
         checkingFileName={checkingFileName}
         processingFeedback={processingFeedback}
@@ -760,7 +885,7 @@ export default function App() {
         onSelectSpot={handleSelectSpot}
         onExportSrt={handleExportSrt}
         errorMessage={errorMessage}
-      />
+      />}
 
       {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Caption Strip, Transport & Multi-Track Timeline (6 cols) */}

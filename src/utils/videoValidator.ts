@@ -1,5 +1,5 @@
 import { createFile } from 'mp4box';
-import { VideoMetadata, VideoValidationIssue } from '../types/ad';
+import { JobMode, VideoMetadata, VideoValidationIssue } from '../types/ad';
 
 export interface BrowserCompatibilityResult {
   supported: boolean;
@@ -100,6 +100,8 @@ export async function validateAndInspectMp4File(
   options: {
     maxDurationSeconds?: number;
     maxFileSizeMb?: number;
+    /** Review Mode skips the upload size, H.264, and 480p checks that Gemini analysis needs. */
+    mode?: JobMode;
   } = {}
 ): Promise<{
   valid: boolean;
@@ -109,6 +111,7 @@ export async function validateAndInspectMp4File(
   const maxDurationSeconds = options.maxDurationSeconds ?? 1800; // 30 minutes
   const maxFileSizeMb = options.maxFileSizeMb ?? 2000; // 2 GB
   const issues: VideoValidationIssue[] = [];
+  const checkGenerateFormat = (options.mode ?? 'generate') === 'generate';
 
   // 1. Validate file extension & MIME type
   const isMp4Name = file.name.toLowerCase().endsWith('.mp4');
@@ -124,7 +127,7 @@ export async function validateAndInspectMp4File(
 
   // 2. Validate file size (<= 2 GB)
   const maxBytes = maxFileSizeMb * 1024 * 1024;
-  if (file.size > maxBytes) {
+  if (checkGenerateFormat && file.size > maxBytes) {
     issues.push({
       field: 'size',
       severity: 'error',
@@ -171,7 +174,7 @@ export async function validateAndInspectMp4File(
     const durationMs = Math.round(durationSeconds * 1000);
 
     // Validate Video Codec (H.264 / avc1)
-    if (!videoCodec.toLowerCase().startsWith('avc1') && !videoCodec.toLowerCase().startsWith('avc3')) {
+    if (checkGenerateFormat && !videoCodec.toLowerCase().startsWith('avc1') && !videoCodec.toLowerCase().startsWith('avc3')) {
       issues.push({
         field: 'codec',
         severity: 'error',
@@ -180,7 +183,7 @@ export async function validateAndInspectMp4File(
     }
 
     // Validate Resolution (480p height)
-    if (height !== 480) {
+    if (checkGenerateFormat && height !== 480) {
       issues.push({
         field: 'resolution',
         severity: 'error',

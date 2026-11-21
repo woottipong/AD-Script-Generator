@@ -234,9 +234,15 @@ The route also accepts `multipart/form-data` with one file field named `video` a
 
 The server checks for `GEMINI_API_KEY` before saving a job with candidate spots. A missing key currently returns HTTP 500. Background failures appear later in the persisted job's status and `error_message`. A failed initialization can leave uploaded files on disk.
 
+### POST /api/jobs/review
+
+Registers a Review Mode job: an existing SRT script plus the browser's VAD output, with no video stored on the server. The body has `video_metadata`, `vad_config`, `vad_output` (as in job initialization), `video_source` (`{ kind: "url", url }` with an `http(s)` URL, or `{ kind: "local_file", file_name, file_size }`), `srt_source` (`{ file_name, cue_count }`), and a non-empty `spots` array built from the SRT cues. Each spot must start before the video ends, end after it starts, have `duration_ms` equal to `end_ms - start_ms`, and have original times equal to its imported times. Spots may overlap speech or each other. Review Mode accepts any resolution, video codec, and file size, up to 3,600,000 ms; an AAC audio track is still required.
+
+HTTP 200 returns `{ job, isRunning: false }` with `mode: "review"`, `status: "READY"`, `batches: []`, and `srt_source.imported_at`, and makes it the active job. Invalid input returns HTTP 400. A running Gemini analysis returns HTTP 409.
+
 ### POST /api/jobs/:jobId/start
 
-Starts or resumes background processing. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
+Starts or resumes background processing. Review Mode jobs return HTTP 409. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
 
 - HTTP 200 returns `{ job, isRunning: true }` when background work starts.
 - If the same job already holds the lock, HTTP 200 returns its current state with `isRunning: true` without starting another runner.
@@ -291,7 +297,7 @@ The following request represents the complete array for a job with one spot:
 }
 ```
 
-The route checks that `spots` is an array and calls `validateSpotTimestampEdit` for every entry. The timestamp checks require:
+The route checks that `spots` is an array and calls `validateSpotTimestampEdit` for every entry. For Review Mode jobs it skips that check for spots whose `start_ms` and `end_ms` match the saved job, so text or decision edits on imported lines always save. The timestamp checks require:
 
 - Start and end values that pass the helper's `isNaN` check and fall within the video duration, with a nonnegative start and an end after the start. This is not a strict numeric-type check.
 - A duration of at least 500 ms, calculated as `end_ms - start_ms`.

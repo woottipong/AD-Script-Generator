@@ -150,6 +150,9 @@ export type VideoSource =
 
 export const JOB_SCHEMA_VERSION = 2;
 
+/** Review Mode accepts longer videos because nothing is uploaded or sent to Gemini. */
+export const REVIEW_MAX_DURATION_MS = 3_600_000;
+
 export interface PersistedJobState {
   schema_version: typeof JOB_SCHEMA_VERSION;
   job_id: string;
