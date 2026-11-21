@@ -34,15 +34,19 @@ test('rejects files with no readable cue', () => {
   assert.throws(() => parseSrt('hello\nworld'), /ไม่พบบรรทัดบรรยาย/);
 });
 
-test('turns cues into AD Spots and leaves out cues that start after the video ends', () => {
-  const { spots, beyondEnd } = cuesToSpots([
+test('turns cues into AD Spots and leaves out cues that start after the video ends or have no duration', () => {
+  const { spots, skipped } = cuesToSpots([
     { start_ms: 1000, end_ms: 3500, text: 'ก' },
     { start_ms: 9000, end_ms: 11000, text: 'ข' },
     { start_ms: 12000, end_ms: 13000, text: 'ค' },
+    { start_ms: 5000, end_ms: 5000, text: 'ง' },
   ], 10000);
   assert.deepEqual(spots, [
     { spot_id: 'cue_001', start_ms: 1000, end_ms: 3500, duration_ms: 2500, decision: 'generate', text: 'ก', is_edited: false, original_start_ms: 1000, original_end_ms: 3500 },
     { spot_id: 'cue_002', start_ms: 9000, end_ms: 11000, duration_ms: 2000, decision: 'generate', text: 'ข', is_edited: false, original_start_ms: 9000, original_end_ms: 11000 },
   ]);
-  assert.deepEqual(beyondEnd, [{ start_ms: 12000, end_ms: 13000, text: 'ค' }]);
+  assert.deepEqual(skipped, [
+    { cue: { start_ms: 12000, end_ms: 13000, text: 'ค' }, reason: 'starts_after_video_end' },
+    { cue: { start_ms: 5000, end_ms: 5000, text: 'ง' }, reason: 'no_duration' },
+  ]);
 });

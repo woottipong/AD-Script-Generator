@@ -36,9 +36,17 @@ export function parseSrt(content: string): SrtCue[] {
   return cues.sort((a, b) => a.start_ms - b.start_ms);
 }
 
-/** Each cue becomes an AD Spot; cues that start after the video ends cannot sit on the timeline. */
-export function cuesToSpots(cues: SrtCue[], durationMs: number): { spots: ADSpot[]; beyondEnd: SrtCue[] } {
-  const placeable = cues.filter((cue) => cue.start_ms < durationMs);
+export type SkippedCue = { cue: SrtCue; reason: 'starts_after_video_end' | 'no_duration' };
+
+/** Each cue becomes an AD Spot, except cues that cannot sit on the timeline at all. */
+export function cuesToSpots(cues: SrtCue[], durationMs: number): { spots: ADSpot[]; skipped: SkippedCue[] } {
+  const skipped: SkippedCue[] = [];
+  const placeable: SrtCue[] = [];
+  for (const cue of cues) {
+    if (cue.start_ms >= durationMs) skipped.push({ cue, reason: 'starts_after_video_end' });
+    else if (cue.end_ms <= cue.start_ms) skipped.push({ cue, reason: 'no_duration' });
+    else placeable.push(cue);
+  }
   return {
     spots: placeable.map((cue, index) => ({
       spot_id: `cue_${String(index + 1).padStart(3, '0')}`,
@@ -51,6 +59,6 @@ export function cuesToSpots(cues: SrtCue[], durationMs: number): { spots: ADSpot
       original_start_ms: cue.start_ms,
       original_end_ms: cue.end_ms,
     })),
-    beyondEnd: cues.filter((cue) => cue.start_ms >= durationMs),
+    skipped,
   };
 }

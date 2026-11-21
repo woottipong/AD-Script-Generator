@@ -21,12 +21,13 @@ import {
 import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
+  formatTimestampDisplay,
   generateSrtContent,
 } from './utils/formatters';
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { ModeChooser } from './components/ModeChooser';
 import { ReviewIntake } from './components/ReviewIntake';
-import { cuesToSpots, decodeSrtBytes, parseSrt } from './utils/srtImport';
+import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
@@ -65,6 +66,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
   const [mode, setMode] = useState<JobMode | null>(null);
   const [srtFileName, setSrtFileName] = useState<string | null>(null);
+  const [importSkipped, setImportSkipped] = useState<SkippedCue[]>([]);
   const reviewImportRef = useRef<ReviewImport | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -351,6 +353,7 @@ export default function App() {
 
   const handleProcessReview = useCallback(async (file: File, srtFile: File) => {
     reviewImportRef.current = null;
+    setImportSkipped([]);
     leaveCurrentJob();
     const token = { aborted: false };
     pollAbortRef.current = token;
@@ -377,9 +380,10 @@ export default function App() {
     }
 
     let spotsFromSrt: ADSpot[];
+    let skippedCues: SkippedCue[];
     try {
       const cues = parseSrt(decodeSrtBytes(new Uint8Array(await srtFile.arrayBuffer())));
-      spotsFromSrt = cuesToSpots(cues, validation.metadata.durationMs).spots;
+      ({ spots: spotsFromSrt, skipped: skippedCues } = cuesToSpots(cues, validation.metadata.durationMs));
       if (spotsFromSrt.length === 0) throw new Error('ทุกบรรทัดในไฟล์ SRT เริ่มหลังจากวิดีโอจบแล้ว กรุณาตรวจว่าเลือกไฟล์คู่กันถูกต้อง');
     } catch (err) {
       if (token.aborted) return;
@@ -392,6 +396,7 @@ export default function App() {
 
     setCheckingFileName(null);
     setSrtFileName(srtFile.name);
+    setImportSkipped(skippedCues);
     reviewImportRef.current = { spots: spotsFromSrt, srtFileName: srtFile.name, videoFile: file, metadata: validation.metadata };
     setVideoFile(file);
     setVideoMetadata(validation.metadata);
@@ -784,6 +789,7 @@ export default function App() {
   const handleResetJob = () => {
     if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
     reviewImportRef.current = null;
+    setImportSkipped([]);
     leaveCurrentJob();
     clearVideo();
     setVadProgress(null);
@@ -850,6 +856,21 @@ export default function App() {
             <strong className="font-semibold">มีงานวิเคราะห์ที่ยังไม่เสร็จ</strong>
           </div>
         </div>
+      )}
+
+      {mode === 'review' && hasProject && importSkipped.length > 0 && (
+        <details className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
+          <summary className="cursor-pointer font-semibold">ไม่ได้นำเข้า {importSkipped.length} บรรทัดจาก SRT</summary>
+          <ul className="mt-2 space-y-1">
+            {importSkipped.map(({ cue, reason }, index) => (
+              <li key={index} className="[overflow-wrap:anywhere]">
+                <span className="font-mono tabular-nums">{formatTimestampDisplay(cue.start_ms)} – {formatTimestampDisplay(cue.end_ms)}</span>
+                {' · '}{reason === 'starts_after_video_end' ? 'เริ่มหลังวิดีโอจบ' : 'เวลาจบไม่หลังเวลาเริ่ม'}
+                {' · '}{cue.text}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {/* Top Studio Project & Queue Command Bar */}

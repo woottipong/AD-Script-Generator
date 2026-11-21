@@ -138,3 +138,31 @@ export function computeClampedSpotDrag(
     duration_ms: Math.round(nextEnd - nextStart),
   };
 }
+
+export type SpotIssue = 'overlaps_speech' | 'overlaps_spot' | 'too_short' | 'past_video_end';
+
+/**
+ * Timing problems an author should see on Review Mode spots. Unlike the edit rules, these are
+ * warnings: imported lines may break them and still be saved and exported. Skipped spots are
+ * not exported, so they are never flagged and never count as neighbours.
+ */
+export function findSpotIssues(spots: ADSpot[], speechSegments: SpeechSegment[], videoDurationMs: number): Map<string, SpotIssue[]> {
+  const active = spots.filter((spot) => spot.decision !== 'skip').sort((a, b) => a.start_ms - b.start_ms);
+  const overlapping = new Set<string>();
+  for (let i = 0; i < active.length; i++) {
+    for (let j = i + 1; j < active.length && active[j].start_ms < active[i].end_ms; j++) {
+      overlapping.add(active[i].spot_id);
+      overlapping.add(active[j].spot_id);
+    }
+  }
+  const issues = new Map<string, SpotIssue[]>();
+  for (const spot of active) {
+    const found: SpotIssue[] = [];
+    if (speechSegments.some((seg) => spot.start_ms < seg.end_ms && spot.end_ms > seg.start_ms)) found.push('overlaps_speech');
+    if (overlapping.has(spot.spot_id)) found.push('overlaps_spot');
+    if (spot.end_ms - spot.start_ms < MIN_SPOT_DURATION_MS) found.push('too_short');
+    if (spot.end_ms > videoDurationMs) found.push('past_video_end');
+    if (found.length > 0) issues.set(spot.spot_id, found);
+  }
+  return issues;
+}

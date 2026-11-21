@@ -18,7 +18,7 @@ import {
   formatTimestampDisplay,
   parseTimestampInput,
 } from '../utils/formatters';
-import { computeClampedSpotDrag, validateSpotTimestampEdit, type SpotTimingContext } from '../utils/spotTiming';
+import { computeClampedSpotDrag, findSpotIssues, validateSpotTimestampEdit, type SpotIssue, type SpotTimingContext } from '../utils/spotTiming';
 import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 
 interface AdScriptEditorProps {
@@ -39,7 +39,14 @@ interface AdScriptEditorProps {
   onRetrySave: () => void;
 }
 
-type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'over_duration';
+type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'over_duration' | 'review_issue';
+
+const SPOT_ISSUE_LABELS: Record<SpotIssue, string> = {
+  overlaps_speech: 'ทับเสียงพูด',
+  overlaps_spot: 'ทับบรรทัดอื่น',
+  too_short: 'สั้นกว่า 0.5 วินาที',
+  past_video_end: 'เลยท้ายวิดีโอ',
+};
 
 interface SpotBlockItemProps {
   spot: ADSpot;
@@ -49,6 +56,7 @@ interface SpotBlockItemProps {
   isSelected: boolean;
   isPlayingNow: boolean;
   timingContext: SpotTimingContext;
+  issues?: SpotIssue[];
   onSelect: (spotId: string, seekToStart?: boolean) => void;
   onUpdate: (updatedSpot: ADSpot) => void;
   itemRef?: (el: HTMLDivElement | null) => void;
@@ -62,6 +70,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   isSelected,
   isPlayingNow,
   timingContext,
+  issues,
   onSelect,
   onUpdate,
   itemRef,
@@ -363,6 +372,12 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               {statusLabel}
             </span>
           )}
+          {issues?.map((issue) => (
+            <span key={issue} className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+              {SPOT_ISSUE_LABELS[issue]}
+            </span>
+          ))}
           {!isExpanded && isOverDurationWarning && (
             <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -644,8 +659,14 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return { generatedCount, pendingCount, skippedCount, editedCount, overDurationCount, spotOrder };
   }, [spots]);
 
+  const spotIssues = React.useMemo(
+    () => (mode === 'review' ? findSpotIssues(spots, speechSegments, videoDurationMs) : new Map<string, SpotIssue[]>()),
+    [mode, spots, speechSegments, videoDurationMs]
+  );
+
   const filteredSpots = React.useMemo(() => {
     return spots.filter((spot) => {
+      if (filterMode === 'review_issue' && !spotIssues.has(spot.spot_id)) return false;
       if (filterMode === 'generate' && spot.decision !== 'generate') return false;
       if (filterMode === 'pending' && spot.decision !== 'pending') return false;
       if (filterMode === 'skip' && spot.decision !== 'skip') return false;
@@ -672,7 +693,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 
       return true;
     });
-  }, [spots, filterMode, searchQuery]);
+  }, [spots, filterMode, searchQuery, spotIssues]);
 
   return (
     <section
@@ -706,11 +727,23 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
             <option value="edited">แก้ไขแล้ว ({editedCount})</option>
             <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
+            {mode === 'review' && <option value="review_issue">บรรทัดที่มีคำเตือน ({spotIssues.size})</option>}
           </select>
         </div>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
+      {spotIssues.size > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p role="status" className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />บรรทัดที่มีคำเตือน {spotIssues.size} บรรทัด · ทับเสียงพูด ทับบรรทัดอื่น หรือสั้นเกิน</p>
+          <button type="button" onClick={() => {
+            setFilterMode('review_issue');
+            setSearchQuery('');
+            const firstIssue = spots.find((spot) => spotIssues.has(spot.spot_id));
+            if (firstIssue) onSelectSpot(firstIssue.spot_id, true);
+          }} className="shrink-0 rounded px-2 py-1 font-semibold underline underline-offset-2 hover:bg-amber-100 cursor-pointer">ดูบรรทัดที่ต้องตรวจ</button>
+        </div>
+      )}
       {overDurationCount > 0 && (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <p role="status" className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />ข้อความเกินเวลา {overDurationCount} ช่วง · ควรตรวจก่อนส่งออก</p>
@@ -792,6 +825,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   isSelected={spot.spot_id === selectedSpotId}
                   isPlayingNow={isPlayingNow}
                   timingContext={timingContext}
+                  issues={spotIssues.get(spot.spot_id)}
                   onSelect={handleListSelectSpot}
                   onUpdate={(updatedSpot) => {
                     if (filterMode === 'skip' && updatedSpot.decision === 'generate') {

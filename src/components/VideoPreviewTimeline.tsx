@@ -24,7 +24,7 @@ import {
   DEFAULT_WAVEFORM_SAMPLE_INTERVAL_MS,
   decodeWaveformPeaks,
 } from '../utils/waveform';
-import { SpotDragMode, computeClampedSpotDrag } from '../utils/spotTiming';
+import { SpotDragMode, computeClampedSpotDrag, findSpotIssues } from '../utils/spotTiming';
 
 const controlBase = 'video-control inline-flex shrink-0 items-center justify-center gap-1 rounded px-1.5 text-xs transition-colors disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer';
 const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover:text-brand-900`;
@@ -127,6 +127,10 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   }, []);
 
   const effectiveDurationMs = Math.max(1, durationMs);
+  const issueSpotIds = useMemo(
+    () => new Set(mode === 'review' ? findSpotIssues(spots, speechSegments, effectiveDurationMs).keys() : []),
+    [mode, spots, speechSegments, effectiveDurationMs]
+  );
 
   const drawWaveform = useCallback(() => {
     const canvas = waveformCanvasRef.current;
@@ -721,6 +725,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 const hitRight = Math.min(trackWidth, left + width + padding, next ? (displayEndMs + next.start_ms) / 2 / effectiveDurationMs * trackWidth : trackWidth);
                 const isSelected = spot.spot_id === selectedSpotId;
                 const isProcessingSpot = spot.decision === 'pending' && Boolean(processingSpotIds?.has(spot.spot_id));
+                const hasIssue = issueSpotIds.has(spot.spot_id);
                 const showHandles = !isAnalyzing && width >= 18;
                 const colorClasses = spot.decision === 'generate'
                   ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
@@ -735,7 +740,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     role="button"
                     tabIndex={0}
                     aria-pressed={isSelected}
-                    aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(displayStartMs)} ถึง ${formatTimestampDisplay(displayEndMs)} · ${decisionLabels[spot.decision]}`}
+                    aria-label={`ช่วงบรรยายที่ ${index + 1} · ${formatTimestampDisplay(displayStartMs)} ถึง ${formatTimestampDisplay(displayEndMs)} · ${decisionLabels[spot.decision]}${hasIssue ? ' · มีคำเตือน' : ''}`}
                     onClick={(event) => event.stopPropagation()}
                     onKeyDown={(event) => {
                       if (event.key === ' ' || event.key === 'Enter') {
@@ -754,7 +759,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   >
                     <span
                       style={{ left: left - hitLeft, width }}
-                      className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-950 ring-offset-1' : ''}`}
+                      className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-950 ring-offset-1' : hasIssue ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
                     >
                       {isProcessingSpot && (
                         <span aria-hidden="true" className="progress-shimmer-sweep pointer-events-none absolute inset-0" />

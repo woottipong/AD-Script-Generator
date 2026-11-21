@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ADSpot } from '../types/ad';
-import { computeClampedSpotDrag, validateSpotTimestampEdit } from './spotTiming';
+import { computeClampedSpotDrag, findSpotIssues, validateSpotTimestampEdit } from './spotTiming';
 
 const gen = (speechSegments: { start_ms: number; end_ms: number }[], videoDurationMs = 10000) => ({ mode: 'generate' as const, speechSegments, videoDurationMs });
 
@@ -116,4 +116,22 @@ test('Review Mode pushes a line that already overlaps its neighbour out of the o
   assert.deepEqual(computeClampedSpotDrag(b, 'trim-end', 200, ctx, 1), { start_ms: 2000, end_ms: 3200, duration_ms: 1200 });
   const moved = computeClampedSpotDrag(b, 'move', 100, ctx, 1);
   assert.equal(validateSpotTimestampEdit(b, moved.start_ms, moved.end_ms, ctx).valid, true);
+});
+
+test('Review Mode issues flag speech overlap, neighbour overlap, short lines, and lines past the video end', () => {
+  const issues = findSpotIssues([
+    cue('a', 1000, 3000), cue('b', 2500, 4000), cue('c', 5500, 6500), cue('d', 9000, 9300),
+    cue('e', 9500, 10500), cue('f', 2000, 2600, 'skip'),
+  ], [{ start_ms: 6000, end_ms: 7000 }], 10000);
+  assert.deepEqual(issues.get('a'), ['overlaps_spot']);
+  assert.deepEqual(issues.get('b'), ['overlaps_spot']);
+  assert.deepEqual(issues.get('c'), ['overlaps_speech']);
+  assert.deepEqual(issues.get('d'), ['too_short']);
+  assert.deepEqual(issues.get('e'), ['past_video_end']);
+  assert.equal(issues.has('f'), false, 'skipped lines are never flagged');
+});
+
+test('a line that overlaps a later, non-adjacent line is flagged with it', () => {
+  const issues = findSpotIssues([cue('long', 1000, 9000), cue('x', 2000, 3000), cue('y', 5000, 6000)], [], 10000);
+  assert.deepEqual([...issues.keys()].sort(), ['long', 'x', 'y']);
 });
