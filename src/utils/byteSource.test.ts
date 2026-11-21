@@ -5,7 +5,7 @@ import { UrlNotReadableError, fileByteSource, isMp4Url, openByteSource } from '.
 const bytes = new TextEncoder().encode('0123456789');
 const url = 'https://media.example/%E0%B8%95%E0%B8%AD%E0%B8%99%203.mp4?token=x';
 
-function fakeFetch(options: { headStatus?: number; length?: string | null; rangeStatus?: number } = {}) {
+function fakeFetch(options: { headStatus?: number; length?: string | null; rangeStatus?: number; truncate?: boolean } = {}) {
   const calls: { method: string; range: string | null; cache?: RequestCache }[] = [];
   const impl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
@@ -16,7 +16,7 @@ function fakeFetch(options: { headStatus?: number; length?: string | null; range
       return new Response(null, { status: options.headStatus ?? 200, headers: responseHeaders });
     }
     const [, start, end] = /bytes=(\d+)-(\d+)/.exec(headers.get('Range') ?? '')!;
-    return new Response(bytes.slice(Number(start), Number(end) + 1), { status: options.rangeStatus ?? 206 });
+    return new Response(bytes.slice(Number(start), Number(end) + (options.truncate ? 0 : 1)), { status: options.rangeStatus ?? 206 });
   }) as typeof fetch;
   return { impl, calls };
 }
@@ -52,4 +52,14 @@ test('a file source reads slices of the file', async () => {
   const source = fileByteSource(new File([bytes], 'clip.mp4', { type: 'video/mp4' }));
   assert.deepEqual([source.name, source.size, source.type], ['clip.mp4', 10, 'video/mp4']);
   assert.equal(new TextDecoder().decode(await source.read(7, 10)), '789');
+});
+
+test('a range answered with fewer bytes than requested is rejected', async () => {
+  const source = await openByteSource({ kind: 'url', url }, fakeFetch({ truncate: true }).impl);
+  await assert.rejects(source.read(0, 4), UrlNotReadableError);
+});
+
+test('a link whose file name has a broken percent-escape still opens', async () => {
+  const source = await openByteSource({ kind: 'url', url: 'https://media.example/%E0%B8.mp4' }, fakeFetch().impl);
+  assert.equal(source.name, '%E0%B8.mp4');
 });

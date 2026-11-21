@@ -25,6 +25,15 @@ export function isMp4Url(value: string): boolean {
   }
 }
 
+function fileNameFromUrl(url: string): string {
+  const segment = new URL(url).pathname.split('/').pop() || 'video.mp4';
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 export function fileByteSource(file: File): ByteSource {
   return { name: file.name, size: file.size, type: file.type, read: (start, end) => file.slice(start, end).arrayBuffer() };
 }
@@ -42,7 +51,7 @@ async function urlByteSource(url: string, fetchImpl: typeof fetch): Promise<Byte
   }
   const size = Number(head.headers.get('content-length'));
   if (!head.ok || !Number.isSafeInteger(size) || size <= 0) throw new UrlNotReadableError();
-  const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'video.mp4');
+  const name = fileNameFromUrl(url);
   return {
     name,
     size,
@@ -55,7 +64,9 @@ async function urlByteSource(url: string, fetchImpl: typeof fetch): Promise<Byte
         throw new UrlNotReadableError();
       }
       if (response.status !== 206) throw new UrlNotReadableError();
-      return response.arrayBuffer();
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength !== end - start) throw new UrlNotReadableError();
+      return buffer;
     },
   };
 }
