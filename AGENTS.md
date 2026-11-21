@@ -34,7 +34,7 @@ Exercise UI flows with the browser scripts in `tests/browser/` (they mock every 
 
 ## UX conventions
 
-For interface changes, preserve the mode choice, guided intake, and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Build new UI from the shadcn/ui components in `src/components/ui`, themed through the tokens in `src/index.css` as [DESIGN.md](DESIGN.md#components) describes; add a component with `bun x --bun shadcn@latest add <name>` inside the dev container (it updates `package.json` and `bun.lock`). Screens built before shadcn keep the shared classes in `src/index.css` until each is migrated, so menus, buttons, fields, and tags stay one system. Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+For interface changes, preserve the mode choice, guided intake, and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Build UI from the shadcn/ui components in `src/components/ui`, themed through the tokens in `src/index.css` as [DESIGN.md](DESIGN.md#components) describes; add a component with `bun x --bun shadcn@latest add <name>` inside the dev container (it updates `package.json` and `bun.lock`). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
 
 ## System contracts
 

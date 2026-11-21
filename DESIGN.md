@@ -197,23 +197,11 @@ Desktop-first NLE split workspace locked to the viewport (`100dvh`, `overflow-hi
 Surfaces are flat by default and separated by 1px hairline borders and tonal shifts (`pure-surface` cards on `cool-paper-canvas`, `broadcast-slate` monitor against white chrome). Drop shadows are reserved exclusively for elements that float above the workspace plane so users can immediately distinguish transient overlays from docked panes.
 
 ### Shadow Vocabulary
-- **Popover Elevation** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Used on header disclosure menus (`จัดการ`, video metadata popover, `รายละเอียดการทำงาน` queue panel) and the floating Broadcast CC Pill over video.
-
-**shadcn/ui is the component source for new UI.** Components live in `src/components/ui` (style `base-nova` on Base UI, added with the shadcn CLI) and read only the semantic tokens at the end of `src/index.css`, which map onto this palette: `--primary` is `studio-cerulean`, `--foreground` and `--muted-foreground` are the slate inks, `--border`/`--input` are the hairline and control borders, `--ring` is `studio-cerulean-active`, `--destructive` is error red, and `--radius` is `6px` so controls stay at 6px and dialogs at about 8px. `Badge` adds two brand variants, `info` (live work in cerulean tint) and `warning` (waiting in amber); its corners are 6px, not pills. `Alert` adds `warning` (amber surface, ink and border) beside `destructive`, and `placement="strip"` for the full-width notices under the navbar (unfinished analysis, re-pick the local video, SRT lines not imported). `Button` sizes follow the rhythm below: `default` and `icon` 36px, `lg` 40px for navbar and page actions, `sm` and `icon-sm` 32px for dense rows and video transport, all 44px on coarse pointers. Focus on every button and link is the app-wide 2px `studio-cerulean-active` outline with a 3px offset, so components added from the registry drop shadcn's own `focus-visible:ring` halo; inputs keep their border-and-ring focus. Call sites pass layout through `className` and pick a variant, never restyle colours. The Job List is built entirely from these components; screens built before them still use the shared classes below until each is migrated.
-
-Shared classes in `src/index.css` own each recurring look on those older screens; call sites add only layout and size:
-
-- `.btn-primary`: the single cerulean action (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `เลือกวิดีโอ`, `เปิดในพื้นที่แก้ไข`).
-- `.field`: text inputs and the filter select (1px `slate-300`, cerulean focus ring). The script textarea keeps its own softer 2px ring.
-- `.tag`: the bordered status and warning micro-badges; colour comes from the call site.
-- `.alert-error`: inline red validation and failure messages.
-- `.compact-action`: quiet secondary action inside a dense row.
-- `--shadow-popover` (`shadow-popover`): the only floating shadow.
-
-Dropdowns and popovers are shadcn `DropdownMenu` and `Popover` (white, 1px hairline, Popover Elevation, below their trigger); the script editor's `ต้องตรวจ` menu still uses the older `.menu-panel` and `.menu-item` classes until it moves over. Triggers carry one `ChevronDown` that rotates 180° when open and take a tinted surface while open.
+- **Overlay Elevation** (`box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)` with `ring-1 ring-foreground/10`): Used on floating `DropdownMenu`, `Popover`, and `Select` popups.
+- **Popover / Stage Elevation** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Used on nested `DropdownMenu` submenus and the floating Broadcast CC Pill over video.
 
 ### Named Rules
-**The Flat-By-Default Rule.** Docked panes, toolbars, and script cards never carry drop shadows. Shadows appear only on floating popovers and the video CC overlay.
+**The Flat-By-Default Rule.** Docked panes, toolbars, and script cards never carry drop shadows. Shadows appear only on floating popovers, menus, dialogs, and the video CC overlay.
 
 ## Shapes
 
@@ -226,36 +214,53 @@ Compact, utilitarian corner radii keep dense workstation controls crisp without 
 
 ## Components
 
-### Buttons
-Compact, tactile controls with clear visual hierarchy between primary project actions and quiet utility controls.
-- **Shape:** Subtle control rounding (`6px` radius), `36px` default height, `40px` in the navbar and for page actions (`Button size="lg"`), `32px` for compact transport icon buttons (`size="icon-sm"`).
-- **Primary:** `studio-cerulean` fill, `pure-surface` bold label, `8px 16px` padding.
-- **Hover / Focus:** Darkens to `studio-cerulean-hover` on hover; `2px solid studio-cerulean-active` focus ring with `3px` offset on `:focus-visible`.
-- **Secondary / Outline:** `pure-surface` fill, `1px solid control-border` (or `studio-cerulean-border` when paired with a primary CTA), `muted-ink` text, light slate tint on hover.
+All UI controls come from the **shadcn/ui** component library in `src/components/ui` (style `base-nova` on `@base-ui/react`), themed exclusively through the semantic CSS tokens in `src/index.css`: `--primary` (`studio-cerulean`), `--foreground` and `--muted-foreground` (slate inks), `--border` and `--input` (hairline and control strokes), `--ring` (`studio-cerulean-active`), `--destructive` (error red), and `--radius` (`0.375rem` / `6px` for `rounded-lg` controls and dialogs, `4.8px` for `rounded-md` micro-badges). Call sites pass layout classes via `className` and pick a semantic variant (with the navbar status pill's state-tinted surface in `UploadAndVadPanel` as the intentional exception). Every interactive button and link uses the app-wide 2px `studio-cerulean-active` focus outline with a 3px offset (`:focus-visible`), while text inputs and textareas keep their border-shift and ring focus.
 
-### Job List Table
-The landing view is one dense table on a white bordered surface, widened to the navbar's own gutters (`px-4 sm:px-6`, up to `max-w-screen-2xl`) so its left edge lines up with the logo.
-- **Columns:** ชื่องาน (the Job Title as a link that opens the Job; the file name below it only when the author renamed the Job), โหมด, สถานะ (`Badge`: `secondary` ready, `info` analysing or uploading, `warning` waiting, `destructive` failed), แก้ล่าสุด and ขนาด in `tabular-nums`, then a `ทำต่อ` outline button and a `⋯` `DropdownMenu`.
-- **Small screens:** โหมด moves under the title, แก้ล่าสุด and ขนาด hide, and `ทำต่อ` moves into the `⋯` menu so the title keeps its room.
-- **States:** `Skeleton` rows while loading, `Alert` with a retry on failure, `Empty` with `งานใหม่` when there are no Jobs. Deleting asks in an `AlertDialog`; a Job being analysed or uploaded cannot be deleted.
+### Buttons & Toggles
+Compact, tactile controls with clear visual hierarchy between primary project actions, quiet utility controls, and stateful toggles.
+- **Shape & Rhythm:** Subtle control rounding (`6px` radius). `Button` sizes: `default` and `icon` `36px` (`h-9` / `size-9`), `lg` and `icon-lg` `40px` (`h-10` / `size-10`) for navbar and intake page CTAs, `sm` and `icon-sm` `32px` (`h-8` / `size-8`) for dense rows, timestamp steppers, and video transport, `xs` and `icon-xs` `24px` (`h-6` / `size-6`); all interactive `<button>`s and inputs expand to `44px` (`2.75rem`) on `@media (pointer: coarse)`. (Inline text triggers such as Job List titles and `ช่วง N` row headers stay text-height on desktop.)
+- **Button Variants:** `default` (`studio-cerulean` fill, `pure-surface` `font-medium` label, `hover:bg-primary/80`), `outline` (`pure-surface` fill, `1px` `border-border`, `muted` hover tint), `secondary` (`slate-100` fill), `ghost` (transparent until hovered; used for compact row actions like `คืนเวลาเดิม` at `size="sm"` and icon steppers at `size="icon-sm"`), `warning` (amber surface/border/ink for the `ต้องตรวจ` trigger when timing issues exist), `destructive` (error red tint for delete confirmations), and `link` (inline cerulean text action such as `ลองบันทึกอีกครั้ง`).
+- **Toggles (`Toggle` & `ToggleGroup`):**
+  - **Soft-Active Toggles (`Toggle` `default` / `outline`):** `size="icon"` (`32px`) for player transport states (Loop, CC, Mute), taking a soft cerulean tint (`bg-brand-100 text-brand-900 ring-1 ring-brand-300`) when `aria-pressed="true"`.
+  - **Concentric Segmented Toggle (`ToggleGroup appearance="segmented"`):** `6px` outer track (`border-border/90 bg-muted p-0.5 gap-0.5`) holding `4px`-radius `ToggleGroupItem` buttons (`variant="solid-primary"` with `studio-cerulean` fill and white text for active `บรรยาย`, `variant="solid-muted"` with `slate-700` fill and white text for active `ข้าม`).
+
+### Badges & Alerts
+- **Status Micro-Badges (`Badge`):** `4.8px` rounded (`rounded-md`), 1px-bordered `20px` (`h-5`) pills for instant scanning without competing with buttons:
+  - `info`: `brand-50` fill, `brand-200` border, `brand-900` ink (`บรรยาย` idle status).
+  - `info-strong`: `brand-100` fill, `brand-200` border, `brand-900` ink (`กำลังวิเคราะห์` active batch).
+  - `warning`: `amber-50` fill, `amber-200` border, `amber-800` ink (`รอสร้าง` / `รอวิเคราะห์`).
+  - `warning-strong`: `amber-100` fill, `amber-300` border, semibold `amber-900` ink (timing issues: `ทับเสียงพูด`, `ทับบรรทัดอื่น`, `สั้นกว่า 0.5 วินาที`, `เลยท้ายวิดีโอ`).
+  - `secondary`: `slate-100` fill, `border-border` (`ข้าม`, `พร้อมแก้`, `ยาวกว่าช่องว่าง`).
+  - `destructive`: error red tint (`ผิดพลาด`).
+  - **Passive Text States:** Non-interactive row cues stay plain text, never `Badge` pills: `แก้ไขแล้ว` in muted slate and `ตำแหน่งวิดีโอ` in cerulean text with a `6px` dot.
+- **Inline & Strip Notices (`Alert`):** `variant="destructive"` (error surface, ink, and border) for blocking validation and timestamp errors; `variant="warning"` (amber surface, ink, and border) for non-blocking notices; `placement="strip"` (full-width flush bar under the navbar, paired with `Collapsible` when details expand) for unfinished analysis, local video relink prompts, and unimported SRT lines.
+
+### Overlays, Menus & Dialogs
+- **Menus (`DropdownMenu`):** White surface, `ring-1 ring-foreground/10`, Overlay Elevation shadow (`shadow-md`), keyboard navigation, Escape/outside-click dismissal, and focus return (`จัดการ` navbar menu, Job List `⋯` row actions, and editor `ต้องตรวจ` jump menu). Uses `DropdownMenuItem variant="primary"` for primary filter links and `variant="destructive"` for delete actions.
+- **Disclosures (`Popover`):** White surface with Overlay Elevation shadow for structured header panels (`รายละเอียดงาน` with inline rename form and video metadata; `รายละเอียดการทำงาน` status pill queue panel). Triggers carry a `ChevronDown` that rotates 180° when open.
+- **Confirmations (`AlertDialog`):** Single app-level modal confirmation dialog for destructive or navigation-interrupting prompts (delete job, leave unsaved edits, reset/replace video).
+- **Tooltips (`Tooltip`):** Dark compact shortcut hints (`Alt + P`, `Alt + ↑/↓`, seek/zoom controls) replacing native browser `title` attributes across the player transport and zoom bar.
+
+### Inputs, Search Toolbar & Forms
+- **Form Fields (`Field` + `Input`):** `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` structure intake inputs and the header rename form. `Input` uses `pure-surface` fill, `1px` `border-input`, `6px` radius, `36px` (`h-9`) height, shifting border to `studio-cerulean-active` with a matching ring on focus.
+- **Search & Filter Toolbar (`InputGroup` + `Select`):** Single-row `44px` editorial bar inside the right pane. `InputGroup` (`flex-1`, `36px` height) houses a leading `14px` magnifying glass `InputGroupAddon` and `InputGroupInput` (`type="search"`). Beside it sits a `Select` (`w-36 sm:w-40`, `36px` `SelectTrigger` with `SelectContent` popup) filtering spots (`ทั้งหมด`, `มีบทบรรยาย`, `รอสร้าง`, `ข้ามการบรรยาย`, `แก้ไขแล้ว`, `ต้องตรวจ`) with live counts.
+- **Script Textarea (`Textarea`):** `variant="default"` uses `field-sizing-content` for standard forms; `variant="script"` enforces the Looped-Script Rule (`Sarabun` `1rem / 1.75` line-height), disables automatic field-sizing in favour of `useLayoutEffect` auto-grow with scroll compensation, softens focus to a `2px` `brand-100` ring, and renders skipped drafts in a disabled muted surface (`bg-muted/80 text-slate-400`) so authors never mistake a skipped draft for deleted work.
+
+### Job List Table & Intake Cards
+- **Job List (`Table`, `Skeleton`, `Empty`):** One dense table on a white bordered surface widened to the navbar gutters (`px-4 sm:px-6`, up to `max-w-screen-2xl`) so its left edge aligns with the logo. Columns: ชื่องาน (link opening the Job; original file name below only when renamed), โหมด, สถานะ (`Badge`), แก้ล่าสุด and ขนาด in `tabular-nums`, then a `ทำต่อ` outline `Button` and a `⋯` `DropdownMenu`. Below `sm`, โหมด moves under the title, แก้ล่าสุด and ขนาด hide, and `ทำต่อ` moves into `⋯`. Loading shows `Skeleton` rows; errors show `Alert` with retry; empty storage shows `Empty` with `งานใหม่`.
+- **Mode Chooser & Intake (`Card`, `Progress`):** Mode options use interactive `Card` containers; upload/processing cards (`12px` radius) report indeterminate and determinate progress with `Progress` (Material Design 3 two-segment sweep when indeterminate).
 
 ### Status Pill & Hairline Progress Bar
-Zero-shift asynchronous status indicator combining a compact header trigger with an edge-pinned progress line.
-- **Pill Style:** Active processing uses `studio-cerulean-tint` background, `1px solid studio-cerulean-border`, `studio-cerulean-ink` text, `6px` radius, `40px` height (displaying spinner, task title, active batch index, percentage, and elapsed time in `tabular-nums`). Completed (`READY`) state steps down to calm neutral slate (`bg-slate-100 border-slate-200 text-slate-700`) so `ส่งออก SRT` remains the single cerulean CTA on the navbar.
+Zero-shift asynchronous status indicator combining a compact header `Button` (`PopoverTrigger` opening `รายละเอียดการทำงาน`) with an edge-pinned `3px` progress line.
+- **Pill Style:** Active processing uses `studio-cerulean-tint` background, `1px solid studio-cerulean-border`, `studio-cerulean-ink` text, `6px` radius, `40px` height (`size="lg"`), displaying spinner, task title, active batch index, percentage, and elapsed time in `tabular-nums`. Completed (`READY`) state steps down to calm neutral slate (`bg-slate-100 border-slate-200 text-slate-700`) so `ส่งออก SRT` remains the single cerulean CTA on the navbar.
 - **Hairline Bar:** `3px` track flush beneath the navbar. Uses a Material Design 3 two-segment indeterminate sweep at `0%` / unknown progress, transitioning to a determinate cerulean gradient fill with a soft shimmer sweep and leading highlight when `> 0%`. Respects `prefers-reduced-motion: reduce`.
 
-### Inputs & Search Toolbar
-Single-row editorial filter controls designed to stay uncluttered inside a half-width desktop pane.
-- **Style:** `pure-surface` fill, `1px solid control-border`, `6px` radius, `36px` height. Search input carries a leading `14px` magnifying glass icon (`32px` left padding) and expands (`flex: 1`) beside a fixed-width (`144px–160px`) filter select.
-- **Focus:** Border shifts to `studio-cerulean-active` with a 1px matching ring.
-
-### Script Spot Row & Micro-Badges
-Edge-to-edge editorial list item separated by 1px horizontal dividers (`divide-y divide-slate-200`)—no outer card border or nested card header.
-- **Background:** `pure-surface` at rest; 90% `studio-cerulean-tint` with a 1px inset `studio-cerulean-border` ring when selected; subtle 35% `studio-cerulean-tint` wash when the video playhead is inside an unselected row; soft muted slate tint (85% `slate-50`) when skipped.
-- **Internal Padding & Stability:** `14px 16px` vertical/horizontal padding with locked `32px` header height, `useLayoutEffect` auto-grow `Sarabun` textarea, and click scroll-anchor compensation so expanding/collapsing rows never jump under the cursor.
-- **Concentric Segmented Toggle (`บรรยาย | ข้าม`):** `6px` outer border (90% `slate-200` border on `slate-100`, `2px` padding) with `4px` inner buttons (`studio-cerulean` fill with white text for active `บรรยาย`, dark `slate-700` fill with white text for active `ข้าม`).
-- **Status Micro-Badges:** 1px-bordered `6px`-radius pills for instant scanning (`บรรยาย` cerulean tint, `ข้าม` slate-200, `กำลังวิเคราะห์` active cerulean, `รอวิเคราะห์` amber, timing issues bold amber, `ยาวกว่าช่องว่าง` neutral slate). Passive states are plain text, not pills, so nothing that cannot be pressed looks like a button: `แก้ไขแล้ว` in muted slate and `ตำแหน่งวิดีโอ` as cerulean text with a 6px dot. Secondary actions inside a card row (`คืนเวลาเดิม`) are quiet text buttons, `28px` tall on desktop via `.compact-action` and `44px` on coarse pointers.
-- **Skipped State:** Existing text stays visible inside a disabled muted textarea (80% `slate-100` surface with muted `slate-400` text) with a non-destructive notice so authors never think their draft was deleted.
+### Script Spot Row
+Edge-to-edge editorial list item separated by `1px` horizontal dividers (`divide-y divide-slate-200`)—no outer card border or nested card header.
+- **Background:** `pure-surface` at rest; `90%` `studio-cerulean-tint` with a `1px` inset `studio-cerulean-border` ring when selected; subtle `35%` `studio-cerulean-tint` wash when the video playhead is inside an unselected row; soft muted slate tint (`85%` `slate-50`) when skipped.
+- **Internal Padding & Stability:** `14px 16px` vertical/horizontal padding with locked `32px` header height, `useLayoutEffect` auto-grow `Textarea variant="script"`, and click scroll-anchor compensation so expanding/collapsing rows never jump under the cursor.
+- **Row Controls:** `Input` + `Button size="icon-sm"` (`±0.2s` steppers) for start/end timestamps, `ToggleGroup appearance="segmented"` for `บรรยาย | ข้าม`, `Badge` micro-badges for state/warnings, and `Button variant="ghost" size="sm"` for `คืนเวลาเดิม`.
+- **Skipped State:** Existing text stays visible inside a disabled `Textarea variant="script"` with a non-destructive notice so authors never think their draft was deleted.
 
 ### Waveform Envelope & Soft Mist Loading Wave (Signature Component)
 Dedicated `56px` audio waveform track above the `28px` VAD speech track and `56px` AD track.
@@ -264,9 +269,9 @@ Dedicated `56px` audio waveform track above the `28px` VAD speech track and `56p
 
 ### Broadcast CC Pill (Signature Component)
 Floating closed-caption preview docked `12px` above the bottom edge of the video monitor.
-- **Style:** `rgba(2, 6, 23, 0.80)` dark translucent surface, `backdrop-filter: blur(4px)`, `1px solid rgba(255, 255, 255, 0.15)`, `8px` radius, max-width `min(94%, 42rem)`, `Popover Elevation` shadow.
+- **Style:** `rgba(2, 6, 23, 0.80)` dark translucent surface, `backdrop-filter: blur(4px)`, `1px solid rgba(255, 255, 255, 0.15)`, `8px` radius, max-width `min(94%, 42rem)`, `Popover / Stage Elevation` shadow (`shadow-lg`).
 - **Layout:** Inline `AD N` badge (`studio-cerulean-active`, `4px` radius, `text-xs`) pinned on the left beside left-aligned full white text (no ellipsis truncation; bounded to `max-h-[48%]` with scroll only for exceptionally long blocks) with a subtle `0 1px 2px rgba(0,0,0,0.65)` text shadow.
-- **Interaction:** Clicking selects that spot in the right editor pane without pausing playback; toggled on/off via the soft-active `Subtitles` (`CC`) button in the transport bar.
+- **Interaction:** Clicking selects that spot in the right editor pane without pausing playback; toggled on/off via the soft-active `Subtitles` (`CC`) `Toggle` in the transport bar.
 
 ## Do's and Don'ts
 
