@@ -124,15 +124,17 @@
     @apply bg-background text-foreground;
   }
 
-  button, input, select {
+  /* Controls not yet on shadcn/ui; shadcn components (they carry data-slot) size themselves from their variants. */
+  :where(button, input, select):not([data-slot]) {
     min-height: 2.25rem;
   }
 
-  button {
+  button:not([data-slot]) {
     min-width: 2.25rem;
   }
 
-  button:focus-visible, summary:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  /* The one focus indicator for every button and link; shadcn inputs keep their own border-and-ring focus. */
+  button:focus-visible, summary:focus-visible, a:focus-visible, input:not([data-slot]):focus-visible, textarea:not([data-slot]):focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--color-brand-600);
     outline-offset: 3px;
   }
@@ -153,6 +155,11 @@
   @media (pointer: coarse) {
     button, summary, input, select {
       min-height: 2.75rem;
+    }
+
+    /* Square shadcn buttons (size icon, icon-sm, ...); matched on data-size alone because a menu or dialog trigger replaces data-slot. */
+    button[data-size^="icon"] {
+      min-width: 2.75rem;
     }
   }
 

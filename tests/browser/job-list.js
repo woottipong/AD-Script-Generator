@@ -35,6 +35,10 @@ async page => {
   await listed();
   const rows = list.locator('tbody tr');
   assert(await rows.count() === 4, 'Every Job and Unfinished Upload is listed');
+  const heightOf = async (locator) => Math.round((await locator.boundingBox()).height);
+  assert(await heightOf(page.getByRole('button', { name: 'งานใหม่' })) === 40, 'The page action is a 40px button (DESIGN › Buttons)');
+  assert(await heightOf(page.getByRole('button', { name: 'ทำต่อ old.mp4' })) === 36, 'Row actions are 36px buttons');
+  assert(await heightOf(page.getByRole('button', { name: 'ตัวเลือกงาน old.mp4' })) === 36, 'Icon buttons are 36px square');
   assert((await rows.first().textContent()).includes('old.mp4'), 'Most recently changed Job comes first');
   assert(await list.getByText('ตรวจแก้ SRT').filter({ visible: true }).count() === 1, 'Review Mode Job is tagged with its mode');
   assert(await page.getByRole('button', { name: 'ทำต่อ บทเรียนที่ 1' }).count() === 1 && await list.getByText('lesson.mp4').count() === 1, 'A titled Job shows its title with the file name below');
