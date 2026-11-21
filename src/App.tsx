@@ -32,14 +32,13 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { JobList } from './components/JobList';
-import { ModeChooser } from './components/ModeChooser';
 import { ReviewIntake } from './components/ReviewIntake';
+import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
 
-const UploadAndVadPanel = lazy(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
 const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
 const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
 import { parseApiResponse } from './utils/apiResponse';
@@ -514,7 +513,7 @@ export default function App() {
 
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
-    async (file: File) => {
+    async (file: File, customTitle?: string) => {
       if (videoMetadata && !(await confirm({ title: 'เปลี่ยนวิดีโอและออกจากงานปัจจุบัน?', description: 'กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน', confirmLabel: 'เปลี่ยนวิดีโอ' }))) return;
       reviewImportRef.current = null;
       leaveCurrentJob();
@@ -527,6 +526,11 @@ export default function App() {
       clearVideo();
       setErrorMessage(null);
       setVadProgress(null);
+      if (customTitle !== undefined) {
+        const trimmed = customTitle.trim();
+        setJobTitle(trimmed || defaultJobTitle(file.name));
+        titleTypedRef.current = Boolean(trimmed);
+      }
       setCheckingFileName(file.name);
       setStatus('IDLE');
 
@@ -542,7 +546,7 @@ export default function App() {
       if (validation.valid && validation.metadata) {
         setVideoFile(file);
         setVideoMetadata(validation.metadata);
-        if (!titleTypedRef.current) setJobTitle(defaultJobTitle(file.name));
+        setJobTitle(customTitle?.trim() || (titleTypedRef.current ? jobTitleRef.current : defaultJobTitle(file.name)));
         const blobUrl = URL.createObjectURL(file);
         objectUrlRef.current = blobUrl;
         setVideoUrl(blobUrl);
@@ -1083,19 +1087,18 @@ export default function App() {
         </Empty>
       ) : !hasProject && path === '/' ? (
         <JobList onOpen={openJob} onNew={() => navigate('/new')} />
-      ) : !hasProject && mode === null ? (
-        <ModeChooser onBack={() => void openJobList()} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
-      ) : !hasProject && mode === 'review' ? (
+      ) : !hasProject && (mode ?? 'generate') === 'review' ? (
         <ReviewIntake
           checkingFileName={checkingFileName}
           errorMessage={errorMessage}
           validationIssues={validationIssues}
           onProcess={handleProcessReview}
-          onBack={() => { setMode(null); setErrorMessage(null); setValidationIssues([]); }}
+          onModeChange={(next) => { setMode(next); setErrorMessage(null); setValidationIssues([]); }}
+          onBack={() => void openJobList()}
         />
       ) : <UploadAndVadPanel
         mode={mode ?? 'generate'}
-        onChangeMode={() => { setMode(null); setErrorMessage(null); setValidationIssues([]); }}
+        onModeChange={(next) => { setMode(next); setErrorMessage(null); setValidationIssues([]); }}
         headerActionsElement={headerActionsElement}
         checkingFileName={checkingFileName}
         processingFeedback={processingFeedback}

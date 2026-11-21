@@ -103,7 +103,7 @@ async page => {
   await page.getByRole('button', { name: 'งานใหม่' }).click();
   await page.getByRole('heading', { name: 'เริ่มงานบทบรรยายภาพ' }).waitFor();
   assert(new URL(page.url()).pathname === '/new', 'New Job starts at /new');
-  await page.getByRole('button', { name: 'รายการงาน' }).click();
+  await page.getByRole('button', { name: 'ยกเลิก' }).click();
   await listed();
 
   jobs = [];

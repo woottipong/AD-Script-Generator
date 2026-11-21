@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { IntakeShell } from './IntakeShell';
+import { IntakeDropzone, IntakeFooter, IntakeShell } from './IntakeShell';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
@@ -45,6 +45,7 @@ import {
   formatCompactTime,
   formatFileSize,
 } from '../utils/formatters';
+import { defaultJobTitle } from '../utils/jobValidation';
 
 const batchColors = {
   pending: {
@@ -75,7 +76,7 @@ const batchColors = {
 
 interface UploadAndVadPanelProps {
   mode: JobMode;
-  onChangeMode: () => void;
+  onModeChange: (mode: JobMode) => void;
   headerActionsElement: HTMLDivElement | null;
   checkingFileName: string | null;
   processingFeedback: ProcessingFeedback | null;
@@ -86,7 +87,7 @@ interface UploadAndVadPanelProps {
   vadOutput: VADOutput | null;
   batches: AnalysisBatch[];
   spots: ADSpot[];
-  onSelectFile: (file: File) => void;
+  onSelectFile: (file: File, title?: string) => void;
   onRunVad: () => void;
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
@@ -101,7 +102,7 @@ interface UploadAndVadPanelProps {
 
 export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   mode,
-  onChangeMode,
+  onModeChange,
   headerActionsElement,
   checkingFileName,
   processingFeedback,
@@ -141,10 +142,20 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     }
   };
   const [isDragging, setIsDragging] = useState(false);
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [typedTitle, setTypedTitle] = useState<string | null>(null);
+  const resolvedTitle = typedTitle ?? (stagedFile ? defaultJobTitle(stagedFile.name) : '');
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [isWideHeader, setIsWideHeader] = useState(false);
   const [activityElapsedMs, setActivityElapsedMs] = useState(0);
 
+  const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
+  useEffect(() => {
+    if (hasLoadedProject) {
+      setStagedFile(null);
+      setTypedTitle(null);
+    }
+  }, [hasLoadedProject]);
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
@@ -179,14 +190,18 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     if (isBusy) return;
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
-      onSelectFile(droppedFile);
+      setStagedFile(droppedFile);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (selected) {
-      onSelectFile(selected);
+      if (hasLoadedProject) {
+        onSelectFile(selected);
+      } else {
+        setStagedFile(selected);
+      }
     }
     e.target.value = '';
   };
@@ -245,86 +260,111 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     ? `พร้อมสร้าง · ${vadOutput.candidate_spots.length} ช่วง`
     : 'กำลังเตรียมวิดีโอ';
 
-  const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
-
   // If no video is loaded yet, show a clean studio intake workspace bar
   if (!hasLoadedProject) {
+    const errorAlert = (errorMessage || hasBlockingErrors) ? (
+      <Alert id="upload-feedback" variant="destructive">
+        <AlertCircle />
+        <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</AlertTitle>
+        <AlertDescription>
+          {errorMessage ? <p>{errorMessage}</p> : (
+            <ul className="list-disc pl-5">
+              {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
+                <li key={`${issue.field}-${index}`}>{issue.message}</li>
+              ))}
+            </ul>
+          )}
+          {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
+        </AlertDescription>
+      </Alert>
+    ) : null;
+
     return (
-      <IntakeShell backLabel="เลือกโหมดอื่น" onBack={onChangeMode} title="สร้างบทบรรยายภาพ" description="ระบบหาช่วงว่างบนเครื่องของคุณ">
+      <IntakeShell
+        backLabel="รายการงาน"
+        onBack={onOpenJobList}
+        title="เริ่มงานบทบรรยายภาพ"
+        description="สแกนช่วงว่างเสียงพูดบนเครื่อง แล้วส่งวิดีโอให้ AI สร้างร่างบทบรรยายภาพ"
+        modeSwitch={{ mode, onModeChange }}
+      >
         <input
           ref={fileInputRef}
           type="file"
           accept="video/mp4,.mp4"
-          aria-invalid={hasBlockingErrors}
           disabled={Boolean(checkingFileName)}
           onChange={handleFileChange}
           className="hidden"
+          aria-label="เลือกวิดีโอ MP4"
         />
 
-        <div className="mt-7 flex flex-col gap-7">
-          <div>
-            {checkingFileName ? (
-              <div className="w-full max-w-lg mx-auto">
-                <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-secondary-foreground">{checkingFileName}</p>
-                <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
-              </div>
-            ) : <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(false);
-              }}
-              onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-lg p-6 sm:p-10 transition-colors flex flex-col items-center text-center gap-5 ${
-                isDragging
-                  ? 'border-brand-500 bg-brand-50'
-                  : 'border-input hover:border-muted-foreground bg-card'
-              }`}
-            >
-              <div className="min-w-0">
-                  <p className="text-base font-semibold text-foreground">
-                    ลากวิดีโอ MP4 มาวางที่นี่
-                  </p>
-                  <p id="upload-requirements" className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                    ความสูง 480p · H.264 + AAC · ไม่เกิน 30 นาที และ 2 GB
-                  </p>
-              </div>
-
-              <div className="flex flex-wrap justify-center items-center gap-3">
-                <Button size="lg" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'}>
-                  <Upload data-icon="inline-start" />
-                  เลือกวิดีโอ
-                </Button>
-              </div>
-            </div>}
-
-            {(errorMessage || hasBlockingErrors) && (
-              <Alert id="upload-feedback" variant="destructive" className="mt-3">
-                <AlertCircle />
-                <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</AlertTitle>
-                <AlertDescription>
-                  {errorMessage ? <p>{errorMessage}</p> : (
-                    <ul className="list-disc pl-5">
-                      {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
-                        <li key={`${issue.field}-${index}`}>{issue.message}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
-                </AlertDescription>
-              </Alert>
-            )}
+        {checkingFileName ? (
+          <div className="w-full mx-auto">
+            <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-secondary-foreground">{checkingFileName}</p>
+            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
+            {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
+        ) : (
+          <FieldGroup className="gap-5">
+            <Field>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <FieldLabel>วิดีโอ MP4</FieldLabel>
+                <span id="upload-requirements" className="text-xs text-muted-foreground">
+                  ความสูง 480p · H.264 + AAC · ไม่เกิน 30 นาที และ 2 GB
+                </span>
+              </div>
+              <IntakeDropzone
+                file={stagedFile}
+                isDragging={isDragging}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                }}
+                onDrop={handleDrop}
+                onPick={() => fileInputRef.current?.click()}
+                onClear={() => {
+                  setStagedFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                icon={<FileVideo className="size-5" />}
+                emptyTitle="ลากไฟล์วิดีโอ MP4 มาวาง หรือคลิกเพื่อเลือกไฟล์"
+                emptySubtitle="รองรับไฟล์ .mp4 จากเครื่องของคุณ"
+                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
+                pickLabel="เลือกวิดีโอ"
+                clearLabel="ล้างไฟล์วิดีโอ"
+                pickDescribedBy={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'}
+              />
+            </Field>
 
-          <div className="text-sm leading-relaxed text-muted-foreground">
-            <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
-          </div>
-        </div>
+            <Field>
+              <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
+              <Input
+                id="generate-title"
+                type="text"
+                value={resolvedTitle}
+                maxLength={120}
+                onChange={(e) => setTypedTitle(e.target.value)}
+                placeholder="ตั้งอัตโนมัติจากชื่อไฟล์วิดีโอ"
+              />
+              <FieldDescription>ตั้งจากชื่อไฟล์วิดีโอให้อัตโนมัติ แก้ไขได้ก่อนเริ่มหรือเปลี่ยนภายหลังได้</FieldDescription>
+            </Field>
+
+            {errorAlert}
+
+            <IntakeFooter
+              note="วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini เมื่อเริ่มสร้างบท"
+              actionLabel="เริ่มสร้างบทบรรยาย"
+              disabled={!stagedFile}
+              onCancel={onOpenJobList}
+              onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
+            />
+          </FieldGroup>
+        )}
       </IntakeShell>
     );
   }
