@@ -15,12 +15,15 @@ async page => {
   await page.getByText('บันทึกไม่สำเร็จ', {exact:false}).waitFor();
   const retained = await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).inputValue();
   if (retained !== 'บทแก้ไข') throw new Error('Edit lost after failed save');
-  await page.evaluate(() => { window.confirm = (message) => { window.leavePrompt = message; return false; }; });
-  await page.getByRole('link', { name: 'TCC Envisio รายการงาน' }).click();
-  let leavePrompt = '';
-  for (let i = 0; i < 40 && !leavePrompt; i++) { await page.waitForTimeout(50); leavePrompt = await page.evaluate(() => window.leavePrompt || ''); }
-  if (!leavePrompt.includes('ยังบันทึกไม่สำเร็จ')) throw new Error('Leaving with a failed save did not warn');
+  const logo = page.getByRole('link', { name: 'TCC Envisio รายการงาน' });
+  await logo.click();
+  const leaveDialog = page.getByRole('alertdialog', { name: 'กลับไปรายการงาน?' });
+  await leaveDialog.waitFor();
+  if (!(await leaveDialog.textContent()).includes('ยังบันทึกไม่สำเร็จ')) throw new Error('Leaving with a failed save did not warn');
+  await page.keyboard.press('Escape');
+  await leaveDialog.waitFor({ state: 'hidden' });
   if (new URL(page.url()).pathname !== '/jobs/job_test') throw new Error('Declining the warning left the job');
+  if (!(await logo.evaluate((el) => el === document.activeElement))) throw new Error('Focus did not return to the control that asked');
   await page.getByRole('button',{name:'ลองบันทึกอีกครั้ง'}).click();
   const saving = await page.getByText('กำลังบันทึกการแก้ไข…').count();
   if (saving !== 1) throw new Error('Saving status was not shown before acknowledgement');

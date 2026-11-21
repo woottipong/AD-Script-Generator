@@ -76,3 +76,11 @@ test('invalidating a job suppresses an old response without blocking a later sav
   assert.equal(await queue.wait(), true);
   assert.deepEqual(statuses, ['saving', 'saving', 'saved']);
 });
+
+test('a failed save of a Job that was left is not reported for the next one', async () => {
+  const queue = createJobSaveQueue(() => {}, async () => new Response(null, { status: 500 }));
+  queue.save('old', [spot('old')]);
+  assert.equal(await queue.wait(), false);
+  queue.invalidate();
+  assert.equal(await queue.wait(), undefined, 'the next Job starts with nothing unsaved');
+});

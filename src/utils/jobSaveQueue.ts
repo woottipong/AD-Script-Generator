@@ -12,6 +12,8 @@ export function createJobSaveQueue(
   return {
     invalidate() {
       generation++;
+      // Saves already sent still finish, but their result belongs to the Job that was left, not the next one.
+      queue = queue.then(() => undefined);
     },
     save(jobId: string, spots: ADSpot[]) {
       const current = ++generation;

@@ -69,7 +69,15 @@ async page => {
   await page.reload();
   await line.waitFor();
   assert(await line.inputValue() === 'บทเดิม', 'Reload stays on the same Job');
+  await line.fill('แก้แต่บันทึกไม่ผ่าน');
+  await page.getByText('บันทึกไม่สำเร็จ', { exact: false }).waitFor();
+  const leaveDialog = page.getByRole('alertdialog', { name: 'ออกจากหน้านี้?' });
   await page.goBack();
+  await leaveDialog.getByRole('button', { name: 'ยกเลิก' }).click();
+  await leaveDialog.waitFor({ state: 'hidden' });
+  assert(new URL(page.url()).pathname === '/jobs/job_old' && await line.inputValue() === 'แก้แต่บันทึกไม่ผ่าน', 'Declining Back keeps the Job and its URL');
+  await page.goBack();
+  await leaveDialog.getByRole('button', { name: 'ออกจากหน้านี้' }).click();
   await listed();
   assert(new URL(page.url()).pathname === '/', 'Back returns to the Job List');
 

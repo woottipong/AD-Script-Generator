@@ -29,6 +29,7 @@ import {
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { ModeChooser } from './components/ModeChooser';
 import { JobList } from './components/JobList';
+import { useConfirm } from './components/ConfirmDialog';
 import { ReviewIntake } from './components/ReviewIntake';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
@@ -107,6 +108,7 @@ export default function App() {
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const [saveQueue] = useState(() => createJobSaveQueue(setSaveStatus));
+  const [confirm, confirmDialog] = useConfirm();
 
   const navigate = useCallback((to: string) => {
     if (window.location.pathname !== to) window.history.pushState(null, '', to);
@@ -506,7 +508,7 @@ export default function App() {
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
     async (file: File) => {
-      if (videoMetadata && !window.confirm('เปลี่ยนวิดีโอและออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+      if (videoMetadata && !(await confirm({ title: 'เปลี่ยนวิดีโอและออกจากงานปัจจุบัน?', description: 'กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน', confirmLabel: 'เปลี่ยนวิดีโอ' }))) return;
       reviewImportRef.current = null;
       leaveCurrentJob();
       const selectionToken = { aborted: false };
@@ -545,14 +547,14 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [videoMetadata, startVad, leaveCurrentJob, clearVideo]
+    [videoMetadata, startVad, leaveCurrentJob, clearVideo, confirm]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
-  const handleRunVad = () => {
+  const handleRunVad = async () => {
     const input: ByteSourceInput | undefined = videoFile ? { kind: 'file', file: videoFile } : reviewImportRef.current?.vadInput;
     if (!input || !videoMetadata) return;
-    if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !window.confirm('สแกนเสียงใหม่? บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
+    if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !(await confirm({ title: 'สแกนเสียงใหม่?', description: 'บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สแกนเสียงใหม่', destructive: true }))) return;
     leaveCurrentJob();
     startVad(input);
   };
@@ -720,7 +722,7 @@ export default function App() {
       return;
     }
 
-    if (spots.some((spot) => spot.text.trim()) && !window.confirm('สร้างบทบรรยายใหม่? ข้อความและเวลาที่แก้ไว้อาจถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน')) return;
+    if (spots.some((spot) => spot.text.trim()) && !(await confirm({ title: 'สร้างบทบรรยายใหม่?', description: 'ข้อความและเวลาที่แก้ไว้อาจถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สร้างบทบรรยายใหม่', destructive: true }))) return;
 
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
@@ -904,7 +906,7 @@ export default function App() {
     const handlePopState = async () => {
       const warning = await leaveWarning();
       // Back cannot be cancelled, so declining puts the page's own URL back.
-      if (warning && !window.confirm(`ออกจากหน้านี้? ${warning}`)) {
+      if (warning && !(await confirm({ title: 'ออกจากหน้านี้?', description: warning, confirmLabel: 'ออกจากหน้านี้', destructive: true }))) {
         window.history.pushState(null, '', path);
         return;
       }
@@ -916,7 +918,7 @@ export default function App() {
     const onPopState = () => void handlePopState();
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [resetWorkspace, restoreJob, leaveWarning, path]);
+  }, [resetWorkspace, restoreJob, leaveWarning, path, confirm]);
 
   const openJob = (openJobId: string) => {
     navigate(jobPath(openJobId));
@@ -946,14 +948,14 @@ export default function App() {
   // Navigate first so leaving the Job does not also push `/new` onto the history.
   const openJobList = async () => {
     const warning = await leaveWarning();
-    if (warning && !window.confirm(`กลับไปรายการงาน? ${warning}`)) return;
+    if (warning && !(await confirm({ title: 'กลับไปรายการงาน?', description: warning, confirmLabel: 'กลับไปรายการงาน', destructive: true }))) return;
     navigate('/');
     resetWorkspace();
   };
 
   // 8. Reset Job
-  const handleResetJob = () => {
-    if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+  const handleResetJob = async () => {
+    if (!(await confirm({ title: 'เริ่มงานใหม่และออกจากงานปัจจุบัน?', description: 'กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน', confirmLabel: 'เริ่มงานใหม่' }))) return;
     resetWorkspace();
   };
 
@@ -1146,6 +1148,7 @@ export default function App() {
         </div>
       </section>}
       </main>
+      {confirmDialog}
     </div>
   );
 }
