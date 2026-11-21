@@ -42,7 +42,7 @@ function ProgressIndicator({
   return (
     <ProgressPrimitive.Indicator
       data-slot="progress-indicator"
-      className={cn("h-full rounded-full bg-linear-to-r from-brand-700 via-brand-600 to-brand-500 transition-all", className)}
+      className={cn("h-full rounded-full bg-linear-to-r from-brand-700 via-brand-600 to-brand-500 transition-[width] motion-reduce:transition-none", className)}
       {...props}
     />
   )

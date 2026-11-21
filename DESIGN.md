@@ -61,10 +61,10 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0em"
 rounded:
-  xs: "4px"
-  sm: "6px"
-  md: "8px"
-  lg: "12px"
+  xs: "3.6px"
+  sm: "4.8px"
+  md: "6px"
+  lg: "8.4px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -170,7 +170,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 **Character:** Clinical and editorial at once—geometric sans keeps dense toolbar controls crisp, while looped Thai letterforms reduce eye strain when reading and trimming audio description scripts.
 
 ### Hierarchy
-- **Headline** (600, `1.875rem` / 30px, line-height `1.25`): Intake screen page heading (`สร้างบทบรรยายภาพ`).
+- **Headline** (600, `1.5rem` / 24px, line-height `1.25`): Page headings (`รายการงาน` and `/new` intake heading `เริ่มงานบทบรรยายภาพ`), paired with a concise `text-sm` `muted-foreground` subtitle.
 - **Title** (700, `1rem` / 16px, line-height `1.35`): Navbar wordmark (`TCC Envisio`, with `TCC` in `brand-700` and the tagline `สร้างและตรวจแก้บทบรรยายภาพ` beneath in 13px `slate-500`) and dialog/empty-state headings.
 - **Script Body** (400, `1rem` / 16px, line-height `1.75`): Editable Thai AD script textareas and preview text.
 - **Body** (400, `0.9375rem` / 15px, line-height `1.5`): General UI descriptions, intake guidance, and validation messages.
@@ -210,7 +210,7 @@ Compact, utilitarian corner radii keep dense workstation controls crisp without 
 - **Micro (`4px`):** Inline badges (`AD 1`), timeline blocks, and compact transport buttons.
 - **Control (`6px`):** Primary/secondary buttons, status pills, search inputs, and filter selects.
 - **Container (`8px`):** Script spot cards, floating Broadcast CC Pill, and header disclosure popovers.
-- **Intake Card (`12px`):** Video upload dropzone and centered intake status cards.
+- **Intake Card (`8.4px`):** `rounded-xl` (`--radius-xl`, `calc(var(--radius) * 1.4)`) for centered intake and status cards, holding `6px` (`rounded-lg`) dropzones and buttons inside.
 
 ## Components
 
@@ -248,7 +248,7 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 
 ### Job List Table & Intake Cards
 - **Job List (`Table`, `Skeleton`, `Empty`):** One dense table on a white bordered surface widened to the navbar gutters (`px-4 sm:px-6`, up to `max-w-screen-2xl`) so its left edge aligns with the logo. Columns: ชื่องาน (leading semantic mode/state icon tile — `brand-50`/`brand-200`/`brand-700` for `generate`, `secondary`/`border-border`/`secondary-foreground` for `review`, `warning` amber for incomplete uploads, and `error-surface`/`error-border`/`error-foreground` for `FAILED` — plus title link opening the Job; original file name below only when renamed), โหมด (6px indicator dot in `brand-600` for `สร้างบทบรรยาย` or `muted-foreground` for `ตรวจแก้ SRT` beside `text-secondary-foreground font-medium` text), สถานะ (icon-paired `Badge`, using `info` on `พร้อมแก้`), ความยาว, บทบรรยาย (`N จุด`), and แก้ล่าสุด in `tabular-nums`, and direct row actions (`เปิดงาน` `outline-primary` `Button` and `ลบ` `ghost-destructive` `Button`, disabled with a `Tooltip` while processing). Rows apply semantic resting/hover tints (`bg-warning/60 hover:bg-warning` for incomplete uploads, `bg-error-surface/60 hover:bg-error-surface` for `FAILED`, `hover:bg-accent/60` default). Below `sm`, สถานะ and โหมด move under the title and ความยาว/บทบรรยาย/แก้ล่าสุด hide while both row actions remain directly visible. Loading shows `Skeleton` rows; errors show `Alert` with retry/dismiss; empty storage shows `Empty` with `งานใหม่`.
-- **Unified `/new` Intake & Processing (`IntakeShell`, `Field`, `Progress`):** A single `/new` intake flow centered in a `max-w-2xl` white `bg-card` studio container (`rounded-xl border border-border`) below the `รายการงาน` back action and heading. A full-width 2-column segmented mode header bar (`สร้างบทบรรยาย` | `ตรวจแก้ไฟล์ SRT` inside `bg-muted/70`, active tab elevated with `bg-card`, `ring-brand-200`, and a `bg-brand-700` icon badge) sits above a `bg-brand-50/45` mode description strip and the card body. Generate Mode uses a recessed `bg-canvas/70` MP4 dropzone, stages the selected/dropped MP4 in a `brand-200`/`brand-50` file card with `เปลี่ยนไฟล์` and `X` clear controls, auto-populates `ชื่องาน`, and runs VAD/job creation from a `bg-muted/35` action footer bar (`เริ่มสแกนเสียงและสร้างงาน`). Review Mode groups local MP4 drag-and-drop and `.mp4` URL input in a `bg-canvas/50` source box with `bg-card` dropzones and mutual auto-clearing alongside the SRT dropzone, closing with the same `bg-muted/35` action footer bar (`เริ่มตรวจแก้`). Upload/processing views (`12px` radius) report indeterminate and determinate progress with `Progress` (Material Design 3 two-segment sweep when indeterminate).
+- **Unified `/new` Intake & Processing (`IntakeShell`, `Field`, `Progress`):** A single `/new` intake flow centered in `max-w-4xl` with a page header (`text-2xl` heading plus `text-sm` `muted-foreground` subtitle matching the Job List) above a white `bg-card` studio container (`8.4px` `rounded-xl border border-border`; `ยกเลิก` in `IntakeFooter` returns to the job list). A full-width 2-column underline mode tab bar (`สร้างบทบรรยาย` with `FileVideo` | `ตรวจแก้ไฟล์ SRT` with `FileText` on pure white `bg-card border-b border-border`; active tab uses a `2px` `border-primary` bottom indicator and `text-brand-800`, inactive tabs use `text-muted-foreground`) sits directly above the card body. Generate Mode uses a cerulean-tinted `bg-brand-50/45` MP4 `IntakeDropzone` (`outline-brand-300`, `bg-brand-100 text-brand-700` icon badge, `outline-primary` pick button), stages the selected/dropped MP4 in a `bg-brand-50`/`outline-brand-400` region with a `bg-primary text-primary-foreground` icon badge, `เปลี่ยนไฟล์`, and `X` clear controls, auto-populates optional `ชื่องาน`, and runs local validation and VAD from a `border-border bg-muted/35` action footer bar (`ตรวจสอบและสแกนเสียง`). Review Mode leads with an inline `.mp4` URL field paired with a `เลือกไฟล์จากเครื่อง` trigger (also accepting drag-and-drop) that swaps in-place to the staged `IntakeDropzone` card when a local file is selected, above a single SRT `IntakeDropzone` and the same `bg-muted/35` action footer bar (`เริ่มตรวจแก้`). Upload/processing views (`8.4px` `rounded-xl` radius) report indeterminate and determinate progress with `Progress` (Material Design 3 two-segment sweep when indeterminate).
 
 ### Status Pill & Hairline Progress Bar
 Zero-shift asynchronous status indicator combining a compact header `Button` (`PopoverTrigger` opening `รายละเอียดการทำงาน`) with an edge-pinned `3px` progress line.

@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
@@ -164,7 +164,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     : processingFeedback;
 
   useEffect(() => {
-    if (!activityFeedback?.title) {
+    if (!hasLoadedProject || !activityFeedback?.title) {
       setActivityElapsedMs(0);
       return;
     }
@@ -172,16 +172,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     setActivityElapsedMs(0);
     const timer = setInterval(() => setActivityElapsedMs(Date.now() - startedAt), 1000);
     return () => clearInterval(timer);
-  }, [activityFeedback?.title]);
+  }, [hasLoadedProject, activityFeedback?.title]);
 
   useEffect(() => {
+    if (!hasLoadedProject) return;
     // Match keyboard order to the header layout without duplicating its controls.
     const query = window.matchMedia('(min-width: 1024px)');
     const updateLayout = () => setIsWideHeader(query.matches);
     updateLayout();
     query.addEventListener('change', updateLayout);
     return () => query.removeEventListener('change', updateLayout);
-  }, []);
+  }, [hasLoadedProject]);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -281,10 +282,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
     return (
       <IntakeShell
-        backLabel="รายการงาน"
-        onBack={onOpenJobList}
         title="เริ่มงานบทบรรยายภาพ"
-        description="สแกนช่วงว่างเสียงพูดบนเครื่อง แล้วส่งวิดีโอให้ AI สร้างร่างบทบรรยายภาพ"
+        description="สร้างบทบรรยายจากวิดีโอ หรือตรวจแก้ไฟล์ SRT ที่มีอยู่"
         modeSwitch={{ mode, onModeChange }}
       >
         <input
@@ -299,17 +298,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
         {checkingFileName ? (
           <div className="w-full mx-auto">
-            <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-secondary-foreground">{checkingFileName}</p>
-            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
+            <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-foreground">{checkingFileName}</p>
+            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }} />
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
         ) : (
           <FieldGroup className="gap-5">
-            <Field>
+            <Field aria-labelledby="generate-video-label">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <FieldLabel>วิดีโอ MP4</FieldLabel>
+                <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
                 <span id="upload-requirements" className="text-xs text-muted-foreground">
-                  ความสูง 480p · H.264 + AAC · ไม่เกิน 30 นาที และ 2 GB
+                  480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
                 </span>
               </div>
               <IntakeDropzone
@@ -332,8 +331,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 icon={<FileVideo className="size-5" />}
-                emptyTitle="ลากไฟล์วิดีโอ MP4 มาวาง หรือคลิกเพื่อเลือกไฟล์"
-                emptySubtitle="รองรับไฟล์ .mp4 จากเครื่องของคุณ"
+                emptyTitle="วางไฟล์ MP4 ที่นี่"
                 fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
                 pickLabel="เลือกวิดีโอ"
                 clearLabel="ล้างไฟล์วิดีโอ"
@@ -342,23 +340,24 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
+              <div className="flex items-baseline justify-between gap-2">
+                <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
+                <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
+              </div>
               <Input
                 id="generate-title"
                 type="text"
                 value={resolvedTitle}
                 maxLength={120}
                 onChange={(e) => setTypedTitle(e.target.value)}
-                placeholder="ตั้งอัตโนมัติจากชื่อไฟล์วิดีโอ"
+                placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
               />
-              <FieldDescription>ตั้งจากชื่อไฟล์วิดีโอให้อัตโนมัติ แก้ไขได้ก่อนเริ่มหรือเปลี่ยนภายหลังได้</FieldDescription>
             </Field>
 
             {errorAlert}
 
             <IntakeFooter
-              note="วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini เมื่อเริ่มสร้างบท"
-              actionLabel="เริ่มสร้างบทบรรยาย"
+              actionLabel="ตรวจสอบและสแกนเสียง"
               disabled={!stagedFile}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
