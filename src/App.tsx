@@ -22,6 +22,7 @@ import {
 import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
+  formatFileSize,
   formatTimestampDisplay,
   generateSrtContent,
 } from './utils/formatters';
@@ -69,6 +70,8 @@ export default function App() {
   const [mode, setMode] = useState<JobMode | null>(null);
   const [srtFileName, setSrtFileName] = useState<string | null>(null);
   const [importSkipped, setImportSkipped] = useState<SkippedCue[]>([]);
+  /** A restored Review Mode job whose video was a local file: the author must pick the same file again. */
+  const [missingLocalVideo, setMissingLocalVideo] = useState<{ file_name: string; file_size: number } | null>(null);
   const reviewImportRef = useRef<ReviewImport | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -289,6 +292,7 @@ export default function App() {
         setSrtFileName(savedJob.srt_source?.file_name ?? null);
         const source = savedJob.video_source;
         setVideoUrl(source?.kind === 'url' ? source.url : source?.kind === 'local_file' ? null : `/api/jobs/${savedJob.job_id}/video`);
+        if (source?.kind === 'local_file') setMissingLocalVideo({ file_name: source.file_name, file_size: source.file_size });
         if (savedJob.spots.length > 0) {
           setSelectedSpotId(savedJob.spots[0].spot_id);
         }
@@ -351,7 +355,22 @@ export default function App() {
     setVideoMetadata(null);
     setValidationIssues([]);
     setCurrentTimeMs(0);
+    setMissingLocalVideo(null);
   }, []);
+
+  const handleRelinkLocalVideo = (file: File) => {
+    if (!missingLocalVideo) return;
+    if (file.name !== missingLocalVideo.file_name || file.size !== missingLocalVideo.file_size) {
+      setErrorMessage(`ไฟล์นี้ไม่ใช่วิดีโอเดิมของงาน กรุณาเลือก ${missingLocalVideo.file_name} (${formatFileSize(missingLocalVideo.file_size)})`);
+      return;
+    }
+    const blobUrl = URL.createObjectURL(file);
+    objectUrlRef.current = blobUrl;
+    setVideoFile(file);
+    setVideoUrl(blobUrl);
+    setMissingLocalVideo(null);
+    setErrorMessage(null);
+  };
 
   const handleProcessReview = useCallback(async (video: File | string, srtFile: File) => {
     const vadInput: ByteSourceInput = typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'file', file: video };
@@ -880,6 +899,19 @@ export default function App() {
           <div>
             <strong className="font-semibold">มีงานวิเคราะห์ที่ยังไม่เสร็จ</strong>
           </div>
+        </div>
+      )}
+
+      {mode === 'review' && missingLocalVideo && (
+        <div role="status" className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="min-w-0 [overflow-wrap:anywhere]">
+            <strong className="font-semibold">เลือกวิดีโอเดิมอีกครั้งเพื่อเล่นและดูเทียบ</strong>
+            {' · '}{missingLocalVideo.file_name} ({formatFileSize(missingLocalVideo.file_size)}) · ระหว่างนี้ยังแก้บทและส่งออก SRT ได้
+          </p>
+          <label className="shrink-0 cursor-pointer rounded-md border border-amber-400 bg-white px-3 py-1.5 font-semibold text-amber-950 hover:bg-amber-100">
+            เลือกวิดีโอเดิม
+            <input type="file" accept="video/mp4,.mp4" className="sr-only" aria-label="เลือกวิดีโอเดิมของงานนี้" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) handleRelinkLocalVideo(file); }} />
+          </label>
         </div>
       )}
 
