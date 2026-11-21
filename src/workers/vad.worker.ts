@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { createFile } from 'mp4box';
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
 import { VADConfig, VADOutput } from '../types/ad';
 import {
   analyzeAudioSignalAndRecommendVad,
@@ -10,9 +10,9 @@ import { WaveformPeakAccumulator } from '../utils/waveform';
 import type { ProcessingProgress } from '../utils/processingFeedback';
 import { openByteSource, type ByteSourceInput } from '../utils/byteSource';
 
-// Configure ONNX Runtime Web WASM paths using absolute origin URL
 const workerOrigin = typeof location !== 'undefined' && location.origin ? location.origin : '';
-ort.env.wasm.wasmPaths = workerOrigin ? `${workerOrigin}/ort/` : '/ort/';
+// Production uses the hashed WASM asset emitted alongside this worker.
+if (import.meta.env.DEV) ort.env.wasm.wasmPaths = `${workerOrigin}/ort/`;
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.simd = true;
 

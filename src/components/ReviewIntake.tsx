@@ -1,42 +1,72 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, FileText, FileVideo, Upload, X } from 'lucide-react';
-import type { JobMode, VideoValidationIssue } from '../types/ad';
+import type { VideoValidationIssue } from '../types/ad';
 import { fileNameFromUrl, isMp4Url } from '../utils/byteSource';
 import { formatFileSize } from '../utils/formatters';
 import { defaultJobTitle } from '../utils/jobValidation';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { IntakeDropzone, IntakeFooter, IntakeShell } from './IntakeShell';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type IntakeControls, type ReviewDraft } from './IntakeShell';
+import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
-export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, onModeChange, onBack }: {
+export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, draft, setDraft, intake, onBack }: {
   checkingFileName: string | null;
   errorMessage: string | null;
   validationIssues: VideoValidationIssue[];
   onProcess: (video: File | string, srt: File, title: string) => void;
-  onModeChange: (mode: JobMode) => void;
+  draft: ReviewDraft;
+  setDraft: Dispatch<SetStateAction<ReviewDraft>>;
+  intake: IntakeControls;
   onBack: () => void;
 }) {
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const srtInputRef = useRef<HTMLInputElement | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
-  const [srt, setSrt] = useState<File | null>(null);
-  const [videoLink, setVideoLink] = useState('');
+  const reviewLink = useRef<HTMLInputElement | null>(null);
+  const restoreLinkFocus = useRef(false);
+  const attachReviewLink = useCallback((element: HTMLInputElement | null) => {
+    reviewLink.current = element;
+    if (!element || !restoreLinkFocus.current) return;
+    restoreLinkFocus.current = false;
+    element.focus();
+  }, []);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const { video, srt, link: videoLink, title: typedTitle } = draft;
   const [draggingTarget, setDraggingTarget] = useState<'video' | 'srt' | null>(null);
   const link = videoLink.trim();
   const isIncompleteProtocolPrefix = /^(?:h|ht|htt|http|https|https?:|https?:\/|https?:\/\/)$/i.test(link);
   const linkInvalid = link !== '' && !isIncompleteProtocolPrefix && !isMp4Url(link);
   const chosenVideo: File | string | null = link ? (isMp4Url(link) ? link : null) : video;
   // The title follows the chosen video until the author types their own.
-  const [typedTitle, setTypedTitle] = useState<string | null>(null);
   const title = typedTitle ?? (typeof chosenVideo === 'string' ? defaultJobTitle(fileNameFromUrl(chosenVideo)) : chosenVideo ? defaultJobTitle(chosenVideo.name) : '');
   const blockingIssues = validationIssues.filter((issue) => issue.severity === 'error');
 
-  const selectLocalVideo = (file: File) => {
-    setVideo(file);
-    setVideoLink('');
+  const clearInputError = () => {
+    setInputError(null);
+    intake.onInputChange();
+  };
+
+  const stageFile = (target: 'video' | 'srt', files: FileList | null) => {
+    const selection = target === 'video'
+      ? selectIntakeFile(files, isMp4File, 'กรุณาเลือกไฟล์วิดีโอ MP4')
+      : selectIntakeFile(files, (file) => /\.srt$/i.test(file.name) || ['text/plain', 'application/x-subrip'].includes(file.type), 'กรุณาเลือกไฟล์ SRT');
+    if (!selection) return;
+    clearInputError();
+    if (selection.kind === 'invalid') {
+      setInputError(selection.message);
+    } else if (target === 'video') {
+      setDraft((current) => ({ ...current, video: selection.file, link: '' }));
+      restoreLinkFocus.current = false;
+    } else {
+      setDraft((current) => ({ ...current, srt: selection.file }));
+    }
+  };
+
+  const updateLink = (value: string) => {
+    clearInputError();
+    setDraft((current) => ({ ...current, link: value }));
   };
 
   const handleDragOver = (target: 'video' | 'srt') => (event: React.DragEvent<HTMLDivElement>) => {
@@ -51,20 +81,19 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
     setDraggingTarget((prev) => (prev === target ? null : prev));
   };
 
-  const handleDrop = (onFileDrop: (dropped: File) => void) => (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (target: 'video' | 'srt') => (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setDraggingTarget(null);
-    const dropped = event.dataTransfer.files?.[0];
-    if (dropped) onFileDrop(dropped);
+    stageFile(target, event.dataTransfer.files);
   };
 
-  const errorAlert = (errorMessage || blockingIssues.length > 0) ? (
-    <Alert variant="destructive">
+  const errorAlert = (inputError || errorMessage || blockingIssues.length > 0) ? (
+    <Alert ref={focusIntakeFeedback} tabIndex={-1} variant="destructive">
       <AlertCircle />
-      <AlertTitle>{errorMessage ? 'ไม่สามารถเปิดงานตรวจแก้ได้' : 'วิดีโอไม่ผ่านสเปค'}</AlertTitle>
+      <AlertTitle>{inputError || errorMessage ? 'ไม่สามารถเปิดงานตรวจแก้ได้' : 'วิดีโอไม่ผ่านสเปค'}</AlertTitle>
       <AlertDescription>
-        {errorMessage ? <p>{errorMessage}</p> : (
+        {inputError || errorMessage ? <p>{inputError || errorMessage}</p> : (
           <ul className="list-disc pl-5">
             {blockingIssues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issue.message}</li>)}
           </ul>
@@ -77,7 +106,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
     <IntakeShell
       title="เริ่มงานบทบรรยายภาพ"
       description="สร้างบทบรรยายจากวิดีโอ หรือตรวจแก้ไฟล์ SRT ที่มีอยู่"
-      modeSwitch={{ mode: 'review', onModeChange }}
+      modeSwitch={intake.modeSwitch}
     >
       <input
         ref={videoInputRef}
@@ -86,8 +115,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
         className="hidden"
         aria-label="เลือกวิดีโอ MP4"
         onChange={(event) => {
-          const picked = event.target.files?.[0];
-          if (picked) selectLocalVideo(picked);
+          stageFile('video', event.target.files);
           event.target.value = '';
         }}
       />
@@ -98,8 +126,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
         className="hidden"
         aria-label="เลือกไฟล์ SRT"
         onChange={(event) => {
-          const picked = event.target.files?.[0];
-          if (picked) setSrt(picked);
+          stageFile('srt', event.target.files);
           event.target.value = '';
         }}
       />
@@ -107,7 +134,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
       {checkingFileName ? (
         <div className="w-full mx-auto">
           <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-foreground">{checkingFileName}</p>
-          <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }} />
+          <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }} onCancel={intake.onCancelCheck} />
           {errorAlert && <div className="mt-4">{errorAlert}</div>}
         </div>
       ) : (
@@ -130,10 +157,12 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                 isDragging={draggingTarget === 'video'}
                 onDragOver={handleDragOver('video')}
                 onDragLeave={handleDragLeave('video')}
-                onDrop={handleDrop(selectLocalVideo)}
+                onDrop={handleDrop('video')}
                 onPick={() => videoInputRef.current?.click()}
                 onClear={() => {
-                  setVideo(null);
+                  clearInputError();
+                  restoreLinkFocus.current = true;
+                  setDraft((current) => ({ ...current, video: null }));
                   if (videoInputRef.current) videoInputRef.current.value = '';
                 }}
                 icon={<FileVideo className="size-5" />}
@@ -147,22 +176,23 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               <div
                 onDragOver={handleDragOver('video')}
                 onDragLeave={handleDragLeave('video')}
-                onDrop={handleDrop(selectLocalVideo)}
+                onDrop={handleDrop('video')}
                 className={`flex flex-col gap-2 rounded-lg transition-colors sm:flex-row sm:items-center ${
                   draggingTarget === 'video' ? 'bg-brand-50 p-1.5 -m-1.5 outline-1 outline-dashed outline-brand-500' : ''
                 }`}
               >
-                <div className="relative min-w-0 flex-1">
+                <div className="relative w-full min-w-0 flex-1">
                   <Input
+                    ref={attachReviewLink}
                     id="review-link"
                     type="url"
                     inputMode="url"
                     value={videoLink}
-                    onChange={(event) => setVideoLink(event.target.value)}
+                    onChange={(event) => updateLink(event.target.value)}
                     placeholder="https://…/video.mp4"
                     aria-invalid={linkInvalid}
                     aria-describedby={linkInvalid ? 'review-link-feedback review-video-requirements' : 'review-video-requirements'}
-                    className={videoLink ? 'pr-8' : undefined}
+                    className={videoLink ? 'pr-8 pointer-coarse:pr-13' : undefined}
                   />
                   {videoLink && (
                     <Button
@@ -170,7 +200,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                       variant="ghost"
                       size="icon-xs"
                       aria-label="ล้างลิงก์วิดีโอ"
-                      onClick={() => setVideoLink('')}
+                      onClick={() => { updateLink(''); reviewLink.current?.focus(); }}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       <X aria-hidden="true" />
@@ -182,7 +212,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                   variant="outline"
                   onClick={() => videoInputRef.current?.click()}
                   aria-describedby="review-video-requirements"
-                  className="w-full shrink-0 sm:w-auto"
+                  className="h-auto min-h-9 w-full max-w-full shrink-0 whitespace-normal py-2 pointer-coarse:min-h-11 sm:w-auto"
                 >
                   <Upload data-icon="inline-start" aria-hidden="true" />
                   เลือกไฟล์จากเครื่อง
@@ -208,10 +238,11 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               isDragging={draggingTarget === 'srt'}
               onDragOver={handleDragOver('srt')}
               onDragLeave={handleDragLeave('srt')}
-              onDrop={handleDrop((file) => setSrt(file))}
+              onDrop={handleDrop('srt')}
               onPick={() => srtInputRef.current?.click()}
               onClear={() => {
-                setSrt(null);
+                clearInputError();
+                setDraft((current) => ({ ...current, srt: null }));
                 if (srtInputRef.current) srtInputRef.current.value = '';
               }}
               icon={<FileText className="size-5" />}
@@ -233,7 +264,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               type="text"
               value={title}
               maxLength={120}
-              onChange={(event) => setTypedTitle(event.target.value)}
+              onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
               placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
             />
           </Field>
@@ -242,7 +273,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
 
           <IntakeFooter
             actionLabel="เริ่มตรวจแก้"
-            disabled={!chosenVideo || !srt}
+            disabled={!chosenVideo || !srt || Boolean(inputError) || blockingIssues.length > 0 || !intake.canProcess}
             onCancel={onBack}
             onAction={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}
           />

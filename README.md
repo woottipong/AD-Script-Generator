@@ -97,8 +97,8 @@
 
 หน้าแรกเป็น **รายการงาน** ที่บันทึกไว้ เรียงตามแก้ล่าสุด แต่ละแถวบอกชื่องาน ชื่อไฟล์ โหมด สถานะ เวลาแก้ล่าสุด และขนาด กด **ทำต่อ** เพื่อเปิดงานที่ `/jobs/<job_id>` หรือ **ลบ** หลังยืนยัน ชื่องานตั้งจากชื่อไฟล์วิดีโอ แก้ได้ในขั้นเลือกไฟล์ของ Review Mode และเปลี่ยนชื่อได้ทุกเมื่อจากชื่องานบนแถบด้านบนของหน้าตัดต่อ กดโลโก้หรือเมนู **จัดการ > รายการงาน** เพื่อกลับมาหน้านี้ ปุ่ม **งานใหม่** พาไปเลือกโหมด **สร้างบทบรรยาย** (ขั้นตอนด้านล่าง) หรือ **แก้ไข SRT ที่มีอยู่** ซึ่งเลือกวิดีโอ MP4 จากเครื่องหรือวางลิงก์ `.mp4` กับไฟล์ SRT จากเครื่อง แล้วกดประมวลผล ลิงก์ต้องเปิดจากเบราว์เซอร์ได้ (CORS) และรองรับ HTTP Range ระบบเล่นวิดีโอจากลิงก์โดยตรงและดึงข้อมูลไปสแกนเสียงทีละช่วงโดยไม่เก็บลงเครื่อง เมื่อโหลดหน้าใหม่ งานกลับมาโดยไม่ต้องสแกนเสียงซ้ำ ถ้าวิดีโอมาจากลิงก์จะเล่นต่อได้ทันที ถ้ามาจากไฟล์บนเครื่องต้องเลือกไฟล์เดิม (ชื่อและขนาดตรงกัน) อีกครั้งก่อนเล่น ระหว่างนั้นยังแก้บทและส่งออกได้ ระบบสแกนเสียงบนเครื่อง เปิดบทใน SRT ในหน้าตัดต่อเดิม และส่งออกเป็น `<ชื่อไฟล์>_edited.srt` โหมดนี้ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์และไม่ใช้ Gemini รับวิดีโอทุกความละเอียดที่มีเสียง AAC ยาวไม่เกิน 60 นาที
 
-1. **เลือกวิดีโอ** ลากไฟล์ MP4 มาวางหรือกดเลือกไฟล์ เมื่อไฟล์ผ่านการตรวจสเปก ระบบถอดรหัสเสียงและประมวลผล VAD บนเครื่อง สถานะการทำงานแสดงโดยไม่ต้องเปิดรายละเอียด
-2. **สร้างบทบรรยายภาพ** เมื่อ VAD เสร็จและพบช่วงว่าง กดสร้างบทบรรยายภาพ ระบบอัปโหลดวิดีโอส่วนละ 8 MiB ไปยังเซิร์ฟเวอร์ แล้ววิเคราะห์ทีละชุด 240 วินาที กดสถานะบน header เพื่อดูคิวและเลือกชุดที่ต้องการตรวจ
+1. **ตรวจเสียงและเตรียมงาน** ลากไฟล์ MP4 มาวางหรือกดเลือกไฟล์ เมื่อไฟล์ผ่านเกณฑ์ ระบบตรวจเสียงบนเครื่อง แล้วส่งวิดีโอส่วนละ 8 MiB ไปเก็บบนเซิร์ฟเวอร์เพื่อบันทึกงาน ถ้าบันทึกไม่สำเร็จ กด **ลองบันทึกอีกครั้ง** เพื่อใช้ผลตรวจเสียงเดิม
+2. **สร้างบทบรรยายภาพ** เมื่อบันทึกงานสำเร็จและพบช่วงว่าง กด **สร้างบทบรรยายภาพ** ในหน้าตัดต่อเพื่อเริ่มวิเคราะห์ด้วย Gemini ทีละชุด 240 วินาที กดสถานะบนแถบด้านบนเพื่อดูคิวและเลือกชุดที่ต้องการตรวจ
 3. **ตรวจและส่งออก** เลือกช่วงจากไทม์ไลน์หรือรายการบทบรรยาย แก้ข้อความ ปรับเวลา แล้วส่งออก SRT
 
 - เวลาเริ่มและเวลาจบต้องอยู่ในช่วงว่างต้นทาง ไม่ทับเสียงพูด และมีความยาวอย่างน้อย 500 ms
@@ -324,11 +324,18 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/create-mode.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode-url.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-restore.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check close
+```
+
+`create-mode.js` ต้องมีวิดีโอ MP4 480p ที่มีแทร็ก AAC และมีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที สร้างได้ด้วย FFmpeg:
+
+```bash
+ffmpeg -f lavfi -i color=c=navy:s=854x480:r=25 -f lavfi -i anullsrc=channel_layout=mono:sample_rate=44100 -t 8 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/ad-generate-480p.mp4
 ```
 
 `review-mode.js` ต้องมีไฟล์ตัวอย่าง (ไม่ใส่ `+faststart` โดยตั้งใจ เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt` สร้างได้ด้วย FFmpeg:

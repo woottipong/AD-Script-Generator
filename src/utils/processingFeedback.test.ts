@@ -91,3 +91,9 @@ test('waiting for edits to save is shown as saving, not as server preparation', 
   assert.equal(feedback.title, 'กำลังบันทึกบทบรรยาย');
   assert.equal(feedback.percent, undefined);
 });
+
+test('waiting for the server to save a Job has its own indeterminate state', () => {
+  const feedback = getProcessingFeedback('DETECTING', { phase: 'saving-job', stage: '', percent: 0 }, [], null);
+  assert.equal(feedback?.title, 'กำลังบันทึกงาน');
+  assert.equal(feedback?.percent, undefined);
+});

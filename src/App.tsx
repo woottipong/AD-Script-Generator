@@ -32,6 +32,7 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { JobList } from './components/JobList';
+import type { GenerateDraft, IntakeControls, ReviewDraft } from './components/IntakeShell';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
@@ -97,6 +98,7 @@ async function uploadVideoInChunks(
   onInitialized: (uploadId: string) => void,
   onProgress: (percent: number, loadedBytes: number, totalBytes: number) => void
 ): Promise<string> {
+  if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
   const CHUNK_SIZE = 8 * 1024 * 1024;
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
@@ -169,6 +171,8 @@ async function uploadVideoInChunks(
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
 type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoSource: VideoSource; vadInput: ByteSourceInput; metadata: VideoMetadata };
 type GenerateIntake = { file: File; metadata: VideoMetadata };
+const EMPTY_GENERATE_DRAFT: GenerateDraft = { file: null, title: null };
+const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', title: null };
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
@@ -186,6 +190,9 @@ export default function App() {
   const titleTypedRef = useRef(false);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
   const [checkingFileName, setCheckingFileName] = useState<string | null>(null);
+  const [generateDraft, setGenerateDraft] = useState(EMPTY_GENERATE_DRAFT);
+  const [reviewDraft, setReviewDraft] = useState(EMPTY_REVIEW_DRAFT);
+  const [generateSaveFailure, setGenerateSaveFailure] = useState<{ input: GenerateIntake; output: VADOutput } | null>(null);
 
   const [vadOutput, setVadOutput] = useState<VADOutput | null>(null);
   const [vadProgress, setVadProgress] = useState<ProcessingProgress | null>(null);
@@ -205,6 +212,9 @@ export default function App() {
   /** `/` is the Job List, `/new` starts a Job, `/jobs/:jobId` opens one. */
   const [path, setPath] = useState(() => window.location.pathname);
   const [jobLoad, setJobLoad] = useState<'loading' | 'missing' | 'failed' | null>(() => (jobIdFromPath(window.location.pathname) ? 'loading' : null));
+  const intakeModeButton = useRef<HTMLButtonElement | null>(null);
+  const restoreIntakeModeFocus = useRef(false);
+  const intakeCheckAbort = useRef<AbortController | null>(null);
   const reviewImportRef = useRef<ReviewImport | null>(null);
   const generateIntakeRef = useRef<GenerateIntake | null>(null);
   const relinkInputRef = useRef<HTMLInputElement | null>(null);
@@ -262,6 +272,8 @@ export default function App() {
 
   const createGenerateJob = useCallback(async (generate: GenerateIntake, output: VADOutput) => {
     const token = pollAbortRef.current;
+    if (token.aborted) return;
+    setGenerateSaveFailure(null);
     let uploadId: string | undefined;
     let createdJob = false;
     try {
@@ -291,6 +303,7 @@ export default function App() {
         return;
       }
 
+      setVadProgress({ stage: 'กำลังบันทึกงาน', phase: 'saving-job', percent: 0 });
       const initRes = await fetch('/api/jobs/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,8 +350,9 @@ export default function App() {
       setSpots([]);
       setBatches([]);
       setSelectedSpotId(null);
+      setGenerateSaveFailure({ input: generate, output });
       setStatus('FAILED');
-      setErrorMessage(`บันทึกวิดีโอลงเซิร์ฟเวอร์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
+      setErrorMessage(`บันทึกงานบนเซิร์ฟเวอร์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [navigate]);
 
@@ -571,6 +585,7 @@ export default function App() {
     return () => {
       window.removeEventListener('hashchange', clearLegacyHash);
       mounted = false;
+      intakeCheckAbort.current?.abort();
       pollAbortRef.current.aborted = true;
       if (workerRef.current) {
         workerRef.current.terminate();
@@ -585,6 +600,9 @@ export default function App() {
 
   const leaveCurrentJob = useCallback(() => {
     pollAbortRef.current.aborted = true;
+    intakeCheckAbort.current?.abort();
+    intakeCheckAbort.current = null;
+    setGenerateSaveFailure(null);
     saveQueue.invalidate();
     // Back navigation has already moved the URL; only leave the Job's URL when it still shows this Job.
     if (jobId && jobIdFromPath(window.location.pathname) === jobId) navigate('/new');
@@ -625,6 +643,7 @@ export default function App() {
   };
 
   const handleProcessReview = useCallback(async (video: File | string, srtFile: File, title: string) => {
+    if (!browserCompat?.supported || checkingFileName) return;
     const vadInput: ByteSourceInput = typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'file', file: video };
     reviewImportRef.current = null;
     generateIntakeRef.current = null;
@@ -632,6 +651,8 @@ export default function App() {
     leaveCurrentJob();
     const token = { aborted: false };
     pollAbortRef.current = token;
+    const controller = new AbortController();
+    intakeCheckAbort.current = controller;
     if (workerRef.current) {
       workerRef.current.terminate();
       workerRef.current = null;
@@ -644,9 +665,10 @@ export default function App() {
 
     let source: ByteSource;
     try {
-      source = await openByteSource(vadInput);
+      source = await openByteSource(vadInput, (input, init) => fetch(input, { ...init, signal: controller.signal }));
     } catch (err) {
       if (token.aborted) return;
+      intakeCheckAbort.current = null;
       setCheckingFileName(null);
       setStatus('FAILED');
       setErrorMessage(err instanceof Error ? err.message : String(err));
@@ -658,6 +680,7 @@ export default function App() {
       maxDurationSeconds: REVIEW_MAX_DURATION_MS / 1000,
     });
     if (token.aborted) return;
+    intakeCheckAbort.current = null;
     setValidationIssues(validation.issues);
     if (!validation.valid || !validation.metadata) {
       setCheckingFileName(null);
@@ -702,11 +725,12 @@ export default function App() {
     }
     setStatus('VIDEO_READY');
     startVad(vadInput);
-  }, [leaveCurrentJob, clearVideo, startVad]);
+  }, [browserCompat, checkingFileName, leaveCurrentJob, clearVideo, startVad]);
 
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
     async (file: File, customTitle?: string) => {
+      if (!browserCompat?.supported || checkingFileName) return;
       if (videoMetadata && !(await confirm({ title: 'เปลี่ยนวิดีโอและออกจากงานปัจจุบัน?', description: 'กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน', confirmLabel: 'เปลี่ยนวิดีโอ' }))) return;
       reviewImportRef.current = null;
       leaveCurrentJob();
@@ -753,7 +777,7 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [videoMetadata, startVad, leaveCurrentJob, clearVideo, confirm]
+    [browserCompat, checkingFileName, videoMetadata, startVad, leaveCurrentJob, clearVideo, confirm]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
@@ -761,11 +785,21 @@ export default function App() {
     const input: ByteSourceInput | undefined = videoFile ? { kind: 'file', file: videoFile } : reviewImportRef.current?.vadInput;
     if (!input || !videoMetadata) return;
     if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !(await confirm({ title: 'สแกนเสียงใหม่?', description: 'บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สแกนเสียงใหม่', destructive: true }))) return;
-    if (videoFile) {
+    if (mode !== 'review' && videoFile) {
       generateIntakeRef.current = { file: videoFile, metadata: videoMetadata };
     }
     leaveCurrentJob();
+    pollAbortRef.current = { aborted: false };
     startVad(input);
+  };
+
+  const retryGenerateSave = () => {
+    if (!generateSaveFailure) return;
+    pollAbortRef.current.aborted = true;
+    pollAbortRef.current = { aborted: false };
+    setErrorMessage(null);
+    setStatus('DETECTING');
+    void createGenerateJob(generateSaveFailure.input, generateSaveFailure.output);
   };
 
   const resumeExistingServerJob = async (existingJobId: string) => {
@@ -1027,7 +1061,11 @@ export default function App() {
     setVadProgress(null);
     setErrorMessage(null);
     setStatus('IDLE');
+    setCheckingFileName(null);
     setMode(null);
+    setGenerateDraft(EMPTY_GENERATE_DRAFT);
+    setReviewDraft(EMPTY_REVIEW_DRAFT);
+    restoreIntakeModeFocus.current = false;
     setSrtFileName(null);
     setJobTitle('');
     titleTypedRef.current = false;
@@ -1124,6 +1162,41 @@ export default function App() {
     focusOpenedJob.current = null;
     workspaceRef.current?.focus();
   }, [path]);
+  const clearIntakeFeedback = () => {
+    setErrorMessage(null);
+    setValidationIssues([]);
+  };
+  const attachIntakeModeButton = useCallback((element: HTMLButtonElement | null) => {
+    intakeModeButton.current = element;
+    if (element && restoreIntakeModeFocus.current) {
+      restoreIntakeModeFocus.current = false;
+      element.focus();
+    }
+  }, []);
+  const currentMode = mode ?? 'generate';
+  const intake: IntakeControls = {
+    canProcess: browserCompat?.supported === true,
+    onInputChange: clearIntakeFeedback,
+    onCancelCheck: () => {
+      pollAbortRef.current.aborted = true;
+      intakeCheckAbort.current?.abort();
+      intakeCheckAbort.current = null;
+      setCheckingFileName(null);
+      setStatus('IDLE');
+      intakeModeButton.current?.focus();
+    },
+    modeSwitch: {
+      mode: currentMode,
+      checking: Boolean(checkingFileName),
+      onModeChange: (next) => {
+        if (checkingFileName || currentMode === next) return;
+        restoreIntakeModeFocus.current = true;
+        clearIntakeFeedback();
+        setMode(next);
+      },
+      activeButtonRef: attachIntakeModeButton,
+    },
+  };
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
 
   return (
@@ -1147,7 +1220,7 @@ export default function App() {
 
       {/* Browser Compatibility Blocking Banner */}
       {browserCompat && !browserCompat.supported && (
-        <div className="px-4 py-3 border-b border-error-border bg-error-surface text-error-foreground flex items-center gap-3 shrink-0">
+        <div role="alert" className="px-4 py-3 border-b border-error-border bg-error-surface text-error-foreground flex items-center gap-3 shrink-0">
           <AlertOctagon className="w-4 h-4 text-destructive shrink-0" />
           <div className="text-xs">
             <strong className="font-bold">
@@ -1235,12 +1308,16 @@ export default function App() {
           errorMessage={errorMessage}
           validationIssues={validationIssues}
           onProcess={handleProcessReview}
-          onModeChange={(next) => { setMode(next); setErrorMessage(null); setValidationIssues([]); }}
+          intake={intake}
+          draft={reviewDraft}
+          setDraft={setReviewDraft}
           onBack={() => void openJobList()}
         />
       ) : <UploadAndVadPanel
-        mode={mode ?? 'generate'}
-        onModeChange={(next) => { setMode(next); setErrorMessage(null); setValidationIssues([]); }}
+        mode={currentMode}
+        intake={intake}
+        draft={generateDraft}
+        setDraft={setGenerateDraft}
         headerActionsElement={headerActionsElement}
         checkingFileName={checkingFileName}
         processingFeedback={processingFeedback}
@@ -1302,6 +1379,8 @@ export default function App() {
             isAnalyzing={status === 'ANALYZING'}
             errorMessage={errorMessage}
             onRetryVad={handleRunVad}
+            onRetryJobSave={generateSaveFailure ? retryGenerateSave : undefined}
+            preparationTitle={processingFeedback?.title}
             mode={mode ?? 'generate'}
             emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}
             speechSegments={vadOutput?.speech_segments || []}

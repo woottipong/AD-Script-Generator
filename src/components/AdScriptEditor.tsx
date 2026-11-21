@@ -46,6 +46,8 @@ interface AdScriptEditorProps {
   emptyState: 'preparing' | 'no-gaps' | 'failed';
   errorMessage: string | null;
   onRetryVad: () => void;
+  onRetryJobSave?: () => void;
+  preparationTitle?: string;
   mode: JobMode;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
@@ -591,6 +593,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   emptyState,
   errorMessage,
   onRetryVad,
+  onRetryJobSave,
+  preparationTitle,
   mode,
   speechSegments,
   videoDurationMs,
@@ -858,7 +862,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <div role="status" className="divide-y divide-border border-b border-border bg-card">
               <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-600" aria-hidden="true" />
-                <span>กำลังตรวจช่วงเสียงพูดเพื่อสร้างรายการบทบรรยาย…</span>
+                <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
               </div>
               {[74, 58, 82, 52].map((secondLineWidth, idx) => (
                 <div
@@ -886,12 +890,20 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
               {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-destructive mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-muted-foreground/60 mb-2" aria-hidden="true" />}
               <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
-                {emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
+                {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
               </p>
               <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
-                {emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+                {emptyState === 'failed'
+                  ? (onRetryJobSave
+                    ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
+                    : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
+                  : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
               </p>
-              {emptyState === 'failed' && <Button onClick={onRetryVad} className="mt-5">ลองตรวจเสียงอีกครั้ง</Button>}
+              {emptyState === 'failed' && (
+                <Button onClick={onRetryJobSave ?? onRetryVad} className="mt-5">
+                  {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
+                </Button>
+              )}
               {emptyState === 'failed' && errorMessage && (
                 <details className="mt-4 w-full max-w-sm text-left text-sm text-muted-foreground">
                   <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-foreground">รายละเอียดข้อผิดพลาด</summary>

@@ -125,7 +125,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   }, [waveformPeaks]);
   const waveformIntervalMs = waveform?.sampleIntervalMs || DEFAULT_WAVEFORM_SAMPLE_INTERVAL_MS;
   const isDetecting = Boolean(detectProgress);
-  const detectPercent = detectProgress ? getProcessingFeedback('DETECTING', detectProgress, [], null)?.percent : undefined;
+  const detectFeedback = detectProgress ? getProcessingFeedback('DETECTING', detectProgress, [], null) : null;
+  const detectPercent = detectFeedback?.percent;
   const showWaveformTrack = waveformPeaks.length > 0 || isDetecting;
 
   useEffect(() => {
@@ -686,7 +687,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     >
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-xs font-medium text-brand-900 backdrop-blur-xs tabular-nums">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" aria-hidden="true" />
-                        <span>{detectProgress?.loadedBytes !== undefined ? 'กำลังบันทึกวิดีโอ' : 'กำลังสแกนเสียง'}</span>
+                        <span>{detectFeedback?.title}</span>
                         {detectPercent !== undefined && <span className="font-semibold text-brand-700">{detectPercent}%</span>}
                       </span>
                     </div>

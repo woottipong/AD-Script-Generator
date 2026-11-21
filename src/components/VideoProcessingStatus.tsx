@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Progress } from '@/components/ui/progress';
 import { formatCompactTime } from '../utils/formatters';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
+import { focusIntakeFeedback } from './IntakeShell';
 
-export function VideoProcessingStatus({ feedback }: { feedback: ProcessingFeedback }) {
+export function VideoProcessingStatus({ feedback, onCancel }: { feedback: ProcessingFeedback; onCancel: () => void }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
@@ -17,7 +19,7 @@ export function VideoProcessingStatus({ feedback }: { feedback: ProcessingFeedba
   const percent = feedback.percent !== undefined && feedback.percent > 0 ? Math.min(100, feedback.percent) : null;
 
   return (
-    <div className="w-full max-w-lg mx-auto rounded-xl border border-brand-200 bg-brand-50 p-4 sm:p-6 text-left">
+    <div ref={focusIntakeFeedback} tabIndex={-1} className="w-full max-w-lg mx-auto rounded-xl border border-brand-200 bg-brand-50 p-4 sm:p-6 text-left">
       <div className="flex items-center gap-3">
         <Spinner aria-hidden="true" className="size-6 text-primary" />
         <h2 className="min-w-0 text-lg sm:text-xl font-semibold leading-snug text-foreground">
@@ -38,6 +40,9 @@ export function VideoProcessingStatus({ feedback }: { feedback: ProcessingFeedba
       <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-900">
         <span>เวลาที่ใช้ในช่วงนี้</span><span className="tabular-nums">{formatCompactTime(elapsedMs)}</span>
       </p>
+      <Button variant="outline" onClick={onCancel} className="mt-4 h-auto min-h-9 max-w-full whitespace-normal py-2 pointer-coarse:min-h-11">
+        ยกเลิกการตรวจไฟล์
+      </Button>
     </div>
   );
 }

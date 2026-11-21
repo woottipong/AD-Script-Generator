@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { IntakeDropzone, IntakeFooter, IntakeShell } from './IntakeShell';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
+import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -76,7 +77,9 @@ const batchColors = {
 
 interface UploadAndVadPanelProps {
   mode: JobMode;
-  onModeChange: (mode: JobMode) => void;
+  intake: IntakeControls;
+  draft: GenerateDraft;
+  setDraft: React.Dispatch<React.SetStateAction<GenerateDraft>>;
   headerActionsElement: HTMLDivElement | null;
   checkingFileName: string | null;
   processingFeedback: ProcessingFeedback | null;
@@ -102,7 +105,9 @@ interface UploadAndVadPanelProps {
 
 export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   mode,
-  onModeChange,
+  intake,
+  draft,
+  setDraft,
   headerActionsElement,
   checkingFileName,
   processingFeedback,
@@ -142,20 +147,14 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     }
   };
   const [isDragging, setIsDragging] = useState(false);
-  const [stagedFile, setStagedFile] = useState<File | null>(null);
-  const [typedTitle, setTypedTitle] = useState<string | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const { file: stagedFile, title: typedTitle } = draft;
   const resolvedTitle = typedTitle ?? (stagedFile ? defaultJobTitle(stagedFile.name) : '');
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [isWideHeader, setIsWideHeader] = useState(false);
   const [activityElapsedMs, setActivityElapsedMs] = useState(0);
 
   const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
-  useEffect(() => {
-    if (hasLoadedProject) {
-      setStagedFile(null);
-      setTypedTitle(null);
-    }
-  }, [hasLoadedProject]);
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
@@ -184,27 +183,29 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     return () => query.removeEventListener('change', updateLayout);
   }, [hasLoadedProject]);
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (isBusy) return;
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) {
-      setStagedFile(droppedFile);
-    }
+  const stageVideo = (files: FileList | null) => {
+    const selection = selectIntakeFile(files, isMp4File, 'กรุณาเลือกไฟล์วิดีโอ MP4');
+    if (!selection) return;
+    intake.onInputChange();
+    setInputError(selection.kind === 'invalid' ? selection.message : null);
+    if (selection.kind === 'file') setDraft((current) => ({ ...current, file: selection.file }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      if (hasLoadedProject) {
-        onSelectFile(selected);
-      } else {
-        setStagedFile(selected);
-      }
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+    if (!isBusy) stageVideo(event.dataTransfer.files);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (hasLoadedProject) {
+      if (files?.[0]) onSelectFile(files[0]);
+    } else {
+      stageVideo(files);
     }
-    e.target.value = '';
+    event.target.value = '';
   };
 
   const speechDurationMs = vadOutput
@@ -263,12 +264,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   // If no video is loaded yet, show a clean studio intake workspace bar
   if (!hasLoadedProject) {
-    const errorAlert = (errorMessage || hasBlockingErrors) ? (
-      <Alert id="upload-feedback" variant="destructive">
+    const errorAlert = (inputError || errorMessage || hasBlockingErrors) ? (
+      <Alert id="upload-feedback" ref={focusIntakeFeedback} tabIndex={-1} variant="destructive">
         <AlertCircle />
-        <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</AlertTitle>
+        <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเลือกวิดีโอได้'}</AlertTitle>
         <AlertDescription>
-          {errorMessage ? <p>{errorMessage}</p> : (
+          {inputError || errorMessage ? <p>{inputError || errorMessage}</p> : (
             <ul className="list-disc pl-5">
               {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
                 <li key={`${issue.field}-${index}`}>{issue.message}</li>
@@ -284,7 +285,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <IntakeShell
         title="เริ่มงานบทบรรยายภาพ"
         description="สร้างบทบรรยายจากวิดีโอ หรือตรวจแก้ไฟล์ SRT ที่มีอยู่"
-        modeSwitch={{ mode, onModeChange }}
+        modeSwitch={intake.modeSwitch}
       >
         <input
           ref={fileInputRef}
@@ -299,7 +300,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         {checkingFileName ? (
           <div className="w-full mx-auto">
             <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-foreground">{checkingFileName}</p>
-            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }} />
+            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }} onCancel={intake.onCancelCheck} />
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
         ) : (
@@ -327,7 +328,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 onDrop={handleDrop}
                 onPick={() => fileInputRef.current?.click()}
                 onClear={() => {
-                  setStagedFile(null);
+                  setDraft((current) => ({ ...current, file: null }));
+                  setInputError(null);
+                  intake.onInputChange();
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 icon={<FileVideo className="size-5" />}
@@ -335,7 +338,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
                 pickLabel="เลือกวิดีโอ"
                 clearLabel="ล้างไฟล์วิดีโอ"
-                pickDescribedBy={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'}
+                pickDescribedBy={errorAlert ? 'upload-requirements upload-feedback' : 'upload-requirements'}
               />
             </Field>
 
@@ -349,16 +352,19 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 type="text"
                 value={resolvedTitle}
                 maxLength={120}
-                onChange={(e) => setTypedTitle(e.target.value)}
+                onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
                 placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
               />
             </Field>
 
             {errorAlert}
+            <p className="text-sm text-muted-foreground">
+              ระบบจะตรวจเสียงบนเครื่องแล้วบันทึกวิดีโอไว้บนเซิร์ฟเวอร์ คุณเลือกเริ่มสร้างบทด้วย AI ได้ในหน้าตัดต่อ
+            </p>
 
             <IntakeFooter
-              actionLabel="เริ่มสร้างบทบรรยาย"
-              disabled={!stagedFile}
+              actionLabel="ตรวจเสียงและเตรียมงาน"
+              disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
             />
