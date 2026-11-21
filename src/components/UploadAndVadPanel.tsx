@@ -357,7 +357,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             {errorAlert}
 
             <IntakeFooter
-              actionLabel="ตรวจสอบและสแกนเสียง"
+              actionLabel="เริ่มสร้างบทบรรยาย"
               disabled={!stagedFile}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}

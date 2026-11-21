@@ -35,6 +35,23 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     assert.equal((await chunk(uploadId, 0)).status, 200);
     assert.equal((await json('/jobs/init', 'POST', { uploadId, video_metadata: '{' })).status, 400);
     assert.equal((await json('/jobs/init', 'POST', { uploadId, video_metadata: {} })).status, 400);
+    assert.equal((await chunk(uploadId, 3)).status, 200);
+    const savedVadJob = await json('/jobs/init', 'POST', {
+      uploadId,
+      autoStart: false,
+      title: 'งานที่สแกนเสร็จแล้ว',
+      video_metadata: { fileName: 'a.mp4', fileSize: 6, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
+      vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
+      vad_output: { duration_ms: 10000, speech_segments: [], candidate_spots: [{ spot_id: 'spot_1', start_ms: 1000, end_ms: 5000, duration_ms: 4000 }] },
+    });
+    assert.equal(savedVadJob.status, 200);
+    const savedVadData = await savedVadJob.json() as { job: PersistedJobState; isRunning: boolean };
+    assert.equal(savedVadData.isRunning, false);
+    assert.equal(savedVadData.job.status, 'VAD_READY');
+    assert.equal(savedVadData.job.title, 'งานที่สแกนเสร็จแล้ว');
+    assert.equal((await json(`/jobs/${uploadId}/spots`, 'PATCH', {
+      spots: [{ ...savedVadData.job.spots[0], decision: 'generate', text: 'เขียนเองก่อนรัน AI', is_edited: true }],
+    })).status, 200, 'a VAD_READY job saved after upload can be edited immediately');
     const spot = { spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'text', is_edited: false };
     const jobDir = path.join(dir, '.data/jobs/job_fixture');
     const seed = createJobStore(path.join(dir, '.data'));

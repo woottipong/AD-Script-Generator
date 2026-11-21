@@ -761,7 +761,9 @@ async function startServer() {
       next();
     }
   }, async (req: Request, res: Response) => {
+    const autoStart = req.body?.autoStart !== false && req.body?.autoStart !== 'false';
     if (
+      autoStart &&
       activeProcessingLock
     ) {
       res.status(409).json({
@@ -859,6 +861,7 @@ async function startServer() {
       }));
 
       const now = new Date().toISOString();
+      const willAnalyzeNow = autoStart && batches.length > 0;
       const jobState: PersistedJobState = {
         schema_version: JOB_SCHEMA_VERSION,
         job_id: jobId,
@@ -867,7 +870,7 @@ async function startServer() {
         video_source: { kind: 'server_copy', local_file_path: localFilePath },
         created_at: now,
         updated_at: now,
-        status: batches.length === 0 ? 'READY' : 'ANALYZING',
+        status: batches.length === 0 ? 'READY' : willAnalyzeNow ? 'ANALYZING' : 'VAD_READY',
         video_metadata: videoMetadata,
         vad_config: vadConfig,
         ad_settings: adSettings,
@@ -875,14 +878,14 @@ async function startServer() {
         batches,
         spots: initialSpots,
         progress_stage:
-          batches.length === 0
-            ? undefined
-            : 'กำลังเตรียมส่งไฟล์วิดีโอไปยัง Gemini Files API...',
-        progress_percent: batches.length === 0 ? 100 : 8,
+          willAnalyzeNow
+            ? 'กำลังเตรียมส่งไฟล์วิดีโอไปยัง Gemini Files API...'
+            : undefined,
+        progress_percent: batches.length === 0 ? 100 : willAnalyzeNow ? 8 : undefined,
       };
 
       // Validate API key presence immediately so missing key fails fast before background spawn
-      if (batches.length > 0) {
+      if (willAnalyzeNow) {
         getGeminiClient({ fastFail: true });
       }
 
@@ -890,7 +893,7 @@ async function startServer() {
       activeUploads.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
-      if (batches.length === 0) {
+      if (!willAnalyzeNow) {
         res.json({ job: jobState, isRunning: false });
         return;
       }

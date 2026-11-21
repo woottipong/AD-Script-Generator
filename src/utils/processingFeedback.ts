@@ -25,6 +25,14 @@ export function getProcessingFeedback(
   errorMessage: string | null,
 ): ProcessingFeedback | null {
   if (status === 'DETECTING') {
+    if (progress?.loadedBytes !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0) {
+      return {
+        title: 'กำลังส่งวิดีโอ',
+        description: 'ตรวจเสียงครบแล้ว กำลังบันทึกวิดีโอและสร้างงานบนเซิร์ฟเวอร์',
+        detail: `ส่งแล้ว ${formatFileSize(progress.loadedBytes)} จาก ${formatFileSize(progress.totalBytes)}`,
+        percent: Math.min(100, Math.round(progress.loadedBytes / progress.totalBytes * 100)),
+      };
+    }
     if (progress?.phase === 'finalizing-detection') {
       return { title: 'กำลังจัดช่วงสำหรับบรรยาย', description: 'ตรวจเสียงครบแล้ว กำลังจัดรายการช่วงว่างให้คุณตรวจและสร้างบทบรรยาย' };
     }

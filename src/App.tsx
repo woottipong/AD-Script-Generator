@@ -67,8 +67,92 @@ function discardCreatedJob(jobId: string): void {
     .catch((err) => console.error(`Could not discard cancelled job ${jobId}:`, err));
 }
 
+/** An unfinished upload whose VAD or video transfer failed or was cancelled must not remain in storage. */
+function discardUnfinishedUpload(uploadId: string): void {
+  void fetch(`/api/upload/${encodeURIComponent(uploadId)}/abandon`, { method: 'POST', keepalive: true })
+    .then(() => fetch(`/api/jobs/${encodeURIComponent(uploadId)}/files`, { method: 'DELETE', keepalive: true }))
+    .catch(() => {});
+}
+
+// Upload large MP4 videos in 8MB chunks to stay well below Cloud Run's 32MB request body limit
+async function uploadVideoInChunks(
+  file: File,
+  token: { aborted: boolean },
+  onInitialized: (uploadId: string) => void,
+  onProgress: (percent: number, loadedBytes: number, totalBytes: number) => void
+): Promise<string> {
+  const CHUNK_SIZE = 8 * 1024 * 1024;
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+  const initRes = await fetch('/api/upload/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileName: file.name,
+      fileSize: file.size,
+      totalChunks,
+    }),
+  });
+  const initData = await parseApiResponse<{ uploadId?: string; error?: string }>(initRes);
+  if (!initRes.ok || !initData?.uploadId) {
+    throw new Error(initData?.error || 'ไม่สามารถเริ่มต้นเซสชันอัปโหลดไฟล์วิดีโอได้');
+  }
+  const uploadId = initData.uploadId;
+  onInitialized(uploadId);
+  if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, file.size);
+    const chunkSlice = file.slice(start, end);
+
+    let attempts = 0;
+    let success = false;
+    let lastErr: unknown = null;
+
+    while (attempts < 3 && !success) {
+      if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
+      try {
+        const chunkRes = await fetch(
+          `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&offset=${start}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: chunkSlice,
+          }
+        );
+        const chunkData = await parseApiResponse<{ ok?: boolean; error?: string }>(chunkRes);
+        if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
+        if (!chunkRes.ok || !chunkData?.ok) {
+          throw new Error(chunkData?.error || `อัปโหลดส่วนที่ ${i + 1}/${totalChunks} ล้มเหลว`);
+        }
+        success = true;
+      } catch (err) {
+        if (token.aborted) throw err;
+        lastErr = err;
+        attempts++;
+        if (attempts < 3) {
+          await new Promise((r) => setTimeout(r, 1200 * attempts));
+        }
+      }
+    }
+
+    if (!success) {
+      throw lastErr || new Error(`ไม่สามารถอัปโหลดไฟล์ส่วนที่ ${i + 1}/${totalChunks} ไปยังเซิร์ฟเวอร์ได้`);
+    }
+
+    const loaded = end;
+    if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
+    const percent = Math.round((loaded / file.size) * 100);
+    onProgress(percent, loaded, file.size);
+  }
+
+  return uploadId;
+}
+
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
 type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoSource: VideoSource; vadInput: ByteSourceInput; metadata: VideoMetadata };
+type GenerateIntake = { file: File; metadata: VideoMetadata };
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
@@ -106,6 +190,7 @@ export default function App() {
   const [path, setPath] = useState(() => window.location.pathname);
   const [jobLoad, setJobLoad] = useState<'loading' | 'missing' | 'failed' | null>(() => (jobIdFromPath(window.location.pathname) ? 'loading' : null));
   const reviewImportRef = useRef<ReviewImport | null>(null);
+  const generateIntakeRef = useRef<GenerateIntake | null>(null);
   const relinkInputRef = useRef<HTMLInputElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -158,6 +243,88 @@ export default function App() {
     }
   }, [navigate]);
 
+  const createGenerateJob = useCallback(async (generate: GenerateIntake, output: VADOutput) => {
+    const token = pollAbortRef.current;
+    let uploadId: string | undefined;
+    let createdJob = false;
+    try {
+      const effectiveVadConfig = output.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG;
+      setVadProgress({
+        stage: 'กำลังบันทึกวิดีโอลงเซิร์ฟเวอร์...',
+        percent: 0,
+        loadedBytes: 0,
+        totalBytes: generate.file.size,
+      });
+
+      uploadId = await uploadVideoInChunks(
+        generate.file,
+        token,
+        (id) => { uploadId = id; },
+        (percent, loadedBytes, totalBytes) => {
+          setVadProgress({
+            stage: 'กำลังบันทึกวิดีโอลงเซิร์ฟเวอร์...',
+            percent,
+            loadedBytes,
+            totalBytes,
+          });
+        }
+      );
+      if (token.aborted) {
+        if (uploadId) discardUnfinishedUpload(uploadId);
+        return;
+      }
+
+      const initRes = await fetch('/api/jobs/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadId,
+          autoStart: false,
+          video_metadata: generate.metadata,
+          vad_config: effectiveVadConfig,
+          ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
+          vad_output: output,
+          title: jobTitleRef.current,
+        }),
+      });
+      const initData = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(initRes);
+      if (token.aborted) {
+        if (initData?.job?.job_id) discardCreatedJob(initData.job.job_id);
+        else if (uploadId) discardUnfinishedUpload(uploadId);
+        return;
+      }
+      if (!initRes.ok || !initData?.job) {
+        throw new Error(initData?.error || 'ไม่สามารถบันทึกวิดีโอและสร้างงานบนเซิร์ฟเวอร์ได้');
+      }
+
+      createdJob = true;
+      const savedJob = initData.job;
+      setVadProgress(null);
+      setVadOutput(output);
+      setJobId(savedJob.job_id);
+      setJobTitle(savedJob.title);
+      titleTypedRef.current = false;
+      setSpots(savedJob.spots);
+      setBatches(savedJob.batches);
+      setSelectedSpotId(savedJob.spots[0]?.spot_id || null);
+      setStatus(savedJob.status);
+      setErrorMessage(null);
+      navigate(jobPath(savedJob.job_id));
+    } catch (err) {
+      if (!createdJob && uploadId) {
+        discardUnfinishedUpload(uploadId);
+      }
+      if (token.aborted) return;
+      setVadProgress(null);
+      setVadOutput(null);
+      setSpots([]);
+      setBatches([]);
+      setSelectedSpotId(null);
+      setStatus('FAILED');
+      setErrorMessage(`บันทึกวิดีโอลงเซิร์ฟเวอร์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [navigate]);
+
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
     if (workerRef.current) {
@@ -180,12 +347,12 @@ export default function App() {
         });
       } else if (data.type === 'COMPLETE') {
         const output: VADOutput = data.vadOutput;
-        setVadProgress(null);
-        setVadOutput(output);
 
         const review = reviewImportRef.current;
         if (review) {
           reviewImportRef.current = null;
+          setVadProgress(null);
+          setVadOutput(output);
           setSpots(review.spots);
           setBatches([]);
           setSelectedSpotId(review.spots[0]?.spot_id || null);
@@ -195,6 +362,14 @@ export default function App() {
           return;
         }
 
+        const generate = generateIntakeRef.current;
+        if (generate) {
+          void createGenerateJob(generate, output);
+          return;
+        }
+
+        setVadProgress(null);
+        setVadOutput(output);
         const initialSpots: ADSpot[] = output.candidate_spots.map((cand) => ({
           spot_id: cand.spot_id,
           start_ms: cand.start_ms,
@@ -235,7 +410,7 @@ export default function App() {
 
     workerRef.current = worker;
     return worker;
-  }, [createReviewJob]);
+  }, [createReviewJob, createGenerateJob]);
 
   const startVad = useCallback(
     (source: ByteSourceInput) => {
@@ -435,6 +610,7 @@ export default function App() {
   const handleProcessReview = useCallback(async (video: File | string, srtFile: File, title: string) => {
     const vadInput: ByteSourceInput = typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'file', file: video };
     reviewImportRef.current = null;
+    generateIntakeRef.current = null;
     setImportSkipped([]);
     leaveCurrentJob();
     const token = { aborted: false };
@@ -544,6 +720,7 @@ export default function App() {
       setValidationIssues(validation.issues);
 
       if (validation.valid && validation.metadata) {
+        generateIntakeRef.current = { file, metadata: validation.metadata };
         setVideoFile(file);
         setVideoMetadata(validation.metadata);
         setJobTitle(customTitle?.trim() || (titleTypedRef.current ? jobTitleRef.current : defaultJobTitle(file.name)));
@@ -554,6 +731,7 @@ export default function App() {
         setStatus('VIDEO_READY');
         startVad({ kind: 'file', file });
       } else {
+        generateIntakeRef.current = null;
         setVideoUrl(null);
         setStatus('FAILED');
       }
@@ -566,87 +744,11 @@ export default function App() {
     const input: ByteSourceInput | undefined = videoFile ? { kind: 'file', file: videoFile } : reviewImportRef.current?.vadInput;
     if (!input || !videoMetadata) return;
     if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !(await confirm({ title: 'สแกนเสียงใหม่?', description: 'บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สแกนเสียงใหม่', destructive: true }))) return;
+    if (videoFile) {
+      generateIntakeRef.current = { file: videoFile, metadata: videoMetadata };
+    }
     leaveCurrentJob();
     startVad(input);
-  };
-
-  // Upload large MP4 videos in 8MB chunks to stay well below Cloud Run's 32MB request body limit
-  const uploadVideoInChunks = async (
-    file: File,
-    token: { aborted: boolean },
-    onInitialized: (uploadId: string) => void,
-    onProgress: (percent: number, loadedBytes: number, totalBytes: number) => void
-  ): Promise<string> => {
-    const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB per chunk
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-    const initRes = await fetch('/api/upload/init', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fileName: file.name,
-        fileSize: file.size,
-        totalChunks,
-      }),
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const initData = await parseApiResponse<any>(initRes);
-    if (!initRes.ok || !initData?.uploadId) {
-      throw new Error(initData?.error || 'ไม่สามารถเริ่มต้นเซสชันอัปโหลดไฟล์วิดีโอได้');
-    }
-    const uploadId: string = initData.uploadId;
-    onInitialized(uploadId);
-    if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
-
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunkSlice = file.slice(start, end);
-
-      let attempts = 0;
-      let success = false;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let lastErr: any = null;
-
-      while (attempts < 3 && !success) {
-        if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
-        try {
-          const chunkRes = await fetch(
-            `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&offset=${start}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/octet-stream' },
-              body: chunkSlice,
-            }
-          );
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const chunkData = await parseApiResponse<any>(chunkRes);
-          if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
-          if (!chunkRes.ok || !chunkData?.ok) {
-            throw new Error(chunkData?.error || `อัปโหลดส่วนที่ ${i + 1}/${totalChunks} ล้มเหลว`);
-          }
-          success = true;
-        } catch (err) {
-          if (token.aborted) throw err;
-          lastErr = err;
-          attempts++;
-          if (attempts < 3) {
-            await new Promise((r) => setTimeout(r, 1200 * attempts));
-          }
-        }
-      }
-
-      if (!success) {
-        throw lastErr || new Error(`ไม่สามารถอัปโหลดไฟล์ส่วนที่ ${i + 1}/${totalChunks} ไปยังเซิร์ฟเวอร์ได้`);
-      }
-
-      const loaded = end;
-      if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
-      const percent = Math.round((loaded / file.size) * 100);
-      onProgress(percent, loaded, file.size);
-    }
-
-    return uploadId;
   };
 
   const resumeExistingServerJob = async (existingJobId: string) => {
@@ -739,6 +841,7 @@ export default function App() {
     const token = { aborted: false };
     pollAbortRef.current = token;
     let uploadId: string | undefined;
+    let createdJob = false;
     try {
       setStatus('ANALYZING');
       setErrorMessage(null);
@@ -787,9 +890,11 @@ export default function App() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const initData = await parseApiResponse<any>(initRes);
+      if (initRes.ok && initData?.job) createdJob = true;
       // A Job created here is already analysing on the server, so it stays and shows in the Job List.
       if (token.aborted) return;
       if (!initRes.ok || !initData?.job) {
+        if (uploadId) discardUnfinishedUpload(uploadId);
         setVadProgress(null);
         setStatus('FAILED');
         setErrorMessage(
@@ -814,6 +919,9 @@ export default function App() {
 
       await pollJobUntilComplete(initializedJob.job_id);
     } catch (err) {
+      if (!createdJob && uploadId) {
+        discardUnfinishedUpload(uploadId);
+      }
       if (token.aborted) return;
       setVadProgress(null);
       setStatus('FAILED');
@@ -823,8 +931,10 @@ export default function App() {
         }`
       );
     } finally {
-      if (uploadId) {
+      if (createdJob && uploadId) {
         void fetch(`/api/upload/${encodeURIComponent(uploadId)}/abandon`, { method: 'POST', keepalive: true }).catch(() => {});
+      } else if (token.aborted && !createdJob && uploadId) {
+        discardUnfinishedUpload(uploadId);
       }
     }
   };
@@ -889,6 +999,7 @@ export default function App() {
 
   const resetWorkspace = useCallback(() => {
     reviewImportRef.current = null;
+    generateIntakeRef.current = null;
     setImportSkipped([]);
     leaveCurrentJob();
     if (workerRef.current) {

@@ -325,9 +325,10 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
   useEffect(() => {
     setVideoError(null);
-    setIsVideoLoading(Boolean(videoUrl));
+    const readyState = videoRef.current?.readyState ?? 0;
+    setIsVideoLoading(Boolean(videoUrl) && readyState < 1);
     setIsPlaying(false);
-  }, [videoUrl]);
+  }, [videoUrl, videoRef]);
 
   const playVideo = useCallback(() => {
     videoRef.current?.play().catch((error: unknown) => {
@@ -458,9 +459,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               <video
                 ref={videoRef}
                 src={videoUrl}
+                preload="auto"
                 className="w-full h-full object-contain cursor-pointer"
                 playsInline
-                onLoadStart={() => { setIsVideoLoading(true); setVideoError(null); }}
+                onLoadStart={() => {
+                  if ((videoRef.current?.readyState ?? 0) < 1) setIsVideoLoading(true);
+                  setVideoError(null);
+                }}
+                onLoadedMetadata={() => { setIsVideoLoading(false); setVideoError(null); }}
+                onLoadedData={() => { setIsVideoLoading(false); setVideoError(null); }}
                 onCanPlay={() => { setIsVideoLoading(false); setVideoError(null); }}
                 onError={() => { setVideoError('load'); setIsVideoLoading(false); setIsPlaying(false); }}
                 onClick={togglePlayPause}
@@ -679,7 +686,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     >
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-xs font-medium text-brand-900 backdrop-blur-xs tabular-nums">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" aria-hidden="true" />
-                        <span>กำลังสแกนเสียง</span>
+                        <span>{detectProgress?.loadedBytes !== undefined ? 'กำลังบันทึกวิดีโอ' : 'กำลังสแกนเสียง'}</span>
                         {detectPercent !== undefined && <span className="font-semibold text-brand-700">{detectPercent}%</span>}
                       </span>
                     </div>

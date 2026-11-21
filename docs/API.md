@@ -213,7 +213,7 @@ The route also accepts `multipart/form-data` with one file field named `video` a
 
 | Status | Result |
 |---|---|
-| 200, candidates present | `{ job, isRunning: true }`. Initial job status is `ANALYZING`, progress is 8, and Gemini upload and sequential analysis start in the background |
+| 200, candidates present | `{ job, isRunning: true }`. Initial job status is `ANALYZING`, progress is 8, and Gemini upload and sequential analysis start in the background (or `status: "VAD_READY"` and `isRunning: false` without starting Gemini when `autoStart` is `false`) |
 | 200, no candidates | `{ job, isRunning: false }`. Status is `READY`, progress is 100, and Gemini is not called |
 | 400 | No uploaded file or the chunked upload file is empty |
 | 409 | An active processing lock blocks initialization |
