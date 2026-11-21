@@ -1,4 +1,4 @@
-# AD Script Generator API reference
+# TCC Envisio API reference
 
 This reference describes the routes in [server.ts](../server.ts). Request and response types are defined in [src/types/ad.ts](../src/types/ad.ts). Installation and startup commands are in the [README](../README.md#การรันโปรเจกต์).
 

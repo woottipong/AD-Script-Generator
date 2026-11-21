@@ -868,11 +868,14 @@ export default function App() {
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="min-h-16 shrink-0 bg-white border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div
-            className="inline-flex min-w-0 items-center gap-2.5 text-base font-bold tracking-tight text-slate-900"
-          >
+          <div className="inline-flex min-w-0 items-center gap-2.5">
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
-            <span className="leading-tight">AD Script Generator</span>
+            <span className="min-w-0">
+              <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-slate-900">
+                <span className="text-brand-700">TCC</span> Envisio
+              </span>
+              <span className="hidden truncate text-xs font-medium leading-tight text-slate-600 sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
+            </span>
           </div>
 
           <div ref={setHeaderActionsElement} className="contents" />

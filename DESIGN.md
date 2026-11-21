@@ -1,5 +1,5 @@
 ---
-name: AD Script Generator
+name: TCC Envisio
 description: Thai Audio Description (AD) NLE workstation pairing a dark broadcast video monitor with a calm, high-legibility Thai script editor.
 colors:
   studio-cerulean: "oklch(50% 0.134 242.749)"
@@ -110,13 +110,13 @@ components:
     padding: "12px"
 ---
 
-# Design System: AD Script Generator
+# Design System: TCC Envisio
 
 ## Overview
 
 **Creative North Star: "The Broadcast Desk"**
 
-AD Script Generator is an Operate-mode desktop workstation built for Thai Audio Description authors and reviewers. The interface behaves like a calm, quiet studio desk: a dark broadcast monitor on the left holds the video frame and timeline without chrome clutter, while a bright cool-paper editorial column on the right gives Thai narration scripts room to breathe. Every pixel earns its place by serving frame accuracy, speech-gap timing, or fast text revision.
+TCC Envisio is an Operate-mode desktop workstation built for Thai Audio Description authors and reviewers. The interface behaves like a calm, quiet studio desk: a dark broadcast monitor on the left holds the video frame and timeline without chrome clutter, while a bright cool-paper editorial column on the right gives Thai narration scripts room to breathe. Every pixel earns its place by serving frame accuracy, speech-gap timing, or fast text revision.
 
 The system is intentionally flat and restrained. Structure comes from crisp 1px hairline borders, tonal contrast between the dark video stage and the light script canvas, and a single disciplined cerulean accent reserved for active states, primary actions, and playback focus. No decorative gradients, no rainbow status treatments, and no vertical banners that steal height from the video monitor or cause layout shifts during analysis.
 
@@ -126,6 +126,13 @@ The system is intentionally flat and restrained. Structure comes from crisp 1px 
 - Looped Thai typography (`Sarabun`) for long-form script legibility, paired with `Plus Jakarta Sans` UI chrome and tabular `JetBrains Mono` timecodes.
 - Flat 1px hairline architecture where elevation shadows appear only on floating overlays and popovers.
 - Zero-shift asynchronous feedback via a compact header status pill and a 3px Material Design 3 hairline progress bar.
+
+## Brand
+
+- **Name:** `TCC Envisio`, always with the `TCC` house mark. `TCC` takes `brand-700`, `Envisio` takes `slate-900`, both 700 weight.
+- **Tagline (navbar, page title):** `สร้างและตรวจแก้บทบรรยายภาพ`, 13px 500 `slate-600`, hidden below `sm`. It names what the app does and changes only when capabilities change (for example `เขียนบท สร้างเสียง ส่งออกงานบรรยายภาพ` once voice generation ships).
+- **Slogan (README, meta description, presentations):** `ให้ทุกภาพมีเสียงเล่า`. It stays out of the working UI.
+- **Logo:** a `brand-700` rounded-square tile (16px radius on a 64 grid) holding a white camera-viewfinder frame around a soundwave, with the centre bar in `sky-300` (`#7dd3fc`) marking the narration cue. `public/logo.svg` is the full mark (navbar, touch icon); `public/icon.svg` and `favicon.ico` are a simplified three-bar cut with heavier strokes so the tab icon stays legible at 16px.
 
 ## Colors
 
@@ -164,7 +171,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 
 ### Hierarchy
 - **Headline** (600, `1.875rem` / 30px, line-height `1.25`): Intake screen page heading (`สร้างบทบรรยายภาพ`).
-- **Title** (700, `1rem` / 16px, line-height `1.35`): Navbar wordmark (`AD Script Generator`) and dialog/empty-state headings.
+- **Title** (700, `1rem` / 16px, line-height `1.35`): Navbar wordmark (`TCC Envisio`, with `TCC` in `brand-700` and the tagline `สร้างและตรวจแก้บทบรรยายภาพ` beneath in 13px `slate-500`) and dialog/empty-state headings.
 - **Script Body** (400, `1rem` / 16px, line-height `1.75`): Editable Thai AD script textareas and preview text.
 - **Body** (400, `0.9375rem` / 15px, line-height `1.5`): General UI descriptions, intake guidance, and validation messages.
 - **Label** (500, `0.8125rem` / 13px, line-height `1.5`): Buttons, status pills, filter selects, search inputs, and spot metadata.

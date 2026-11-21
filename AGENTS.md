@@ -1,6 +1,6 @@
 # Agent guide
 
-Guidance for automated agents working on the AD Script Generator repository.
+Guidance for automated agents working on the TCC Envisio repository.
 
 ## Agent skills
 
@@ -18,7 +18,7 @@ Before exploring a domain, read the single-context glossary and relevant ADRs as
 
 ## Project overview
 
-AD Script Generator authors Thai Audio Description (AD) scripts for 480p MP4 videos. The browser decodes the audio track with WebCodecs and finds Non-Speech Gaps with Silero VAD in a Web Worker. The Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. Authors review and retime AD Spots in a timeline editor, then export SRT.
+TCC Envisio authors Thai Audio Description (AD) scripts for 480p MP4 videos. The browser decodes the audio track with WebCodecs and finds Non-Speech Gaps with Silero VAD in a Web Worker. The Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. Authors review and retime AD Spots in a timeline editor, then export SRT.
 
 ## Development workflow
 
