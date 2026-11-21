@@ -1043,7 +1043,7 @@ export default function App() {
         <Alert variant="warning" placement="strip" role="status">
           <ListX />
           <Collapsible className="col-start-2">
-            <CollapsibleTrigger className="group/skipped inline-flex cursor-pointer items-center gap-1.5 rounded-sm font-medium">
+            <CollapsibleTrigger className="group/skipped inline-flex items-center gap-1.5 rounded-sm font-medium">
               ไม่ได้นำเข้า {importSkipped.length} บรรทัดจาก SRT
               <ChevronDown aria-hidden="true" className="size-4 transition-transform group-data-[panel-open]/skipped:rotate-180" />
             </CollapsibleTrigger>

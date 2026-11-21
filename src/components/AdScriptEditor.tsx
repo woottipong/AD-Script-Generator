@@ -245,7 +245,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       role="listitem"
       aria-label={`ช่วงบรรยายที่ ${spotOrder}`}
       onClick={() => onSelect(spot.spot_id, true)}
-      className={`px-4 py-3.5 transition-colors cursor-pointer ${
+      className={`px-4 py-3.5 transition-colors ${isSelected ? 'cursor-default' : 'cursor-pointer'} ${
         isSkipped
           ? isSelected
             ? 'relative z-10 bg-slate-100 ring-1 ring-inset ring-slate-300'

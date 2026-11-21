@@ -602,7 +602,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           onScroll={drawWaveform}
           className="min-w-0 flex-1 overflow-x-auto select-none"
         >
-          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className="relative min-w-full overflow-x-clip cursor-crosshair bg-white">
+          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className={`relative min-w-full overflow-x-clip bg-white ${activeDrag ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : effectiveDurationMs > 1 ? 'cursor-crosshair' : 'cursor-default'}`}>
             <div
               role="slider" tabIndex={videoUrl ? 0 : -1} aria-disabled={!videoUrl}
               aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
@@ -757,7 +757,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     onPointerCancel={(event) => finishSpotDrag(event, true)}
                     style={{ left: hitLeft, width: Math.max(2, hitRight - hitLeft) }}
                     title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)} (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)${spot.text ? `\n${spot.text}` : ''}`}
-                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${isAnalyzing ? 'cursor-pointer' : isDraggingThis ? 'cursor-grabbing' : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
+                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${isAnalyzing ? 'cursor-pointer' : isDraggingThis ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
                   >
                     <span
                       style={{ left: left - hitLeft, width }}
