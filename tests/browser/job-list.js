@@ -10,10 +10,6 @@ async page => {
     { job_id: 'job_upload', file_name: 'อัปโหลดไม่เสร็จ (job_upload)', updated_at: '2026-11-17T03:00:00Z', size_bytes: 99, is_upload: true, is_processing: false },
   ];
   let deleted = [], listFails = false;
-  await page.addInitScript(() => {
-    let count = 0;
-    window.confirm = () => ++count > 1;
-  });
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs')) return listFails ? route.fulfill({ status: 500, json: { error: 'fixture' } }) : route.fulfill({ json: { jobs } });
@@ -34,22 +30,32 @@ async page => {
   });
 
   await page.goto('http://127.0.0.1:4173/');
-  const list = page.getByRole('list', { name: 'งานที่บันทึกไว้' });
-  await list.waitFor();
-  const rows = list.getByRole('listitem');
+  const list = page.getByRole('table', { name: 'งานที่บันทึกไว้' });
+  const listed = () => page.getByRole('button', { name: /^ทำต่อ (old\.mp4|งานเก่าที่เปลี่ยนชื่อ)$/ }).first().waitFor();
+  await listed();
+  const rows = list.locator('tbody tr');
   assert(await rows.count() === 4, 'Every Job and Unfinished Upload is listed');
   assert((await rows.first().textContent()).includes('old.mp4'), 'Most recently changed Job comes first');
-  assert(await list.getByText('ตรวจแก้ SRT').count() === 1, 'Review Mode Job is tagged with its mode');
+  assert(await list.getByText('ตรวจแก้ SRT').filter({ visible: true }).count() === 1, 'Review Mode Job is tagged with its mode');
   assert(await page.getByRole('button', { name: 'ทำต่อ บทเรียนที่ 1' }).count() === 1 && await list.getByText('lesson.mp4').count() === 1, 'A titled Job shows its title with the file name below');
   assert(await list.getByText('กำลังวิเคราะห์').count() === 1, 'An analysing Job shows its status');
-  assert(await page.getByRole('button', { name: 'ลบงาน busy.mp4' }).isDisabled(), 'A Job being analysed cannot be deleted');
+  await page.getByRole('button', { name: 'ตัวเลือกงาน busy.mp4' }).click();
+  assert(await page.getByRole('menuitem', { name: 'ลบงาน' }).getAttribute('aria-disabled') === 'true', 'A Job being analysed cannot be deleted');
+  await page.keyboard.press('Escape');
   assert(await page.getByRole('button', { name: 'ทำต่อ อัปโหลดไม่เสร็จ' }).count() === 0, 'An Unfinished Upload can only be deleted');
 
-  const removeUpload = page.getByRole('button', { name: 'ลบงาน อัปโหลดไม่เสร็จ' });
-  await removeUpload.click();
+  const uploadMenu = page.getByRole('button', { name: 'ตัวเลือกงาน อัปโหลดไม่เสร็จ' });
+  const confirmDialog = page.getByRole('alertdialog', { name: 'ลบงานนี้?' });
+  await uploadMenu.click();
+  await page.getByRole('menuitem', { name: 'ลบงาน' }).click();
+  await confirmDialog.waitFor();
+  await confirmDialog.getByRole('button', { name: 'ยกเลิก' }).click();
+  await confirmDialog.waitFor({ state: 'hidden' });
   assert(deleted.length === 0, 'Cancelling the confirm sends no delete');
-  await removeUpload.click();
-  await removeUpload.waitFor({ state: 'hidden' });
+  await uploadMenu.click();
+  await page.getByRole('menuitem', { name: 'ลบงาน' }).click();
+  await confirmDialog.getByRole('button', { name: 'ลบงาน' }).click();
+  await uploadMenu.waitFor({ state: 'hidden' });
   assert(JSON.stringify(deleted) === '["job_upload"]', 'Confirmed delete removes the Unfinished Upload');
 
   await page.getByRole('button', { name: 'ทำต่อ old.mp4' }).click();
@@ -60,7 +66,7 @@ async page => {
   await line.waitFor();
   assert(await line.inputValue() === 'บทเดิม', 'Reload stays on the same Job');
   await page.goBack();
-  await list.waitFor();
+  await listed();
   assert(new URL(page.url()).pathname === '/', 'Back returns to the Job List');
 
   await page.getByRole('button', { name: 'ทำต่อ old.mp4' }).click();
@@ -70,7 +76,7 @@ async page => {
   await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
   await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
   await page.getByRole('link', { name: 'TCC Envisio รายการงาน' }).click();
-  await list.waitFor();
+  await listed();
   assert(new URL(page.url()).pathname === '/', 'The logo leads back to the Job List');
   await page.getByRole('button', { name: 'ทำต่อ งานเก่าที่เปลี่ยนชื่อ' }).waitFor();
 
@@ -78,11 +84,11 @@ async page => {
   await page.getByRole('heading', { name: 'เริ่มงานบทบรรยายภาพ' }).waitFor();
   assert(new URL(page.url()).pathname === '/new', 'New Job starts at /new');
   await page.getByRole('button', { name: 'รายการงาน' }).click();
-  await list.waitFor();
+  await listed();
 
   jobs = [];
   await page.reload();
-  await page.getByRole('heading', { name: 'ยังไม่มีงาน' }).waitFor();
+  await page.getByText('ยังไม่มีงาน', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'งานใหม่' }).click();
   await page.getByRole('heading', { name: 'เริ่มงานบทบรรยายภาพ' }).waitFor();
 

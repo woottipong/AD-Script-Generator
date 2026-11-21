@@ -199,7 +199,9 @@ Surfaces are flat by default and separated by 1px hairline borders and tonal shi
 ### Shadow Vocabulary
 - **Popover Elevation** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Used on header disclosure menus (`จัดการ`, video metadata popover, `รายละเอียดการทำงาน` queue panel) and the floating Broadcast CC Pill over video.
 
-Shared classes in `src/index.css` own each recurring look; call sites add only layout and size:
+**shadcn/ui is the component source for new UI.** Components live in `src/components/ui` (style `base-nova` on Base UI, added with the shadcn CLI) and read only the semantic tokens at the end of `src/index.css`, which map onto this palette: `--primary` is `studio-cerulean`, `--foreground` and `--muted-foreground` are the slate inks, `--border`/`--input` are the hairline and control borders, `--ring` is `studio-cerulean-active`, `--destructive` is error red, and `--radius` is `6px` so controls stay at 6px and dialogs at about 8px. `Badge` adds two brand variants, `info` (live work in cerulean tint) and `warning` (waiting in amber); its corners are 6px, not pills. Call sites pass layout through `className` and pick a variant, never restyle colours. The Job List is built entirely from these components; screens built before them still use the shared classes below until each is migrated.
+
+Shared classes in `src/index.css` own each recurring look on those older screens; call sites add only layout and size:
 
 - `.btn-primary`: the single cerulean action (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `เลือกวิดีโอ`, `เปิดในพื้นที่แก้ไข`).
 - `.field`: text inputs and the filter select (1px `slate-300`, cerulean focus ring). The script textarea keeps its own softer 2px ring.
@@ -231,6 +233,12 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 - **Primary:** `studio-cerulean` fill, `pure-surface` bold label, `8px 16px` padding.
 - **Hover / Focus:** Darkens to `studio-cerulean-hover` on hover; `2px solid studio-cerulean-active` focus ring with `3px` offset on `:focus-visible`.
 - **Secondary / Outline:** `pure-surface` fill, `1px solid control-border` (or `studio-cerulean-border` when paired with a primary CTA), `muted-ink` text, light slate tint on hover.
+
+### Job List Table
+The landing view is one dense table on a white bordered surface, widened to the navbar's own gutters (`px-4 sm:px-6`, up to `max-w-screen-2xl`) so its left edge lines up with the logo.
+- **Columns:** ชื่องาน (the Job Title as a link that opens the Job; the file name below it only when the author renamed the Job), โหมด, สถานะ (`Badge`: `secondary` ready, `info` analysing or uploading, `warning` waiting, `destructive` failed), แก้ล่าสุด and ขนาด in `tabular-nums`, then a `ทำต่อ` outline button and a `⋯` `DropdownMenu`.
+- **Small screens:** โหมด moves under the title, แก้ล่าสุด and ขนาด hide, and `ทำต่อ` moves into the `⋯` menu so the title keeps its room.
+- **States:** `Skeleton` rows while loading, `Alert` with a retry on failure, `Empty` with `งานใหม่` when there are no Jobs. Deleting asks in an `AlertDialog`; a Job being analysed or uploaded cannot be deleted.
 
 ### Status Pill & Hairline Progress Bar
 Zero-shift asynchronous status indicator combining a compact header trigger with an edge-pinned progress line.
