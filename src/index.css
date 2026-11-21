@@ -43,9 +43,6 @@
   .tag {
     @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5;
   }
-  .banner-warning {
-    @apply shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6;
-  }
   .alert-error {
     @apply flex items-start gap-2 rounded-md border border-red-200 bg-red-50 text-red-800;
   }

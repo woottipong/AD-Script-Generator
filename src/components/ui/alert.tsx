@@ -14,9 +14,15 @@ const alertVariants = cva(
         warning:
           "border-amber-200 bg-amber-50 text-amber-800 *:data-[slot=alert-description]:text-amber-800 *:[svg]:text-amber-600",
       },
+      // DESIGN › Layout: a full-width strip under the navbar, square and divided from the workspace by one hairline.
+      placement: {
+        inline: "",
+        strip: "shrink-0 rounded-none border-x-0 border-t-0 px-4 py-3 sm:px-6",
+      },
     },
     defaultVariants: {
       variant: "default",
+      placement: "inline",
     },
   }
 )
@@ -24,13 +30,14 @@ const alertVariants = cva(
 function Alert({
   className,
   variant,
+  placement,
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
   return (
     <div
       data-slot="alert"
       role="alert"
-      className={cn(alertVariants({ variant }), className)}
+      className={cn(alertVariants({ variant, placement }), className)}
       {...props}
     />
   )

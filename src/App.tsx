@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertOctagon } from 'lucide-react';
+import { AlertOctagon, ChevronDown, FileVideo, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
+import { Alert, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Spinner } from '@/components/ui/spinner';
 import {
   ADSpot,
   AnalysisBatch,
@@ -101,6 +106,7 @@ export default function App() {
   const [path, setPath] = useState(() => window.location.pathname);
   const [jobLoad, setJobLoad] = useState<'loading' | 'missing' | 'failed' | null>(() => (jobIdFromPath(window.location.pathname) ? 'loading' : null));
   const reviewImportRef = useRef<ReviewImport | null>(null);
+  const relinkInputRef = useRef<HTMLInputElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -1014,50 +1020,65 @@ export default function App() {
       <main ref={workspaceRef} id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
       {/* Restored Incomplete Job Resume Banner */}
       {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
-        <div className="banner-warning">
-          <div>
-            <strong className="font-semibold">มีงานวิเคราะห์ที่ยังไม่เสร็จ</strong>
-          </div>
-        </div>
+        <Alert variant="warning" placement="strip" role="status">
+          <TriangleAlert />
+          <AlertTitle>มีงานวิเคราะห์ที่ยังไม่เสร็จ</AlertTitle>
+        </Alert>
       )}
 
       {mode === 'review' && missingLocalVideo && (
-        <div role="status" className="banner-warning flex flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="min-w-0 [overflow-wrap:anywhere]">
+        <Alert variant="warning" placement="strip" role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <FileVideo />
+          {/* One line like the banner it replaces, so the workspace below keeps its height. */}
+          <AlertTitle className="min-w-0 flex-1 font-normal [overflow-wrap:anywhere]">
             <strong className="font-semibold">เลือกวิดีโอเดิมอีกครั้งเพื่อเล่นและดูเทียบ</strong>
             {' · '}{missingLocalVideo.file_name} ({formatFileSize(missingLocalVideo.file_size)}) · ระหว่างนี้ยังแก้บทและส่งออก SRT ได้
-          </p>
-          <label className="shrink-0 cursor-pointer rounded-md border border-amber-400 bg-white px-3 py-1.5 font-semibold text-amber-950 hover:bg-amber-100">
-            เลือกวิดีโอเดิม
-            <input type="file" accept="video/mp4,.mp4" className="sr-only" aria-label="เลือกวิดีโอเดิมของงานนี้" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) handleRelinkLocalVideo(file); }} />
-          </label>
-        </div>
+          </AlertTitle>
+          <Button variant="outline" onClick={() => relinkInputRef.current?.click()}>เลือกวิดีโอเดิม</Button>
+          <input ref={relinkInputRef} type="file" accept="video/mp4,.mp4" className="hidden" aria-label="เลือกวิดีโอเดิมของงานนี้" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) handleRelinkLocalVideo(file); }} />
+        </Alert>
       )}
 
       {mode === 'review' && hasProject && importSkipped.length > 0 && (
-        <details className="banner-warning">
-          <summary className="cursor-pointer font-semibold">ไม่ได้นำเข้า {importSkipped.length} บรรทัดจาก SRT</summary>
-          <ul className="mt-2 space-y-1">
-            {importSkipped.map(({ cue, reason }, index) => (
-              <li key={index} className="[overflow-wrap:anywhere]">
-                <span className="font-mono tabular-nums">{formatTimestampDisplay(cue.start_ms)} – {formatTimestampDisplay(cue.end_ms)}</span>
-                {' · '}{reason === 'starts_after_video_end' ? 'เริ่มหลังวิดีโอจบ' : 'เวลาจบไม่หลังเวลาเริ่ม'}
-                {' · '}{cue.text}
-              </li>
-            ))}
-          </ul>
-        </details>
+        <Alert variant="warning" placement="strip" role="status">
+          <ListX />
+          <Collapsible className="col-start-2">
+            <CollapsibleTrigger className="group/skipped inline-flex cursor-pointer items-center gap-1.5 rounded-sm font-medium">
+              ไม่ได้นำเข้า {importSkipped.length} บรรทัดจาก SRT
+              <ChevronDown aria-hidden="true" className="size-4 transition-transform group-data-[panel-open]/skipped:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="mt-2 flex flex-col gap-1">
+                {importSkipped.map(({ cue, reason }, index) => (
+                  <li key={index} className="[overflow-wrap:anywhere]">
+                    <span className="font-mono tabular-nums">{formatTimestampDisplay(cue.start_ms)} – {formatTimestampDisplay(cue.end_ms)}</span>
+                    {' · '}{reason === 'starts_after_video_end' ? 'เริ่มหลังวิดีโอจบ' : 'เวลาจบไม่หลังเวลาเริ่ม'}
+                    {' · '}{cue.text}
+                  </li>
+                ))}
+              </ul>
+            </CollapsibleContent>
+          </Collapsible>
+        </Alert>
       )}
 
       {/* Top Studio Project & Queue Command Bar */}
       {jobLoad === 'loading' && !hasProject ? (
-        <p role="status" className="my-14 text-center text-base text-slate-600">กำลังเปิดงาน…</p>
+        <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
+          <Spinner aria-hidden="true" />
+          กำลังเปิดงาน…
+        </p>
       ) : jobLoad && !hasProject ? (
-        <section role="alert" className="w-[calc(100%_-_2rem)] max-w-xl mx-auto my-14 text-center">
-          <h1 className="text-2xl font-semibold text-slate-900">{jobLoad === 'missing' ? 'ไม่พบงานนี้' : 'เปิดงานไม่สำเร็จ'}</h1>
-          <p className="mt-3 text-base text-slate-600">{jobLoad === 'missing' ? 'งานอาจถูกลบไปแล้ว หรือลิงก์ไม่ถูกต้อง' : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองโหลดหน้านี้อีกครั้ง'}</p>
-          <button type="button" onClick={() => void openJobList()} className="btn-primary mt-6 inline-flex min-h-10 items-center px-4 py-2 text-sm">กลับหน้าแรก</button>
-        </section>
+        <Empty role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">{jobLoad === 'missing' ? <SearchX /> : <WifiOff />}</EmptyMedia>
+            <EmptyTitle><h1 className="text-xl font-semibold text-foreground">{jobLoad === 'missing' ? 'ไม่พบงานนี้' : 'เปิดงานไม่สำเร็จ'}</h1></EmptyTitle>
+            <EmptyDescription>{jobLoad === 'missing' ? 'งานอาจถูกลบไปแล้ว หรือลิงก์ไม่ถูกต้อง' : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองโหลดหน้านี้อีกครั้ง'}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button size="lg" onClick={() => void openJobList()}>กลับหน้าแรก</Button>
+          </EmptyContent>
+        </Empty>
       ) : !hasProject && path === '/' ? (
         <JobList onOpen={openJob} onNew={() => navigate('/new')} />
       ) : !hasProject && mode === null ? (

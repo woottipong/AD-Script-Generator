@@ -34,6 +34,7 @@ async page => {
   await page.reload();
   await line.waitFor();
   assert(await page.getByText('เลือกวิดีโอเดิมอีกครั้งเพื่อเล่นและดูเทียบ').isVisible(), 'Local source asks for the original file');
+  assert(await page.getByRole('button', { name: 'เลือกวิดีโอเดิม', exact: true }).isVisible(), 'Re-picking the file is a real button');
   assert(await page.locator('video').count() === 0, 'No video plays before the file is picked');
   assert(await page.getByRole('button', { name: 'ส่งออก SRT' }).isVisible(), 'SRT export works while waiting for the file');
   const repick = page.getByLabel('เลือกวิดีโอเดิมของงานนี้');

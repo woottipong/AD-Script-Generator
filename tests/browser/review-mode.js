@@ -45,6 +45,12 @@ async page => {
   assert(created.spots.length === 4 && created.srt_source.cue_count === 4, 'Cues after the video end or without duration are left out');
   assert(created.spots[2].text === 'หญิงยิ้ม\nแล้วเดินออกไป', 'Multi-line cue text is kept');
   assert(await page.getByText('ไม่ได้นำเข้า 2 บรรทัดจาก SRT').isVisible(), 'Skipped lines are reported');
+  const skippedToggle = page.getByRole('button', { name: 'ไม่ได้นำเข้า 2 บรรทัดจาก SRT' });
+  assert(await page.getByText('เริ่มหลังวิดีโอจบ').count() === 0, 'Skipped lines stay folded until asked for');
+  await skippedToggle.click();
+  await page.getByText('เริ่มหลังวิดีโอจบ').first().waitFor();
+  assert(await skippedToggle.getAttribute('aria-expanded') === 'true', 'The fold reports its state');
+  await skippedToggle.click();
   assert(await firstLine.inputValue() === 'ชายเปิดประตู', 'Formatting tags are stripped');
   assert(await page.getByRole('button', { name: /สร้างบทบรรยายภาพ|ทำต่อจากชุดที่ค้าง/ }).count() === 0, 'Generate controls are hidden');
   assert(await page.getByText(/ตรวจแก้ SRT · 4 บรรทัด/).count() > 0, 'Header shows Review Mode status');
