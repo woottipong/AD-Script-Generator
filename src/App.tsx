@@ -895,7 +895,7 @@ export default function App() {
       <main ref={workspaceRef} id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
       {/* Restored Incomplete Job Resume Banner */}
       {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
-        <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
+        <div className="banner-warning">
           <div>
             <strong className="font-semibold">มีงานวิเคราะห์ที่ยังไม่เสร็จ</strong>
           </div>
@@ -903,7 +903,7 @@ export default function App() {
       )}
 
       {mode === 'review' && missingLocalVideo && (
-        <div role="status" className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="status" className="banner-warning flex flex-wrap items-center gap-x-4 gap-y-2">
           <p className="min-w-0 [overflow-wrap:anywhere]">
             <strong className="font-semibold">เลือกวิดีโอเดิมอีกครั้งเพื่อเล่นและดูเทียบ</strong>
             {' · '}{missingLocalVideo.file_name} ({formatFileSize(missingLocalVideo.file_size)}) · ระหว่างนี้ยังแก้บทและส่งออก SRT ได้
@@ -916,7 +916,7 @@ export default function App() {
       )}
 
       {mode === 'review' && hasProject && importSkipped.length > 0 && (
-        <details className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-950 shrink-0">
+        <details className="banner-warning">
           <summary className="cursor-pointer font-semibold">ไม่ได้นำเข้า {importSkipped.length} บรรทัดจาก SRT</summary>
           <ul className="mt-2 space-y-1">
             {importSkipped.map(({ cue, reason }, index) => (

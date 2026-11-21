@@ -66,7 +66,7 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
               placeholder="https://…/video.mp4"
               aria-invalid={linkInvalid}
               aria-describedby="review-link-hint"
-              className="rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+              className="field px-3 py-2.5 text-sm"
             />
             <span id="review-link-hint" className={linkInvalid ? 'text-red-700' : 'text-slate-600'}>
               {linkInvalid ? 'ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4' : 'ถ้าวางลิงก์ ระบบใช้ลิงก์แทนไฟล์ และเล่นวิดีโอจากลิงก์โดยไม่ดาวน์โหลดเก็บ'}
@@ -78,7 +78,7 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
             type="button"
             disabled={!chosenVideo || !srt}
             onClick={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt); }}
-            className="mt-2 inline-flex items-center justify-center gap-2 self-start rounded-md bg-brand-700 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="btn-primary mt-2 inline-flex items-center justify-center gap-2 self-start px-6 py-3 text-sm"
           >
             <Play className="h-4 w-4" aria-hidden="true" />ประมวลผล
           </button>
@@ -86,7 +86,7 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
       )}
 
       {(errorMessage || blockingIssues.length > 0) && (
-        <div role="alert" className="mt-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div role="alert" className="alert-error mt-4 p-3 text-sm">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
           <div className="min-w-0">
             {errorMessage ? <p>{errorMessage}</p> : (

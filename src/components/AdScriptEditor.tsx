@@ -359,7 +359,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           )}
           {(!isExpanded || spot.decision === 'pending') && (
             <span
-              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium ${
+              className={`tag font-medium ${
                 isBatchProcessing
                   ? 'border-brand-200 bg-brand-100 text-brand-900'
                   : spot.decision === 'pending'
@@ -374,13 +374,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
             </span>
           )}
           {issues?.map((issue) => (
-            <span key={issue} className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+            <span key={issue} className="tag border-amber-300 bg-amber-100 font-semibold text-amber-900">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
               {SPOT_ISSUE_LABELS[issue]}
             </span>
           ))}
           {!isExpanded && isOverDurationWarning && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+            <span className="tag border-slate-300 bg-slate-100 font-medium text-slate-700">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               {SPOT_CHECK_LABELS.over_duration}
             </span>
@@ -401,7 +401,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
           <div
             onClick={(e) => e.stopPropagation()}
             role="alert"
-            className="mb-2 px-2.5 py-1.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-1.5"
+            className="alert-error mb-2 items-center gap-1.5 px-2.5 py-1.5 text-xs"
           >
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             <span>{timestampError}</span>
@@ -725,7 +725,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="ค้นหาบทหรือเวลา…"
-              className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-xs text-slate-900 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+              className="field w-full py-1.5 pl-8 pr-2.5 text-xs"
             />
           </div>
           <label htmlFor="spot-filter" className="sr-only">แสดง</label>
@@ -734,7 +734,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             id="spot-filter"
             value={filterMode}
             onChange={(event) => setFilterMode(event.target.value as FilterMode)}
-            className="menu-select w-full cursor-pointer rounded-md border border-slate-300 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 hover:bg-slate-50 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            className="field menu-select w-full cursor-pointer py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 hover:bg-slate-50"
           >
             <option value="all">ทั้งหมด ({spots.length})</option>
             <option value="generate">มีบทบรรยาย ({generatedCount})</option>
@@ -823,7 +823,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
                 {emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
               </p>
-              {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="mt-5 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 cursor-pointer">ลองตรวจเสียงอีกครั้ง</button>}
+              {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="btn-primary mt-5 px-4 py-2 text-sm">ลองตรวจเสียงอีกครั้ง</button>}
               {emptyState === 'failed' && errorMessage && (
                 <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
                   <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>

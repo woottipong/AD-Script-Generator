@@ -192,6 +192,16 @@ Surfaces are flat by default and separated by 1px hairline borders and tonal shi
 ### Shadow Vocabulary
 - **Popover Elevation** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Used on header disclosure menus (`จัดการ`, video metadata popover, `รายละเอียดการทำงาน` queue panel) and the floating Broadcast CC Pill over video.
 
+Shared classes in `src/index.css` own each recurring look; call sites add only layout and size:
+
+- `.btn-primary`: the single cerulean action (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `เลือกวิดีโอ`, `เปิดในพื้นที่แก้ไข`).
+- `.field`: text inputs and the filter select (1px `slate-300`, cerulean focus ring). The script textarea keeps its own softer 2px ring.
+- `.tag`: the bordered status and warning micro-badges; colour comes from the call site.
+- `.banner-warning`: full-width amber strips under the navbar (resume, import notes).
+- `.alert-error`: inline red validation and failure messages.
+- `.compact-action`: quiet secondary action inside a dense row.
+- `--shadow-popover` (`shadow-popover`): the only floating shadow.
+
 Every dropdown and popover uses the shared `.menu-panel` (8px radius, 1px `slate-200` hairline, white, Popover Elevation, 8px below its trigger) and `.menu-item` (6px radius, `slate-100` hover, 16px `slate-500` icon) classes in `src/index.css`. Triggers carry one `ChevronDown` that rotates 180° when open and take a tinted surface while open.
 
 ### Named Rules

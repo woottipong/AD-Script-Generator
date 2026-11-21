@@ -303,7 +303,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </div>
 
               <div className="flex flex-wrap justify-center items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="px-6 py-3 text-sm font-semibold text-white bg-brand-700 hover:bg-brand-800 rounded-md flex items-center gap-2 cursor-pointer">
+                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="btn-primary flex items-center gap-2 px-6 py-3 text-sm">
                   <Upload className="w-4 h-4" aria-hidden="true" />
                   เลือกวิดีโอ
                 </button>
@@ -311,7 +311,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </div>}
 
             {(errorMessage || hasBlockingErrors) && (
-              <div id="upload-feedback" role="alert" className="mt-3 p-3 rounded-md border border-red-200 bg-red-50 text-red-800 text-sm flex items-start gap-2">
+              <div id="upload-feedback" role="alert" className="alert-error mt-3 p-3 text-sm">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="font-semibold">{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</p>
@@ -395,7 +395,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       </button>
 
       {canShowGenerate && !isBusy && !isRegenerating && (
-        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer sm:grow-0">
+        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="btn-primary flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap px-4 py-2 text-sm sm:grow-0">
           <Sparkles className="w-4 h-4" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
         </button>
@@ -408,7 +408,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           className={`flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer ${
             canShowGenerate && !isRegenerating
               ? 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-50'
-              : 'bg-brand-700 text-white hover:bg-brand-800'
+              : 'btn-primary'
           }`}
         >
           <FileText className="w-4 h-4" aria-hidden="true" />
