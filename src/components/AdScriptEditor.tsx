@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Clock,
   FileText,
   Loader2,
@@ -102,7 +103,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
     const el = textareaRef.current;
     if (!el || !isExpanded || (spot.decision !== 'generate' && !hasSavedText)) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    // scrollHeight excludes the border, so add it back or a phantom scrollbar appears
+    el.style.height = `${Math.min(el.scrollHeight + el.offsetHeight - el.clientHeight, 240)}px`;
   }, [spot.text, isExpanded, spot.decision, hasSavedText]);
 
   const applyTimestampChange = (newStartMs: number, newEndMs: number) => {
@@ -377,19 +379,16 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               {SPOT_ISSUE_LABELS[issue]}
             </span>
           ))}
-          {isOverDurationWarning && (
+          {!isExpanded && isOverDurationWarning && (
             <span className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
               <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               {SPOT_CHECK_LABELS.over_duration}
             </span>
           )}
-          {!isExpanded && spot.is_edited && (
-            <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-600">
-              แก้ไขแล้ว
-            </span>
-          )}
+          {!isExpanded && spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
-            <span className="inline-flex items-center rounded-md border border-brand-600 bg-brand-600 px-2 py-0.5 font-medium text-white">
+            <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-600" aria-hidden="true" />
               ตำแหน่งวิดีโอ
             </span>
           )}
@@ -435,9 +434,9 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   <div
                     className={`h-full transition-all duration-150 ${
                       isOverDurationWarning
-                        ? 'bg-amber-600'
-                        : speechRatio > 0.85
                         ? 'bg-amber-500'
+                        : speechRatio > 0.85
+                        ? 'bg-amber-400'
                         : 'bg-brand-600'
                     }`}
                     style={{
@@ -451,7 +450,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                     <span
                       className={
                         isOverDurationWarning
-                          ? 'text-amber-800 font-semibold'
+                          ? 'text-amber-800 font-medium'
                           : 'text-slate-700 font-medium'
                       }
                     >
@@ -462,26 +461,23 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                     </span>
                     <span aria-hidden="true" className="text-slate-300">·</span>
                     <span>{spot.text.trim().length} อักษร</span>
+                    {spot.is_edited && <>
+                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span>แก้ไขแล้ว</span>
+                    </>}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {isTimestampsModified && (
-                      <button
-                        type="button"
-                        onClick={handleResetTimestamps}
-                        title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
-                        className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-sans text-xs text-slate-700 hover:bg-slate-200 hover:text-slate-900 cursor-pointer"
-                      >
-                        <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                        <span>คืนเวลาเดิม</span>
-                      </button>
-                    )}
-                    {spot.is_edited && (
-                      <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-600">
-                        แก้ไขแล้ว
-                      </span>
-                    )}
-                  </div>
+                  {isTimestampsModified && (
+                    <button
+                      type="button"
+                      onClick={handleResetTimestamps}
+                      title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
+                      className="compact-action -mr-2 inline-flex items-center gap-1 rounded-md px-2 font-sans text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+                    >
+                      <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                      <span>คืนเวลาเดิม</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -497,11 +493,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               />
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                 <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
-                {spot.is_edited && (
-                  <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-600">
-                    แก้ไขแล้ว
-                  </span>
-                )}
+                {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
             </div>
           ) : (
@@ -665,6 +657,24 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   const hasTimingIssue = spotIssues.size > 0;
   const checkMenuRef = useRef<HTMLDetailsElement | null>(null);
 
+  useEffect(() => {
+    const dismissCheckMenu = (event: PointerEvent | KeyboardEvent) => {
+      const menu = checkMenuRef.current;
+      const isEscape = event instanceof KeyboardEvent && event.key === 'Escape';
+      if (!menu?.open || (event instanceof KeyboardEvent && !isEscape)) return;
+      if (isEscape || !menu.contains(event.target as Node)) {
+        menu.open = false;
+        if (isEscape) menu.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismissCheckMenu);
+    document.addEventListener('keydown', dismissCheckMenu);
+    return () => {
+      document.removeEventListener('pointerdown', dismissCheckMenu);
+      document.removeEventListener('keydown', dismissCheckMenu);
+    };
+  }, []);
+
   const jumpToNextCheck = (check: SpotCheck) => {
     const from = spots.findIndex((spot) => spot.spot_id === selectedSpotId);
     const ordered = [...spots.slice(from + 1), ...spots.slice(0, from + 1)];
@@ -719,11 +729,12 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             />
           </div>
           <label htmlFor="spot-filter" className="sr-only">แสดง</label>
+          <div className="relative w-36 shrink-0 sm:w-40">
           <select
             id="spot-filter"
             value={filterMode}
             onChange={(event) => setFilterMode(event.target.value as FilterMode)}
-            className="w-36 sm:w-40 shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
+            className="menu-select w-full cursor-pointer rounded-md border border-slate-300 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 hover:bg-slate-50 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
           >
             <option value="all">ทั้งหมด ({spots.length})</option>
             <option value="generate">มีบทบรรยาย ({generatedCount})</option>
@@ -732,18 +743,21 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <option value="edited">แก้ไขแล้ว ({editedCount})</option>
             <option value="needs_check">ต้องตรวจ ({spotChecks.size})</option>
           </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+          </div>
           {spotChecks.size > 0 && (
-            <details ref={checkMenuRef} className="relative shrink-0">
-              <summary className={`flex cursor-pointer list-none items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold [&::-webkit-details-marker]:hidden ${
-                hasTimingIssue ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+            <details ref={checkMenuRef} className="group relative shrink-0">
+              <summary className={`flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold [&::-webkit-details-marker]:hidden ${
+                hasTimingIssue ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 group-open:bg-amber-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 group-open:bg-slate-100'
               }`}>
                 {hasTimingIssue ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
                 ต้องตรวจ <span className="tabular-nums">{spotChecks.size}</span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
               </summary>
-              <div className="absolute right-0 z-40 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-300 bg-white p-1.5 text-xs shadow-lg">
-                <p className="px-2 pb-1 pt-0.5 text-slate-500">กดเพื่อไปบรรทัดถัดไปของแต่ละแบบ</p>
+              <div className="menu-panel z-40 right-0 w-72 p-1.5 text-xs">
+                <p className="px-2.5 pb-1 pt-1 text-slate-500">กดเพื่อไปบรรทัดถัดไปของแต่ละแบบ</p>
                 {checkCounts.map(({ check, count }) => (
-                  <button key={check} type="button" onClick={() => jumpToNextCheck(check)} className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-slate-100 cursor-pointer">
+                  <button key={check} type="button" onClick={() => jumpToNextCheck(check)} className="menu-item justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-1.5">
                       {check === 'over_duration'
                         ? <Clock className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
@@ -756,11 +770,12 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                     <span className="tabular-nums text-slate-600">{count}</span>
                   </button>
                 ))}
+                <div className="my-1.5 border-t border-slate-200" />
                 <button type="button" onClick={() => {
                   setFilterMode('needs_check');
                   setSearchQuery('');
                   if (checkMenuRef.current) checkMenuRef.current.open = false;
-                }} className="mt-1 w-full rounded-md border-t border-slate-200 px-2 pb-1 pt-2 text-left font-semibold text-brand-700 hover:bg-slate-50 cursor-pointer">แสดงเฉพาะบรรทัดที่ต้องตรวจ</button>
+                }} className="menu-item font-semibold text-brand-700 hover:text-brand-800">แสดงเฉพาะบรรทัดที่ต้องตรวจ</button>
               </div>
             </details>
           )}

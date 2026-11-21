@@ -192,6 +192,8 @@ Surfaces are flat by default and separated by 1px hairline borders and tonal shi
 ### Shadow Vocabulary
 - **Popover Elevation** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Used on header disclosure menus (`จัดการ`, video metadata popover, `รายละเอียดการทำงาน` queue panel) and the floating Broadcast CC Pill over video.
 
+Every dropdown and popover uses the shared `.menu-panel` (8px radius, 1px `slate-200` hairline, white, Popover Elevation, 8px below its trigger) and `.menu-item` (6px radius, `slate-100` hover, 16px `slate-500` icon) classes in `src/index.css`. Triggers carry one `ChevronDown` that rotates 180° when open and take a tinted surface while open.
+
 ### Named Rules
 **The Flat-By-Default Rule.** Docked panes, toolbars, and script cards never carry drop shadows. Shadows appear only on floating popovers and the video CC overlay.
 
@@ -228,7 +230,7 @@ Edge-to-edge editorial list item separated by 1px horizontal dividers (`divide-y
 - **Background:** `pure-surface` at rest; 90% `studio-cerulean-tint` with a 1px inset `studio-cerulean-border` ring when selected; subtle 35% `studio-cerulean-tint` wash when the video playhead is inside an unselected row; soft muted slate tint (85% `slate-50`) when skipped.
 - **Internal Padding & Stability:** `14px 16px` vertical/horizontal padding with locked `32px` header height, `useLayoutEffect` auto-grow `Sarabun` textarea, and click scroll-anchor compensation so expanding/collapsing rows never jump under the cursor.
 - **Concentric Segmented Toggle (`บรรยาย | ข้าม`):** `6px` outer border (90% `slate-200` border on `slate-100`, `2px` padding) with `4px` inner buttons (`studio-cerulean` fill with white text for active `บรรยาย`, dark `slate-700` fill with white text for active `ข้าม`).
-- **Status Micro-Badges:** 1px-bordered `6px`-radius pills for instant scanning (`บรรยาย` cerulean tint, `ข้าม` slate-200, `กำลังวิเคราะห์` active cerulean, `รอวิเคราะห์` amber, `เกินเวลา` bold amber, `แก้ไขแล้ว` pure white border, `ตำแหน่งวิดีโอ` solid cerulean).
+- **Status Micro-Badges:** 1px-bordered `6px`-radius pills for instant scanning (`บรรยาย` cerulean tint, `ข้าม` slate-200, `กำลังวิเคราะห์` active cerulean, `รอวิเคราะห์` amber, timing issues bold amber, `ยาวกว่าช่องว่าง` neutral slate). Passive states are plain text, not pills, so nothing that cannot be pressed looks like a button: `แก้ไขแล้ว` in muted slate and `ตำแหน่งวิดีโอ` as cerulean text with a 6px dot. Secondary actions inside a card row (`คืนเวลาเดิม`) are quiet text buttons, `28px` tall on desktop via `.compact-action` and `44px` on coarse pointers.
 - **Skipped State:** Existing text stays visible inside a disabled muted textarea (80% `slate-100` surface with muted `slate-400` text) with a non-destructive notice so authors never think their draft was deleted.
 
 ### Waveform Envelope & Soft Mist Loading Wave (Signature Component)

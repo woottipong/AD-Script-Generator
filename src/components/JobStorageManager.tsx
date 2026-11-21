@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronDown, HardDrive } from 'lucide-react';
 import { formatFileSize } from '../utils/formatters';
 
 interface StoredJob {
@@ -57,9 +58,13 @@ export function JobStorageManager() {
   };
 
   return (
-    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="relative">
-      <summary className="min-h-10 cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-brand-700">จัดการพื้นที่จัดเก็บ</summary>
-      <section aria-label="งานที่เก็บบนเซิร์ฟเวอร์" className="absolute right-0 z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-300 bg-white p-4 text-sm shadow-lg">
+    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="group relative">
+      <summary className="menu-item list-none group-open:bg-slate-100 [&::-webkit-details-marker]:hidden">
+        <HardDrive className="h-4 w-4" aria-hidden="true" />
+        <span className="flex-1">จัดการพื้นที่จัดเก็บ</span>
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <section aria-label="งานที่เก็บบนเซิร์ฟเวอร์" className="menu-panel right-0 w-96 p-4">
         <h2 className="font-semibold text-slate-900">งานที่เก็บบนเซิร์ฟเวอร์</h2>
         <p className="mt-1 text-slate-600">การลบจะลบข้อมูลงานและวิดีโอต้นทางออกจากเซิร์ฟเวอร์ และย้อนกลับไม่ได้</p>
         {error && <p role="alert" className="mt-3 text-red-700">{error} <button type="button" onClick={() => setRefresh((value) => value + 1)} className="font-semibold underline">ลองอีกครั้ง</button></p>}

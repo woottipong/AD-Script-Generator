@@ -47,6 +47,13 @@ async page => {
   await page.getByRole('button', { name: /ทับบรรทัดอื่น/ }).click();
   const jumped = page.getByRole('listitem').filter({ has: page.getByRole('textbox', { name: /^บทบรรยายที่ \d+$/ }) });
   assert(await jumped.getByText('ทับบรรทัดอื่น').count() === 1, 'Jump opens a line that overlaps another');
+  const checkMenu = page.locator('details', { has: page.locator('summary', { hasText: 'ต้องตรวจ' }) });
+  await page.locator('summary', { hasText: 'ต้องตรวจ' }).click();
+  await page.keyboard.press('Escape');
+  assert(!(await checkMenu.evaluate(el => el.open)), 'Escape closes the check menu');
+  await page.locator('summary', { hasText: 'ต้องตรวจ' }).click();
+  await page.locator('video').click({ position: { x: 10, y: 10 } });
+  assert(!(await checkMenu.evaluate(el => el.open)), 'Clicking outside closes the check menu');
   await page.locator('summary', { hasText: 'ต้องตรวจ' }).click();
   await page.getByRole('button', { name: 'แสดงเฉพาะบรรทัดที่ต้องตรวจ' }).click();
   const shown = await page.getByRole('list', { name: 'รายการช่วงบรรยาย' }).getByRole('listitem').count();

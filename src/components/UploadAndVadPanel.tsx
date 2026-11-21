@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Clock,
   FileText,
   FileVideo,
@@ -346,7 +345,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           <span className="truncate font-medium">{fileName}</span>
           <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
-        <div className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-lg lg:left-auto lg:right-0">
+        <div className="menu-panel left-0 w-80 p-4 lg:left-auto lg:right-0">
           <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
           {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
             <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
@@ -392,7 +391,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         ) : (
           <span role="status" className="min-w-0 text-left">{statusText}</span>
         )}
-        {isQueueExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
       {canShowGenerate && !isBusy && !isRegenerating && (
@@ -421,15 +420,15 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const managementMenu = (
     <details key="project-management" ref={managementRef} name="project-header" className="group relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-700 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-300 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
         จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
-      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="absolute right-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-lg">
-        {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
-        {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-        {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
-        <div className="my-1 border-t border-slate-200" />
-        <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
+      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="menu-panel right-0 w-60 p-1.5">
+        {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="menu-item"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
+        {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="menu-item"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
+        {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
+        {(!isReview || (canShowGenerate && isRegenerating)) && <div className="my-1.5 border-t border-slate-200" />}
+        <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
         <div data-job-storage><JobStorageManager /></div>
       </div>
     </details>
@@ -503,7 +502,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         role="region"
         aria-labelledby="analysis-details-title"
         hidden={!isQueueExpanded}
-        className={`absolute left-3 right-3 top-full z-40 mt-2 rounded-lg border border-slate-200 bg-white text-sm shadow-lg sm:left-auto sm:right-4 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}
+        className={`menu-panel z-40 left-3 right-3 sm:left-auto sm:right-4 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}
       >
         <div className="max-h-[50vh] overflow-y-auto rounded-lg">
           <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
