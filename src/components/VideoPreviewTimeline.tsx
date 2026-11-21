@@ -25,13 +25,23 @@ import {
   decodeWaveformPeaks,
 } from '../utils/waveform';
 import { SpotDragMode, computeClampedSpotDrag, findSpotIssues, spotTimingKey } from '../utils/spotTiming';
+import { Button } from '@/components/ui/button';
+import { Toggle } from '@/components/ui/toggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-const controlBase = 'video-control inline-flex shrink-0 items-center justify-center gap-1 rounded px-1.5 text-xs transition-colors disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer';
-const transportControl = `${controlBase} text-slate-600 hover:bg-brand-100 hover:text-brand-900`;
-const timelineControl = `${controlBase} text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
 const decisionLabels = { generate: 'มีบทบรรยาย', pending: 'รอสร้าง', skip: 'ข้าม' };
 const monitorTime = (ms: number) => formatTimestampDisplay(ms).replace(/^00:/, '');
 const MAX_TIMELINE_ZOOM = 64;
+
+/** A player or zoom control whose name (and shortcut) shows in a tooltip rather than a browser title. */
+function WithTooltip({ label, children }: { label: string; children: React.ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface ActiveSpotDrag {
   spotId: string;
@@ -405,6 +415,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     }
   };
 
+  const captionLabel = showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ';
+  const muteLabel = isMuted ? 'เปิดเสียง' : 'ปิดเสียง';
   const toggleMute = () => {
     if (!videoRef.current) return;
     videoRef.current.muted = !videoRef.current.muted;
@@ -515,24 +527,26 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
         <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 bg-white px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
-            <button type="button" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} title="ย้อนกลับ 5 วินาที" aria-label="ย้อนกลับ 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>−5s</button>
-            <button type="button" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} title="ย้อนกลับ 1 วินาที" aria-label="ย้อนกลับ 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>−1s</button>
-            <button type="button" onClick={togglePlayPause} disabled={!videoUrl} title={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} className={`${controlBase} bg-brand-700 text-white hover:bg-brand-800`}>
-              {isPlaying ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
-            </button>
-            <button type="button" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} title="เดินหน้า 1 วินาที" aria-label="เดินหน้า 1 วินาที" className={`${transportControl} font-mono tabular-nums`}>+1s</button>
-            <button type="button" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} title="เดินหน้า 5 วินาที" aria-label="เดินหน้า 5 วินาที" className={`${transportControl} font-mono tabular-nums`}>+5s</button>
+            <WithTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="font-mono tabular-nums">−5s</Button></WithTooltip>
+            <WithTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="font-mono tabular-nums">−1s</Button></WithTooltip>
+            <WithTooltip label={`${isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} (Alt + P)`}>
+              <Button size="icon-sm" onClick={togglePlayPause} disabled={!videoUrl} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'}>
+                {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+              </Button>
+            </WithTooltip>
+            <WithTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="font-mono tabular-nums">+1s</Button></WithTooltip>
+            <WithTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="font-mono tabular-nums">+5s</Button></WithTooltip>
           </div>
           <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-slate-200 pl-2">
-            <button type="button" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} title="ช่วงก่อนหน้า (Alt + ↑)" aria-label="ช่วงบรรยายก่อนหน้า" className={transportControl}><SkipBack className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} title="ช่วงถัดไป (Alt + ↓)" aria-label="ช่วงบรรยายถัดไป" className={transportControl}><SkipForward className="h-4 w-4" aria-hidden="true" /></button>
+            <WithTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า"><SkipBack aria-hidden="true" /></Button></WithTooltip>
+            <WithTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป"><SkipForward aria-hidden="true" /></Button></WithTooltip>
           </div>
           <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-slate-200 sm:pl-2">
-            <button type="button" onClick={() => setLoopSelectedSpot((prev) => !prev)} disabled={!selectedSpot} title="วนซ้ำช่วงที่เลือก" aria-label="วนซ้ำช่วงที่เลือก" aria-pressed={loopSelectedSpot} className={`${controlBase} ${loopSelectedSpot ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Repeat className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={() => setShowCaptionOverlay((prev) => !prev)} disabled={!videoUrl} title={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-label={showCaptionOverlay ? 'ซ่อนบทบรรยายบนวิดีโอ' : 'แสดงบทบรรยายบนวิดีโอ'} aria-pressed={showCaptionOverlay} className={`${controlBase} ${showCaptionOverlay ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}><Subtitles className="h-4 w-4" aria-hidden="true" /></button>
-            <button type="button" onClick={toggleMute} disabled={!videoUrl} title={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-label={isMuted ? 'เปิดเสียง' : 'ปิดเสียง'} aria-pressed={isMuted} className={`${controlBase} ${isMuted ? 'bg-brand-100 text-brand-900 ring-1 ring-inset ring-brand-300 hover:bg-brand-200/70' : 'text-slate-600 hover:bg-brand-100 hover:text-brand-900'}`}>{isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}</button>
+            <WithTooltip label="วนซ้ำช่วงที่เลือก"><Toggle size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก"><Repeat aria-hidden="true" /></Toggle></WithTooltip>
+            <WithTooltip label={captionLabel}><Toggle size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel}><Subtitles aria-hidden="true" /></Toggle></WithTooltip>
+            <WithTooltip label={muteLabel}><Toggle size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel}>{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></WithTooltip>
           </div>
-          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600" title={`${formatTimestampDisplay(currentTimeMs)} / ${formatTimestampDisplay(videoUrl ? effectiveDurationMs : 0)}`}>
+          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-slate-600">
             <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
           </div>
         </div>
@@ -558,19 +572,19 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               <span className="text-brand-300">{((activeDrag.previewEndMs - activeDrag.previewStartMs) / 1000).toFixed(1)}s</span>
             </span>
           ) : hoverTimeMs !== null && (
-            <span className="hidden sm:inline font-mono tabular-nums text-slate-500" title="ตำแหน่งเมาส์" aria-hidden="true">
+            <span className="hidden sm:inline font-mono tabular-nums text-slate-500" aria-hidden="true">
               {monitorTime(hoverTimeMs)}
             </span>
           )}
         </div>
         <div role="group" aria-label="ซูมไทม์ไลน์" className="ml-auto flex shrink-0 items-center gap-0.5">
           {selectedSpot && selectedSpot.duration_ms / effectiveDurationMs * timelineViewportWidth * zoomLevel < 24 && zoomLevel < MAX_TIMELINE_ZOOM && (
-            <button type="button" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))} className={`${timelineControl} underline underline-offset-2`}>ซูมช่วงนี้</button>
+            <Button variant="link" size="sm" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))}>ซูมช่วงนี้</Button>
           )}
-          <button type="button" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} title="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์" aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className={timelineControl}>พอดี</button>
-          <button type="button" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} title="ย่อไทม์ไลน์" aria-label="ย่อไทม์ไลน์" className={timelineControl}><ZoomOut className="h-4 w-4" aria-hidden="true" /></button>
+          <WithTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="sm" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ">พอดี</Button></WithTooltip>
+          <WithTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์"><ZoomOut aria-hidden="true" /></Button></WithTooltip>
           <span className="min-w-11 text-center text-xs text-slate-600 tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
-          <button type="button" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} title="ขยายไทม์ไลน์" aria-label="ขยายไทม์ไลน์" className={timelineControl}><ZoomIn className="h-4 w-4" aria-hidden="true" /></button>
+          <WithTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์"><ZoomIn aria-hidden="true" /></Button></WithTooltip>
         </div>
       </div>
 

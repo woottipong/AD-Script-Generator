@@ -31,5 +31,13 @@ async page => {
   await page.getByRole('button',{name:'เดินหน้า 5 วินาที'}).click();
   const active=await page.getByRole('listitem',{name:'ช่วงบรรยายที่ 2'}).getByText('ตำแหน่งวิดีโอ').count();
   assert(active===1,'Active playback marker not visible at boundary');
-  return JSON.stringify({initialOrder:true,skipOrder:true,reasonSearch:true,emptySearch:true,selectedEditedAndSaved:true,editedSearch:true,activeMarker:true});
+  const loop=page.getByRole('button',{name:'วนซ้ำช่วงที่เลือก'});
+  assert(await loop.getAttribute('aria-pressed')==='false','Loop starts off');
+  await loop.click(); assert(await loop.getAttribute('aria-pressed')==='true','Loop toggles on'); await loop.click();
+  assert(await page.getByRole('group',{name:'เล่นและเลื่อนเวลา'}).locator('[title]').count()===0,'Transport buttons use tooltips, not title attributes');
+  await page.getByRole('group',{name:'เล่นและเลื่อนเวลา'}).getByRole('button',{name:'เล่นวิดีโอ'}).hover();
+  const tip=page.locator('[data-slot=tooltip-content]'); await tip.waitFor();
+  assert((await tip.textContent()).includes('Alt + P'),'The play tooltip names its shortcut');
+  await page.mouse.move(5,5);
+  return JSON.stringify({initialOrder:true,skipOrder:true,reasonSearch:true,emptySearch:true,selectedEditedAndSaved:true,editedSearch:true,activeMarker:true,transportToggles:true,tooltips:true});
 }
