@@ -64,10 +64,15 @@ test('the waveform cap fits a 60 minute video at 20 ms buckets', () => {
   assert.equal(validateReviewJobCreation(review).success, false);
 });
 
-test('Review Mode saves text edits on imported lines that break timing rules, but checks lines whose time changed', () => {
+test('Review Mode saves text edits on imported lines as they are, and checks retimed lines against Review Mode rules', () => {
   const reviewJob = { mode: 'review', spots: [reviewSpot], vad_output: reviewInput().vad_output } as unknown as PersistedJobState;
   assert.equal(validateEditedSpots([{ ...reviewSpot, text: 'แก้คำผิด', is_edited: true }], reviewJob).success, true);
-  assert.equal(validateEditedSpots([{ ...reviewSpot, start_ms: 5600, duration_ms: 900 }], reviewJob).success, false);
+  assert.equal(validateEditedSpots([{ ...reviewSpot, start_ms: 5600, duration_ms: 900 }], reviewJob).success, true, 'retimed line may sit over speech');
+  const neighbour = { ...reviewSpot, spot_id: 'cue_002', start_ms: 8000, end_ms: 9000, duration_ms: 1000, original_start_ms: 8000, original_end_ms: 9000 };
+  const twoLines = { ...reviewJob, spots: [reviewSpot, neighbour] } as PersistedJobState;
+  assert.equal(validateEditedSpots([{ ...reviewSpot, end_ms: 8500, duration_ms: 3000 }, neighbour], twoLines).success, false, 'retimed line may not overlap a neighbour');
+  assert.equal(validateEditedSpots([{ ...reviewSpot, end_ms: 8500, duration_ms: 3000 }, { ...neighbour, decision: 'skip' }], twoLines).success, true, 'skipped neighbours do not block');
+  assert.equal(validateEditedSpots([{ ...reviewSpot, start_ms: 6200, duration_ms: 300 }], reviewJob).success, false, 'retimed line must last 500 ms');
   const generateJob = { ...reviewJob, mode: 'generate' } as PersistedJobState;
   assert.equal(validateEditedSpots([{ ...reviewSpot, text: 'แก้คำผิด' }], generateJob).success, false);
 });

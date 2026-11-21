@@ -297,7 +297,7 @@ The following request represents the complete array for a job with one spot:
 }
 ```
 
-The route checks that `spots` is an array and calls `validateSpotTimestampEdit` for every entry. For Review Mode jobs it skips that check for spots whose `start_ms` and `end_ms` match the saved job, so text or decision edits on imported lines always save. The timestamp checks require:
+The route checks that `spots` is an array and calls `validateSpotTimestampEdit` for every entry. For Review Mode jobs it skips that check for spots whose `start_ms` and `end_ms` match the saved job, so text or decision edits on imported lines always save; a retimed Review Mode spot must stay inside the video, last at least 500 ms, and not overlap another spot that is not `skip`, and it may overlap speech. For Generate Mode the timestamp checks require:
 
 - Start and end values that pass the helper's `isNaN` check and fall within the video duration, with a nonnegative start and an end after the start. This is not a strict numeric-type check.
 - A duration of at least 500 ms, calculated as `end_ms - start_ms`.

@@ -7,20 +7,30 @@ export const TIMELINE_DRAG_SNAP_MS = 50;
 export type SpotDragMode = 'trim-start' | 'trim-end' | 'move';
 
 /**
- * Validates whether a proposed [startMs, endMs] for an ADSpot stays within its original
- * non-speech gap and does not overlap any speech segments.
+ * What an AD Spot's times are checked against. Generate Mode keeps each spot inside its original
+ * Non-Speech Gap and off Speech Segments; Review Mode only keeps it inside the video and off the
+ * other spots that are not skipped, because an imported SRT line may legitimately sit over speech.
  */
+export type SpotTimingContext =
+  | { mode: 'generate'; speechSegments: SpeechSegment[]; videoDurationMs: number }
+  | { mode: 'review'; spots: ADSpot[]; videoDurationMs: number };
+
+type TimedSpot = Pick<ADSpot, 'spot_id' | 'start_ms' | 'end_ms' | 'original_start_ms' | 'original_end_ms'>;
+
+function blockingNeighbours(spot: TimedSpot, spots: ADSpot[]): ADSpot[] {
+  return spots.filter((other) => other.spot_id !== spot.spot_id && other.decision !== 'skip');
+}
+
 export function validateSpotTimestampEdit(
-  spot: ADSpot,
+  spot: TimedSpot,
   newStartMs: number,
   newEndMs: number,
-  speechSegments: SpeechSegment[],
-  videoDurationMs: number
+  context: SpotTimingContext
 ): { valid: boolean; error?: string } {
   if (isNaN(newStartMs) || isNaN(newEndMs)) {
     return { valid: false, error: 'รูปแบบเวลาไม่ถูกต้อง (ใช้ HH:MM:SS.mmm)' };
   }
-  if (newStartMs < 0 || newEndMs > videoDurationMs) {
+  if (newStartMs < 0 || newEndMs > context.videoDurationMs) {
     return { valid: false, error: 'เวลาต้องอยู่ในช่วงความยาวของวิดีโอ' };
   }
   if (newEndMs <= newStartMs) {
@@ -28,6 +38,18 @@ export function validateSpotTimestampEdit(
   }
   if (newEndMs - newStartMs < MIN_SPOT_DURATION_MS) {
     return { valid: false, error: `ความยาวของช่วงบรรยายต้องไม่น้อยกว่า ${MIN_SPOT_DURATION_MS / 1000} วินาที` };
+  }
+
+  if (context.mode === 'review') {
+    for (const other of blockingNeighbours(spot, context.spots)) {
+      if (newStartMs < other.end_ms && newEndMs > other.start_ms) {
+        return {
+          valid: false,
+          error: `เวลาทับบรรทัดอื่น (${formatTimestampDisplay(other.start_ms)} – ${formatTimestampDisplay(other.end_ms)})`,
+        };
+      }
+    }
+    return { valid: true };
   }
 
   // Must stay within original non-speech gap (with 1ms tolerance for rounding)
@@ -38,8 +60,7 @@ export function validateSpotTimestampEdit(
     };
   }
 
-  // Must not overlap any detected speech segment
-  for (const seg of speechSegments) {
+  for (const seg of context.speechSegments) {
     if (newStartMs < seg.end_ms && newEndMs > seg.start_ms) {
       return {
         valid: false,
@@ -56,29 +77,38 @@ function snapToStep(ms: number, stepMs: number): number {
   return Math.round(ms / stepMs) * stepMs;
 }
 
+/** The furthest a spot may reach on each side from where it currently starts. */
+function editBounds(spot: TimedSpot, context: SpotTimingContext): { minStart: number; maxEnd: number } {
+  if (context.mode === 'review') {
+    let minStart = 0;
+    let maxEnd = context.videoDurationMs;
+    for (const other of blockingNeighbours(spot, context.spots)) {
+      if (other.start_ms <= spot.start_ms) minStart = Math.max(minStart, other.end_ms);
+      else maxEnd = Math.min(maxEnd, other.start_ms);
+    }
+    return { minStart, maxEnd };
+  }
+  let minStart = Math.max(0, spot.original_start_ms);
+  let maxEnd = Math.min(context.videoDurationMs, spot.original_end_ms);
+  for (const seg of context.speechSegments) {
+    if (seg.end_ms <= spot.start_ms && seg.end_ms > minStart) minStart = seg.end_ms;
+    if (seg.start_ms >= spot.end_ms && seg.start_ms < maxEnd) maxEnd = seg.start_ms;
+  }
+  return { minStart, maxEnd };
+}
+
 /**
- * Computes hard-clamped start/end timestamps for Trim or Move on the timeline,
- * preserving the spot's Non-Speech Gap boundaries and preventing speech overlap.
+ * Computes hard-clamped start/end timestamps for Trim, Move, and nudges. A spot that already sits
+ * outside its bounds (an imported line overlapping its neighbour) is pulled back inside.
  */
 export function computeClampedSpotDrag(
-  spot: Pick<ADSpot, 'start_ms' | 'end_ms' | 'original_start_ms' | 'original_end_ms'>,
+  spot: TimedSpot,
   mode: SpotDragMode,
   deltaMs: number,
-  speechSegments: SpeechSegment[],
-  videoDurationMs: number,
+  context: SpotTimingContext,
   snapMs = TIMELINE_DRAG_SNAP_MS
 ): { start_ms: number; end_ms: number; duration_ms: number } {
-  let minAllowedStart = Math.max(0, spot.original_start_ms);
-  let maxAllowedEnd = Math.min(videoDurationMs, spot.original_end_ms);
-
-  for (const seg of speechSegments) {
-    if (seg.end_ms <= spot.start_ms && seg.end_ms > minAllowedStart) {
-      minAllowedStart = seg.end_ms;
-    }
-    if (seg.start_ms >= spot.end_ms && seg.start_ms < maxAllowedEnd) {
-      maxAllowedEnd = seg.start_ms;
-    }
-  }
+  const { minStart: minAllowedStart, maxEnd: maxAllowedEnd } = editBounds(spot, context);
 
   let nextStart = spot.start_ms;
   let nextEnd = spot.end_ms;
@@ -98,6 +128,9 @@ export function computeClampedSpotDrag(
     nextStart = Math.max(minAllowedStart, Math.min(maxStart, rawStart));
     nextEnd = Math.min(maxAllowedEnd, nextStart + duration);
   }
+
+  nextStart = Math.max(nextStart, minAllowedStart);
+  nextEnd = Math.min(nextEnd, maxAllowedEnd);
 
   return {
     start_ms: Math.round(nextStart),

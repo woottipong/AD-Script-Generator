@@ -14,7 +14,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { ADSpot, SpeechSegment, WaveformEnvelope } from '../types/ad';
+import { ADSpot, JobMode, SpeechSegment, WaveformEnvelope } from '../types/ad';
 import { getProcessingFeedback, type ProcessingProgress } from '../utils/processingFeedback';
 import {
   formatCompactTime,
@@ -45,6 +45,7 @@ interface ActiveSpotDrag {
 }
 
 interface VideoPreviewTimelineProps {
+  mode: JobMode;
   videoUrl: string | null;
   durationMs: number;
   currentTimeMs: number;
@@ -62,6 +63,7 @@ interface VideoPreviewTimelineProps {
 }
 
 export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
+  mode,
   videoUrl,
   durationMs,
   currentTimeMs,
@@ -254,8 +256,9 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       activeDrag.originSpot,
       activeDrag.mode,
       deltaMs,
-      speechSegments,
-      effectiveDurationMs
+      mode === 'review'
+        ? { mode, spots, videoDurationMs: effectiveDurationMs }
+        : { mode, speechSegments, videoDurationMs: effectiveDurationMs }
     );
     setActiveDrag((prev) =>
       prev

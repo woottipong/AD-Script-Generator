@@ -110,7 +110,9 @@ export function validateEditedSpots(input: unknown, job: PersistedJobState):
     seen.add(spot.spot_id);
     const timingUnchanged = spot.start_ms === original.start_ms && spot.end_ms === original.end_ms;
     if (job.mode === 'review' && timingUnchanged) continue;
-    const check = validateSpotTimestampEdit(original, spot.start_ms, spot.end_ms, job.vad_output.speech_segments, job.vad_output.duration_ms);
+    const check = validateSpotTimestampEdit(original, spot.start_ms, spot.end_ms, job.mode === 'review'
+      ? { mode: 'review', spots: parsed.data, videoDurationMs: job.vad_output.duration_ms }
+      : { mode: 'generate', speechSegments: job.vad_output.speech_segments, videoDurationMs: job.vad_output.duration_ms });
     if (!check.valid) return { success: false, error: `Spot ${spot.spot_id}: ${check.error}` };
   }
   return { success: true, spots: parsed.data };

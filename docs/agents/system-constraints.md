@@ -83,4 +83,6 @@ Processing uses a single-job concurrency lock (`activeProcessingLock` in `server
 - Timestamps must remain within the spot's original non-speech gap boundaries (`original_start_ms` and `original_end_ms`).
 - Timestamps must never overlap any detected speech segment from `vad_output.speech_segments`.
 - Spot duration must be at least 500 ms (`MIN_SPOT_DURATION_MS`).
+
+Review Mode replaces the first two rules: a retimed spot stays inside the video, lasts at least 500 ms, and does not overlap another spot whose decision is not `skip`; it may overlap a Speech Segment. Callers pass a `SpotTimingContext` (`generate` or `review`) so one module decides which rules apply. `PATCH` checks only Review Mode spots whose `start_ms` or `end_ms` changed, and a drag or nudge on an imported spot that overlaps its neighbour pulls it out of the overlap.
 - SubRip (`.srt`) export includes only spots where `decision === 'generate'` with non-empty text.

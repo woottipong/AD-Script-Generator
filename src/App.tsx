@@ -891,6 +891,7 @@ export default function App() {
         {/* Left Pane: Video Monitor, Caption Strip, Transport & Multi-Track Timeline (6 cols) */}
         <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-hidden">
           <VideoPreviewTimeline
+            mode={mode ?? 'generate'}
             videoUrl={videoUrl}
             durationMs={vadOutput?.duration_ms || videoMetadata?.durationMs || 0}
             currentTimeMs={currentTimeMs}
@@ -924,6 +925,7 @@ export default function App() {
             isAnalyzing={status === 'ANALYZING'}
             errorMessage={errorMessage}
             onRetryVad={handleRunVad}
+            mode={mode ?? 'generate'}
             emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}
             speechSegments={vadOutput?.speech_segments || []}
             videoDurationMs={vadOutput?.duration_ms || videoMetadata?.durationMs || 0}

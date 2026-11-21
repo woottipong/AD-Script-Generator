@@ -12,13 +12,13 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react';
-import { ADSpot, AnalysisBatch, SpeechSegment } from '../types/ad';
+import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
   enableSpotNarration,
   formatTimestampDisplay,
   parseTimestampInput,
 } from '../utils/formatters';
-import { computeClampedSpotDrag, validateSpotTimestampEdit } from '../utils/spotTiming';
+import { computeClampedSpotDrag, validateSpotTimestampEdit, type SpotTimingContext } from '../utils/spotTiming';
 import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 
 interface AdScriptEditorProps {
@@ -28,6 +28,7 @@ interface AdScriptEditorProps {
   emptyState: 'preparing' | 'no-gaps' | 'failed';
   errorMessage: string | null;
   onRetryVad: () => void;
+  mode: JobMode;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
   selectedSpotId: string | null;
@@ -47,8 +48,7 @@ interface SpotBlockItemProps {
   isAnalyzing: boolean;
   isSelected: boolean;
   isPlayingNow: boolean;
-  speechSegments: SpeechSegment[];
-  videoDurationMs: number;
+  timingContext: SpotTimingContext;
   onSelect: (spotId: string, seekToStart?: boolean) => void;
   onUpdate: (updatedSpot: ADSpot) => void;
   itemRef?: (el: HTMLDivElement | null) => void;
@@ -61,8 +61,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   isAnalyzing,
   isSelected,
   isPlayingNow,
-  speechSegments,
-  videoDurationMs,
+  timingContext,
   onSelect,
   onUpdate,
   itemRef,
@@ -94,8 +93,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       spot,
       newStartMs,
       newEndMs,
-      speechSegments,
-      videoDurationMs
+      timingContext
     );
 
     if (!check.valid) {
@@ -116,14 +114,14 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
 
   const nudgeTargets = React.useMemo(() => {
     const target = (mode: 'trim-start' | 'trim-end', deltaMs: number) =>
-      computeClampedSpotDrag(spot, mode, deltaMs, speechSegments, videoDurationMs, 1);
+      computeClampedSpotDrag(spot, mode, deltaMs, timingContext, 1);
     return {
       startEarlier: target('trim-start', -200),
       startLater: target('trim-start', 200),
       endEarlier: target('trim-end', -200),
       endLater: target('trim-end', 200),
     };
-  }, [spot, speechSegments, videoDurationMs]);
+  }, [spot, timingContext]);
 
   const isUnchanged = (next: { start_ms: number; end_ms: number }) =>
     next.start_ms === spot.start_ms && next.end_ms === spot.end_ms;
@@ -560,6 +558,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   emptyState,
   errorMessage,
   onRetryVad,
+  mode,
   speechSegments,
   videoDurationMs,
   selectedSpotId,
@@ -611,6 +610,10 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   }, [selectedSpotId]);
 
   // Map each spot_id to its parent AnalysisBatch for live queue visibility
+  const timingContext = React.useMemo<SpotTimingContext>(() => mode === 'review'
+    ? { mode, spots, videoDurationMs }
+    : { mode, speechSegments, videoDurationMs }, [mode, spots, speechSegments, videoDurationMs]);
+
   const spotBatchMap = React.useMemo(() => {
     const map: Record<string, AnalysisBatch> = {};
     for (const b of batches) {
@@ -788,8 +791,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   isAnalyzing={isAnalyzing}
                   isSelected={spot.spot_id === selectedSpotId}
                   isPlayingNow={isPlayingNow}
-                  speechSegments={speechSegments}
-                  videoDurationMs={videoDurationMs}
+                  timingContext={timingContext}
                   onSelect={handleListSelectSpot}
                   onUpdate={(updatedSpot) => {
                     if (filterMode === 'skip' && updatedSpot.decision === 'generate') {
