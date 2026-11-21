@@ -233,7 +233,7 @@ Edge-to-edge editorial list item separated by 1px horizontal dividers (`divide-y
 
 ### Waveform Envelope & Soft Mist Loading Wave (Signature Component)
 Dedicated `56px` audio waveform track above the `28px` VAD speech track and `56px` AD track.
-- **Rendered Waveform:** Retina 2D `<canvas>` drawing crisp `2px` rounded micro-bars (`1px` gap, `1px` radius) auto-normalized to the clip's 98th percentile peak (`pow(norm, 1.45)`). Played bars to the left of the playhead tint in `Studio Cerulean` (`#0284c7 → #38bdf8`); unplayed bars sit in cool slate (`#475569 → #94a3b8`); quiet valleys (`< 12%`) soften to `#bae6fd` / `#cbd5e1`.
+- **Rendered Waveform:** Retina 2D `<canvas>` drawing crisp `2px` rounded micro-bars (`1px` gap, `1px` radius) auto-normalized to the clip's 98th percentile peak (`pow(norm, 1.45)`). Every bar sits in cool slate (`#475569 → #94a3b8`) and quiet valleys (`< 12%`) soften to `#cbd5e1`; the red playhead line alone marks the play position, so the waveform does not repaint during playback.
 - **Soft Mist Loading Wave:** While audio is scanning, two wide (`240px` wavelength), gently blurred (`1px` / `2px`), translucent cerulean SVG mist ribbons drift smoothly in opposite directions (`5.5s` / `8.5s`) with zero hard sweep lines or spring-like zigzags, topped by a borderless translucent pill (`กำลังสแกนเสียง %`).
 
 ### Broadcast CC Pill (Signature Component)

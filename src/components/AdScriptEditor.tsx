@@ -39,7 +39,13 @@ interface AdScriptEditorProps {
   onRetrySave: () => void;
 }
 
-type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'over_duration' | 'review_issue';
+type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'needs_check';
+
+/** Timing problems to fix, plus narration longer than its gap, which is fine for Extended AD that pauses the picture. */
+type SpotCheck = SpotIssue | 'over_duration';
+
+const isOverDuration = (spot: ADSpot) =>
+  spot.decision === 'generate' && spot.text.trim().length > 0 && estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms;
 
 const SPOT_ISSUE_LABELS: Record<SpotIssue, string> = {
   overlaps_speech: 'ทับเสียงพูด',
@@ -47,6 +53,8 @@ const SPOT_ISSUE_LABELS: Record<SpotIssue, string> = {
   too_short: 'สั้นกว่า 0.5 วินาที',
   past_video_end: 'เลยท้ายวิดีโอ',
 };
+
+const SPOT_CHECK_LABELS: Record<SpotCheck, string> = { ...SPOT_ISSUE_LABELS, over_duration: 'ยาวกว่าช่องว่าง' };
 
 interface SpotBlockItemProps {
   spot: ADSpot;
@@ -56,7 +64,7 @@ interface SpotBlockItemProps {
   isSelected: boolean;
   isPlayingNow: boolean;
   timingContext: SpotTimingContext;
-  issues?: SpotIssue[];
+  checks?: SpotCheck[];
   onSelect: (spotId: string, seekToStart?: boolean) => void;
   onUpdate: (updatedSpot: ADSpot) => void;
   itemRef?: (el: HTMLDivElement | null) => void;
@@ -70,7 +78,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   isSelected,
   isPlayingNow,
   timingContext,
-  issues,
+  checks,
   onSelect,
   onUpdate,
   itemRef,
@@ -177,10 +185,8 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
     spot.decision === 'generate' ? estimateThaiSpeechDurationMs(spot.text) : 0;
   const speechRatio =
     spot.duration_ms > 0 ? estimatedSpeechMs / spot.duration_ms : 0;
-  const isOverDurationWarning =
-    spot.decision === 'generate' &&
-    spot.text.trim().length > 0 &&
-    estimatedSpeechMs > spot.duration_ms;
+  const isOverDurationWarning = isOverDuration(spot);
+  const issues = checks?.filter((check): check is SpotIssue => check !== 'over_duration');
 
   const isTimestampsModified =
     spot.start_ms !== spot.original_start_ms || spot.end_ms !== spot.original_end_ms;
@@ -371,10 +377,10 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               {SPOT_ISSUE_LABELS[issue]}
             </span>
           ))}
-          {!isExpanded && isOverDurationWarning && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-              เกินเวลา
+          {isOverDurationWarning && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              {SPOT_CHECK_LABELS.over_duration}
             </span>
           )}
           {!isExpanded && spot.is_edited && (
@@ -450,6 +456,9 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                       }
                     >
                       พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
+                      {isOverDurationWarning && (
+                        <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
+                      )}
                     </span>
                     <span aria-hidden="true" className="text-slate-300">·</span>
                     <span>{spot.text.trim().length} อักษร</span>
@@ -475,26 +484,6 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   </div>
                 </div>
               </div>
-
-              {isOverDurationWarning && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                    <span>
-                      คำบรรยายใช้เวลาพูดประมาณ {(estimatedSpeechMs / 1000).toFixed(1)}s เกินช่องว่าง {(spot.duration_ms / 1000).toFixed(1)}s
-                    </span>
-                  </div>
-                  {isTimestampsModified && (
-                    <button
-                      type="button"
-                      onClick={handleResetTimestamps}
-                      className="text-xs font-semibold text-amber-900 underline whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      {timingContext.mode === 'review' ? 'คืนเวลาตาม SRT' : 'ขยายเวลาเต็มช่วงว่าง'} ({((spot.original_end_ms - spot.original_start_ms) / 1000).toFixed(1)}s)
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           ) : hasSavedText ? (
             <div className="space-y-2">
@@ -636,24 +625,20 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return map;
   }, [batches]);
 
-  const { generatedCount, pendingCount, skippedCount, editedCount, overDurationCount, spotOrder } = React.useMemo(() => {
+  const { generatedCount, pendingCount, skippedCount, editedCount, spotOrder } = React.useMemo(() => {
     let generatedCount = 0;
     let pendingCount = 0;
     let skippedCount = 0;
     let editedCount = 0;
-    let overDurationCount = 0;
     const spotOrder = new Map<string, number>();
     spots.forEach((spot, index) => {
       if (!spotOrder.has(spot.spot_id)) spotOrder.set(spot.spot_id, index + 1);
-      if (spot.decision === 'generate' && spot.text.trim().length > 0) {
-        generatedCount++;
-        if (estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms) overDurationCount++;
-      }
+      if (spot.decision === 'generate' && spot.text.trim().length > 0) generatedCount++;
       if (spot.decision === 'pending') pendingCount++;
       if (spot.decision === 'skip') skippedCount++;
       if (spot.is_edited) editedCount++;
     });
-    return { generatedCount, pendingCount, skippedCount, editedCount, overDurationCount, spotOrder };
+    return { generatedCount, pendingCount, skippedCount, editedCount, spotOrder };
   }, [spots]);
 
   const spotIssues = React.useMemo(
@@ -662,23 +647,44 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     [mode, timingKey, speechSegments, videoDurationMs]
   );
 
+  const spotChecks = React.useMemo(() => {
+    const checks = new Map<string, SpotCheck[]>();
+    for (const spot of spots) {
+      const list: SpotCheck[] = [...(spotIssues.get(spot.spot_id) ?? [])];
+      if (isOverDuration(spot)) list.push('over_duration');
+      if (list.length > 0) checks.set(spot.spot_id, list);
+    }
+    return checks;
+  }, [spots, spotIssues]);
+
+  const checkCounts = React.useMemo(() => {
+    const counts = new Map<SpotCheck, number>();
+    for (const list of spotChecks.values()) for (const check of list) counts.set(check, (counts.get(check) ?? 0) + 1);
+    return (Object.keys(SPOT_CHECK_LABELS) as SpotCheck[]).filter((check) => counts.has(check)).map((check) => ({ check, count: counts.get(check)! }));
+  }, [spotChecks]);
+  const hasTimingIssue = spotIssues.size > 0;
+  const checkMenuRef = useRef<HTMLDetailsElement | null>(null);
+
+  const jumpToNextCheck = (check: SpotCheck) => {
+    const from = spots.findIndex((spot) => spot.spot_id === selectedSpotId);
+    const ordered = [...spots.slice(from + 1), ...spots.slice(0, from + 1)];
+    const target = ordered.find((spot) => spotChecks.get(spot.spot_id)?.includes(check));
+    if (!target) return;
+    if (!filteredSpots.some((spot) => spot.spot_id === target.spot_id)) {
+      setFilterMode('needs_check');
+      setSearchQuery('');
+    }
+    if (checkMenuRef.current) checkMenuRef.current.open = false;
+    onSelectSpot(target.spot_id, true);
+  };
+
   const filteredSpots = React.useMemo(() => {
     return spots.filter((spot) => {
-      if (filterMode === 'review_issue' && !spotIssues.has(spot.spot_id)) return false;
+      if (filterMode === 'needs_check' && !spotChecks.has(spot.spot_id)) return false;
       if (filterMode === 'generate' && spot.decision !== 'generate') return false;
       if (filterMode === 'pending' && spot.decision !== 'pending') return false;
       if (filterMode === 'skip' && spot.decision !== 'skip') return false;
       if (filterMode === 'edited' && !spot.is_edited) return false;
-      if (
-        filterMode === 'over_duration' &&
-        !(
-          spot.decision === 'generate' &&
-          spot.text.trim().length > 0 &&
-          estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms
-        )
-      ) {
-        return false;
-      }
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -691,7 +697,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 
       return true;
     });
-  }, [spots, filterMode, searchQuery, spotIssues]);
+  }, [spots, filterMode, searchQuery, spotChecks]);
 
   return (
     <section
@@ -724,35 +730,44 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
             <option value="pending">รอสร้าง ({pendingCount})</option>
             <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
             <option value="edited">แก้ไขแล้ว ({editedCount})</option>
-            <option value="over_duration">ข้อความเกินเวลา ({overDurationCount})</option>
-            {mode === 'review' && <option value="review_issue">บรรทัดที่มีคำเตือน ({spotIssues.size})</option>}
+            <option value="needs_check">ต้องตรวจ ({spotChecks.size})</option>
           </select>
+          {spotChecks.size > 0 && (
+            <details ref={checkMenuRef} className="relative shrink-0">
+              <summary className={`flex cursor-pointer list-none items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold [&::-webkit-details-marker]:hidden ${
+                hasTimingIssue ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}>
+                {hasTimingIssue ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                ต้องตรวจ <span className="tabular-nums">{spotChecks.size}</span>
+              </summary>
+              <div className="absolute right-0 z-40 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-300 bg-white p-1.5 text-xs shadow-lg">
+                <p className="px-2 pb-1 pt-0.5 text-slate-500">กดเพื่อไปบรรทัดถัดไปของแต่ละแบบ</p>
+                {checkCounts.map(({ check, count }) => (
+                  <button key={check} type="button" onClick={() => jumpToNextCheck(check)} className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-slate-100 cursor-pointer">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {check === 'over_duration'
+                        ? <Clock className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
+                        : <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />}
+                      <span className={check === 'over_duration' ? 'text-slate-700' : 'font-medium text-slate-900'}>
+                        {SPOT_CHECK_LABELS[check]}
+                        {check === 'over_duration' && <span className="block font-normal text-slate-500">ใช้ได้ถ้าเป็น Extended AD</span>}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-slate-600">{count}</span>
+                  </button>
+                ))}
+                <button type="button" onClick={() => {
+                  setFilterMode('needs_check');
+                  setSearchQuery('');
+                  if (checkMenuRef.current) checkMenuRef.current.open = false;
+                }} className="mt-1 w-full rounded-md border-t border-slate-200 px-2 pb-1 pt-2 text-left font-semibold text-brand-700 hover:bg-slate-50 cursor-pointer">แสดงเฉพาะบรรทัดที่ต้องตรวจ</button>
+              </div>
+            </details>
+          )}
         </div>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
-      {spotIssues.size > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <p role="status" className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />บรรทัดที่มีคำเตือน {spotIssues.size} บรรทัด · ทับเสียงพูด ทับบรรทัดอื่น หรือสั้นเกิน</p>
-          <button type="button" onClick={() => {
-            setFilterMode('review_issue');
-            setSearchQuery('');
-            const firstIssue = spots.find((spot) => spotIssues.has(spot.spot_id));
-            if (firstIssue) onSelectSpot(firstIssue.spot_id, true);
-          }} className="shrink-0 rounded px-2 py-1 font-semibold underline underline-offset-2 hover:bg-amber-100 cursor-pointer">ดูบรรทัดที่ต้องตรวจ</button>
-        </div>
-      )}
-      {overDurationCount > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <p role="status" className="flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />ข้อความเกินเวลา {overDurationCount} ช่วง · ควรตรวจก่อนส่งออก</p>
-          <button type="button" onClick={() => {
-            setFilterMode('over_duration');
-            setSearchQuery('');
-            const firstWarning = spots.find((spot) => spot.decision === 'generate' && estimateThaiSpeechDurationMs(spot.text) > spot.duration_ms);
-            if (firstWarning) onSelectSpot(firstWarning.spot_id, true);
-          }} className="shrink-0 rounded px-2 py-1 font-semibold underline underline-offset-2 hover:bg-amber-100 cursor-pointer">ดูช่วงที่ต้องตรวจ</button>
-        </div>
-      )}
       {/* 2. Scrollable spot editor list */}
       <div ref={listScrollRef} className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
@@ -823,7 +838,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   isSelected={spot.spot_id === selectedSpotId}
                   isPlayingNow={isPlayingNow}
                   timingContext={timingContext}
-                  issues={spotIssues.get(spot.spot_id)}
+                  checks={spotChecks.get(spot.spot_id)}
                   onSelect={handleListSelectSpot}
                   onUpdate={(updatedSpot) => {
                     if (filterMode === 'skip' && updatedSpot.decision === 'generate') {

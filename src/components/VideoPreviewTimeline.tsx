@@ -162,26 +162,19 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     ctx.fillStyle = 'rgba(148, 163, 184, 0.22)';
     ctx.fillRect(0, Math.round(midY) - 0.5, cssWidth, 1);
 
-    // Crisp Retina rounded micro-bars (2px bar + 1px gap) with cerulean played-region tinting
+    // Crisp Retina rounded micro-bars (2px bar + 1px gap); the playhead line alone marks position
     const barStep = 3;
     const barWidth = 2;
     const maxHalfHeight = midY - 4;
 
-    const playedGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
-    playedGrad.addColorStop(0, '#38bdf8');
-    playedGrad.addColorStop(0.5, '#0284c7');
-    playedGrad.addColorStop(1, '#38bdf8');
+    const barGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
+    barGrad.addColorStop(0, '#94a3b8');
+    barGrad.addColorStop(0.5, '#475569');
+    barGrad.addColorStop(1, '#94a3b8');
 
-    const unplayedGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
-    unplayedGrad.addColorStop(0, '#94a3b8');
-    unplayedGrad.addColorStop(0.5, '#475569');
-    unplayedGrad.addColorStop(1, '#94a3b8');
-
-    // One path per fill style: four fill() calls per frame instead of one per bar
-    const quietPlayed = new Path2D();
-    const quietUnplayed = new Path2D();
-    const loudPlayed = new Path2D();
-    const loudUnplayed = new Path2D();
+    // One path per fill style: two fill() calls per frame instead of one per bar
+    const quietBars = new Path2D();
+    const loudBars = new Path2D();
 
     // Anchor bars to absolute timeline pixels so each bar keeps its time window while scrolling
     for (let x = -(scrollLeft % barStep); x < cssWidth; x += barStep) {
@@ -205,10 +198,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       const barH = barHalf * 2;
       const y = midY - barHalf;
 
-      const isPlayed = tStart <= currentTimeMs;
-      const path = normalized < 0.12
-        ? (isPlayed ? quietPlayed : quietUnplayed)
-        : (isPlayed ? loudPlayed : loudUnplayed);
+      const path = normalized < 0.12 ? quietBars : loudBars;
 
       if (barH <= 2) {
         path.rect(x, y, barWidth, barH);
@@ -217,15 +207,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
       }
     }
 
-    ctx.fillStyle = '#bae6fd';
-    ctx.fill(quietPlayed);
     ctx.fillStyle = '#cbd5e1';
-    ctx.fill(quietUnplayed);
-    ctx.fillStyle = playedGrad;
-    ctx.fill(loudPlayed);
-    ctx.fillStyle = unplayedGrad;
-    ctx.fill(loudUnplayed);
-  }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth, currentTimeMs]);
+    ctx.fill(quietBars);
+    ctx.fillStyle = barGrad;
+    ctx.fill(loudBars);
+  }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth]);
 
   useEffect(() => {
     drawWaveform();

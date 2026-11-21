@@ -503,36 +503,36 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         role="region"
         aria-labelledby="analysis-details-title"
         hidden={!isQueueExpanded}
-        className="absolute left-3 right-3 top-full z-40 mt-2 rounded-lg border border-slate-300 bg-white shadow-lg sm:left-auto sm:right-4 sm:w-[calc(100%_-_2rem)] sm:max-w-4xl"
+        className={`absolute left-3 right-3 top-full z-40 mt-2 rounded-lg border border-slate-200 bg-white text-sm shadow-lg sm:left-auto sm:right-4 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}
       >
         <div className="max-h-[50vh] overflow-y-auto rounded-lg">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-200 bg-brand-100 px-4 py-2 text-brand-950">
-            <h2 id="analysis-details-title" className="text-sm font-semibold">รายละเอียดการทำงาน</h2>
-            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="inline-flex items-center justify-center rounded text-brand-700 hover:bg-brand-200 hover:text-brand-950 focus-visible:outline-brand-700 cursor-pointer">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
+            <h2 id="analysis-details-title" className="font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
+            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-brand-700 cursor-pointer">
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="border-b border-brand-100 bg-brand-50/60 px-4 py-3 space-y-2.5">
+          <div className="space-y-3 px-4 pb-4 pt-2">
             {activityFeedback && (
-              <p className="text-xs leading-relaxed text-brand-900">
+              <p className="leading-relaxed text-slate-600">
                 {activityFeedback.detail || activityFeedback.description}
               </p>
             )}
             {vadOutput ? (
-              <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
-                <div className="flex items-center gap-2"><dt className="text-slate-600">เสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd></div>
+              <dl className={`grid gap-x-6 gap-y-2 text-slate-600 ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
+                <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
                 {isReview
-                  ? <div className="flex items-center gap-2"><dt className="text-slate-600">บรรทัดใน SRT</dt><dd className="font-semibold tabular-nums text-brand-800">{spots.length} บรรทัด</dd></div>
-                  : <div className="flex items-center gap-2"><dt className="text-slate-600">ช่วงสำหรับบรรยาย</dt><dd className="font-semibold tabular-nums text-brand-800">{vadOutput.candidate_spots.length} ช่วง</dd></div>}
-                <div className="flex items-center gap-2"><dt className="text-slate-600">เวลาที่ไม่มีเสียงพูด</dt><dd className="font-medium tabular-nums text-slate-800">{formatCompactTime(nonSpeechDurationMs)}</dd></div>
+                  ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-slate-900">{spots.length} บรรทัด</dd></>
+                  : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.candidate_spots.length} ช่วง</dd></>}
+                <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(nonSpeechDurationMs)}</dd>
               </dl>
-            ) : <p className="text-xs text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
+            ) : <p className="text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
             {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
               <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
             )}
           </div>
           {batches.length > 0 && (
-            <div className="bg-white px-4 py-3">
+            <div className="border-t border-slate-200 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
                 <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
                 <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
