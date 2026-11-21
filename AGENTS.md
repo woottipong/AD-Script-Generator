@@ -18,7 +18,7 @@ Before exploring a domain, read the single-context glossary and relevant ADRs as
 
 ## Project overview
 
-TCC Envisio authors Thai Audio Description (AD) scripts for 480p MP4 videos. The browser decodes the audio track with WebCodecs and finds Non-Speech Gaps with Silero VAD in a Web Worker. The Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. Authors review and retime AD Spots in a timeline editor, then export SRT.
+TCC Envisio authors Thai Audio Description (AD) scripts in two modes. Both decode the audio track with WebCodecs and find Speech Segments with Silero VAD in a Web Worker. In Generate Mode (480p MP4) the Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. In Review Mode an existing SRT is opened against a local or linked MP4 with no video upload and no Gemini. Authors review and retime AD Spots in one timeline editor, then export SRT.
 
 ## Development workflow
 
@@ -34,7 +34,7 @@ Exercise UI flows with the browser scripts in `tests/browser/` (they mock every 
 
 ## UX conventions
 
-For interface changes, preserve the guided intake and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+For interface changes, preserve the mode choice, guided intake, and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Build UI from the shared classes and brand rules in [DESIGN.md](DESIGN.md#components) (defined in `src/index.css`) so menus, buttons, fields, and tags stay one system. Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
 
 ## System contracts
 

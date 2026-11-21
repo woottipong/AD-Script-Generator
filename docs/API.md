@@ -326,9 +326,9 @@ Permanently deletes a saved job directory and its video, or a recognizable unfin
 
 ## Validation boundaries
 
-The browser checks MP4 structure, H.264 codec, an audio codec with an `mp4a` prefix, 480-pixel height, a maximum duration of 1,800 seconds, and a file size of at most `2000 × 1024 × 1024` bytes. Its WebCodecs support check uses the track codec for `mp4a.40.*` and substitutes `mp4a.40.2` for other `mp4a` values.
+In Generate Mode the browser checks MP4 structure, H.264 codec, an audio codec with an `mp4a` prefix, 480-pixel height, a maximum duration of 1,800 seconds, and a file size of at most `2000 × 1024 × 1024` bytes. In Review Mode it requires only an MP4 with an AAC audio track and a duration of at most 3,600 seconds. Its WebCodecs support check uses the track codec for `mp4a.40.*` and substitutes `mp4a.40.2` for other `mp4a` values.
 
-Job initialization validates the declared video metadata, file size, VAD settings, speech segments, and candidate spots. It checks candidate IDs, durations, ranges, and speech overlaps. It checks the uploaded byte count against the declared size and limits uploads to 2,000 MiB. The server does not inspect the uploaded MP4 to verify its declared codecs or dimensions; browser validation remains necessary.
+`POST /api/jobs/review` checks that the VAD duration matches the video duration within one second and that spot IDs are unique and spot times are consistent and inside the audio. Job initialization validates the declared video metadata, file size, VAD settings, speech segments, and candidate spots. It checks candidate IDs, durations, ranges, and speech overlaps. It checks the uploaded byte count against the declared size and limits uploads to 2,000 MiB. The server does not inspect the uploaded MP4 to verify its declared codecs or dimensions; browser validation remains necessary.
 
 Gemini output passes through `GeminiBatchResponseSchema`. Every expected spot must be present. A `generate` result must contain nonblank text. Results with unknown spot IDs are ignored. A `skip` result can contain a reason, and returned text is retained if present. The prompt currently requests empty text for skipped spots.
 

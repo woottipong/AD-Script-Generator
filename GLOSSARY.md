@@ -1,4 +1,4 @@
-# AD Script Generator
+# TCC Envisio
 
 Thai Audio Description authoring workspace. Authors either generate a new Thai narration script for a video or review an existing SRT script against its video, then adjust text and timing and export SRT.
 
@@ -39,6 +39,10 @@ _Avoid_: Resize, stretch, crop
 **Move**:
 Shifting an entire AD Spot earlier or later along the timeline while preserving its duration, bounded by its Non-Speech Gap.
 _Avoid_: Drag, slide, pan
+
+**Extended AD**:
+Narration that runs longer than its AD Spot because playback pauses while it is read. Estimated speech longer than the spot is therefore informational, never an error.
+_Avoid_: Overrun, overflow
 
 **Job**:
 One video's persisted authoring work: video metadata, VAD output, Analysis Batches, and AD Spots, stored under `.data/jobs/<job_id>/`. One Job is active at a time.
