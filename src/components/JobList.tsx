@@ -1,19 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Plus } from 'lucide-react';
-import type { JobMode, JobStatus } from '../types/ad';
+import type { JobMode } from '../types/ad';
 import { formatFileSize } from '../utils/formatters';
+import type { StoredJobSummary } from '../utils/jobStore';
 
-interface StoredJob {
-  job_id: string;
-  file_name: string;
-  updated_at: string;
-  size_bytes: number;
-  is_processing: boolean;
-  is_upload: boolean;
-  title?: string;
-  mode?: JobMode;
-  status?: JobStatus;
-}
+/** A `GET /api/jobs` row: the stored summary plus whether the server is analysing or uploading it right now. */
+type StoredJob = StoredJobSummary & { is_processing: boolean };
 
 const MODE_LABEL: Record<JobMode, string> = { generate: 'สร้างบทบรรยาย', review: 'ตรวจแก้ SRT' };
 

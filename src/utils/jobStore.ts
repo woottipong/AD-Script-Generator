@@ -9,7 +9,7 @@ export function isJobId(value: unknown): value is string {
   return typeof value === 'string' && JOB_ID_PATTERN.test(value);
 }
 
-type StoredJobSummary = {
+export type StoredJobSummary = {
   job_id: string;
   file_name: string;
   updated_at: string;
@@ -23,56 +23,75 @@ type StoredJobSummary = {
 /** Everything a Job holds except its VAD output and AD Spots. */
 export type JobMeta = Omit<PersistedJobState, 'vad_output' | 'spots'>;
 
-const SCHEMA = `
-PRAGMA busy_timeout = 5000;
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;
-CREATE TABLE IF NOT EXISTS jobs (
-  job_id TEXT PRIMARY KEY,
-  schema_version INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  mode TEXT NOT NULL,
-  status TEXT NOT NULL,
-  file_name TEXT NOT NULL,
-  duration_ms INTEGER NOT NULL,
-  video_source_kind TEXT NOT NULL,
-  video_source_json TEXT NOT NULL,
-  video_metadata_json TEXT NOT NULL,
-  vad_config_json TEXT NOT NULL,
-  ad_settings_json TEXT,
-  srt_source_json TEXT,
-  batches_json TEXT NOT NULL,
-  gemini_file_uri TEXT,
-  gemini_file_name TEXT,
-  gemini_file_mime_type TEXT,
-  gemini_file_expires_at TEXT,
-  progress_stage TEXT,
-  progress_percent REAL,
-  active_model TEXT,
-  error_message TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_jobs_updated ON jobs(updated_at DESC);
-CREATE TABLE IF NOT EXISTS job_spots (
-  job_id TEXT NOT NULL,
-  spot_id TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  start_ms INTEGER NOT NULL,
-  end_ms INTEGER NOT NULL,
-  duration_ms INTEGER NOT NULL,
-  decision TEXT NOT NULL,
-  text TEXT NOT NULL,
-  reason TEXT,
-  is_edited INTEGER NOT NULL DEFAULT 0,
-  original_start_ms INTEGER NOT NULL,
-  original_end_ms INTEGER NOT NULL,
-  PRIMARY KEY (job_id, spot_id),
-  FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_job_spots_order ON job_spots(job_id, position);
-`;
+/**
+ * Schema changes in order: a database at `user_version` N has run the first N. A released migration is
+ * never edited; a schema change is a new entry at the end, which every database runs once on next start.
+ */
+const MIGRATIONS = [
+  `CREATE TABLE jobs (
+    job_id TEXT PRIMARY KEY,
+    schema_version INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    video_source_kind TEXT NOT NULL,
+    video_source_json TEXT NOT NULL,
+    video_metadata_json TEXT NOT NULL,
+    vad_config_json TEXT NOT NULL,
+    ad_settings_json TEXT,
+    srt_source_json TEXT,
+    batches_json TEXT NOT NULL,
+    gemini_file_uri TEXT,
+    gemini_file_name TEXT,
+    gemini_file_mime_type TEXT,
+    gemini_file_expires_at TEXT,
+    progress_stage TEXT,
+    progress_percent REAL,
+    active_model TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_jobs_updated ON jobs(updated_at DESC);
+  CREATE TABLE job_spots (
+    job_id TEXT NOT NULL,
+    spot_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    decision TEXT NOT NULL,
+    text TEXT NOT NULL,
+    reason TEXT,
+    is_edited INTEGER NOT NULL DEFAULT 0,
+    original_start_ms INTEGER NOT NULL,
+    original_end_ms INTEGER NOT NULL,
+    PRIMARY KEY (job_id, spot_id),
+    FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
+  );
+  CREATE INDEX idx_job_spots_order ON job_spots(job_id, position);`,
+];
+
+/** Brings the database up to the latest schema; each migration commits together with its version number. */
+function migrate(db: DatabaseSync): void {
+  const current = Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
+  if (current > MIGRATIONS.length) {
+    throw new Error(`envisio.db is at schema version ${current}, newer than this server supports (${MIGRATIONS.length}). Deploy the newer server instead of an older one.`);
+  }
+  for (let version = current; version < MIGRATIONS.length; version++) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(MIGRATIONS[version]);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
 
 type JobRow = Record<string, string | number | null>;
 
@@ -152,7 +171,13 @@ export function createJobStore(dataDir: string) {
   const jobsDir = path.join(dataDir, 'jobs');
   fs.mkdirSync(jobsDir, { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
-  db.exec(SCHEMA);
+  db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  try {
+    migrate(db);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
 
   const upsertJob = db.prepare(`INSERT INTO jobs (job_id, schema_version, title, mode, status, file_name, duration_ms, video_source_kind,
       video_source_json, video_metadata_json, vad_config_json, ad_settings_json, srt_source_json, batches_json, gemini_file_uri,
@@ -221,7 +246,7 @@ export function createJobStore(dataDir: string) {
     fs.mkdirSync(jobDir, { recursive: true });
     const vadFile = path.join(jobDir, 'vad_output.json');
     const createsVad = !fs.existsSync(vadFile);
-    if (createsVad) writeAtomically(vadFile, JSON.stringify(job.vad_output));
+    if (createsVad) writeAtomically(vadFile, JSON.stringify(job.vad_output, null, 2));
     const updatedAt = new Date().toISOString();
     const json = (value: unknown) => (value === undefined ? null : JSON.stringify(value));
     db.exec('BEGIN IMMEDIATE');

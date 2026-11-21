@@ -210,26 +210,34 @@ docker compose up --build --renew-anon-volumes -d
 
 ### รันด้วย Docker สำหรับ production
 
-ใช้ stage `production` ใน [Dockerfile](Dockerfile) เพื่อ build หน้าเว็บ เซิร์ฟเวอร์ Express ยังต้องทำงานเพื่อให้บริการ API และวิดีโอ:
+[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile), mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่พอร์ต 3000, รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ใส่ `GEMINI_API_KEY` ก่อน (ดู `.env.example`)
+
+**ขึ้นระบบครั้งแรก และอัปเดตเป็นโค้ดล่าสุด** ใช้คำสั่งเดียวกัน:
 
 ```bash
-docker build --target production -t ad-script-generator:production .
-
-mkdir -p .data
-docker run --rm -d \
-	--name ad-script-prod \
-	--env-file .env \
-	-p 3000:3000 \
-	-v "$PWD/.data:/app/.data" \
-	ad-script-generator:production
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-ดู log และหยุดคอนเทนเนอร์:
+ครั้งแรกระบบสร้าง `.data/envisio.db` และตารางให้เอง ส่วนการอัปเดตที่มีการเปลี่ยน schema ระบบจะรัน migration ที่ยังไม่ได้รันให้เองตอนเปิดเซิร์ฟเวอร์ ไม่ต้องรันคำสั่งเพิ่ม ถ้า database ใหม่กว่าโค้ด (เช่น ถอยกลับไปโค้ดเวอร์ชันเก่า) เซิร์ฟเวอร์จะไม่ยอมเปิดและแจ้งใน log แทนการเขียนทับข้อมูล
+
+ดูสถานะ, log และหยุดระบบ:
 
 ```bash
-docker logs -f ad-script-prod
-docker stop ad-script-prod
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml down
 ```
+
+**สำรองข้อมูล** หยุดระบบก่อนแล้วคัดลอกโฟลเดอร์ `.data` ทั้งโฟลเดอร์ (ห้ามคัดลอกตอนระบบทำงาน เพราะ SQLite อาจกำลังเขียนไฟล์อยู่):
+
+```bash
+docker compose -f docker-compose.prod.yml stop
+tar -czf "envisio-backup-$(date +%Y%m%d).tar.gz" .data
+docker compose -f docker-compose.prod.yml start
+```
+
+กู้คืนด้วยการหยุดระบบ แตกไฟล์สำรองทับ `.data` แล้วเริ่มระบบใหม่ ควรสำรองก่อนอัปเดตทุกครั้ง
 
 หากรัน production บนเครื่องโดยไม่ใช้ Docker ให้ build ก่อนแล้วเรียก `tsx`:
 

@@ -1,0 +1,23 @@
+# Production: build and start (or update to the current code) with
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Jobs live in ./.data on the host; the database schema migrates itself on start.
+name: envisio
+
+services:
+  envisio:
+    build:
+      context: .
+      target: production
+    init: true
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - ./.data:/app/.data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/config').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

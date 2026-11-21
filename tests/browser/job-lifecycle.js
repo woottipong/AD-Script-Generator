@@ -15,6 +15,12 @@ async page => {
   await page.getByText('บันทึกไม่สำเร็จ', {exact:false}).waitFor();
   const retained = await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).inputValue();
   if (retained !== 'บทแก้ไข') throw new Error('Edit lost after failed save');
+  await page.evaluate(() => { window.confirm = (message) => { window.leavePrompt = message; return false; }; });
+  await page.getByRole('link', { name: 'TCC Envisio รายการงาน' }).click();
+  let leavePrompt = '';
+  for (let i = 0; i < 40 && !leavePrompt; i++) { await page.waitForTimeout(50); leavePrompt = await page.evaluate(() => window.leavePrompt || ''); }
+  if (!leavePrompt.includes('ยังบันทึกไม่สำเร็จ')) throw new Error('Leaving with a failed save did not warn');
+  if (new URL(page.url()).pathname !== '/jobs/job_test') throw new Error('Declining the warning left the job');
   await page.getByRole('button',{name:'ลองบันทึกอีกครั้ง'}).click();
   const saving = await page.getByText('กำลังบันทึกการแก้ไข…').count();
   if (saving !== 1) throw new Error('Saving status was not shown before acknowledgement');
@@ -23,5 +29,5 @@ async page => {
   await page.reload();
   await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).waitFor();
   if (await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).inputValue() !== 'บทแก้ไข') throw new Error('Saved edit did not survive reload');
-  return {restored:true, errorRetained:retained, savingIndicator:saving, acknowledged:true, patchCalls};
+  return {leaveWarned:true, restored:true, errorRetained:retained, savingIndicator:saving, acknowledged:true, patchCalls};
 }

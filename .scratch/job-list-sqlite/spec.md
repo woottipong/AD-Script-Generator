@@ -193,6 +193,6 @@ CREATE INDEX IF NOT EXISTS idx_job_spots_order ON job_spots(job_id, position);
 ## Verification checklist
 
 1. `npm run lint` ต้องผ่านโดยไม่มี error
-2. `node --test src/utils/*.test.ts` ต้องผ่านทั้งหมด
+2. `bun test` ต้องผ่านทั้งหมด (Bun 1.4 ขึ้นไป ถ้า Bun บนเครื่องเก่ากว่าให้รันใน dev container)
 3. Browser tests ใน `tests/browser/` ต้องผ่านทั้งหมด (วิธีรันดูใน README)
 4. รันใน Docker (`node:22-slim`): สร้างงาน Generate Mode หนึ่งงานและ Review Mode หนึ่งงาน restart container แล้วงานยังอยู่ใน Job List ลบงานแล้วไม่มี `.tmp` หรือแถวกำพร้าเหลือ และเปิดสอง tab คนละงานแล้วไม่รบกวนกัน

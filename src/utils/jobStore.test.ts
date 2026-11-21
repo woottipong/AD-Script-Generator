@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { ADSpot, PersistedJobState } from '../types/ad';
 import { createJobStore, isJobId } from './jobStore';
 
@@ -167,3 +168,30 @@ test('list shows jobs and unfinished uploads newest first, and deleteJob removes
   assert.deepEqual(store.list().map((job) => job.job_id), ['job_old']);
   fs.rmSync(outside, { recursive: true, force: true });
 }));
+
+test('reopening the database keeps its Jobs', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
+  const job = generateJob('job_gen', path.join(dataDir, 'jobs'));
+  try {
+    const first = createJobStore(dataDir);
+    first.save(job);
+    first.close();
+    const reopened = createJobStore(dataDir);
+    assert.deepEqual(reopened.load('job_gen'), job, 'migrations already applied are not run again');
+    reopened.close();
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('a database from a newer server is refused instead of being written to', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
+  try {
+    const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
+    db.exec('PRAGMA user_version = 99');
+    db.close();
+    assert.throws(() => createJobStore(dataDir), /schema version 99/);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});

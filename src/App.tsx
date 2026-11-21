@@ -54,9 +54,11 @@ function jobPath(jobId: string): string {
   return `/jobs/${encodeURIComponent(jobId)}`;
 }
 
-/** A Job the author cancelled while the server was creating it would otherwise stay in storage unasked. */
+/** A Review Mode Job the author cancelled while the server was creating it would otherwise stay in storage unasked. */
 function discardCreatedJob(jobId: string): void {
-  void fetch(`/api/jobs/${encodeURIComponent(jobId)}/files`, { method: 'DELETE' }).catch(() => {});
+  void fetch(`/api/jobs/${encodeURIComponent(jobId)}/files`, { method: 'DELETE' })
+    .then((response) => { if (!response.ok) console.error(`Could not discard cancelled job ${jobId}: HTTP ${response.status}`); })
+    .catch((err) => console.error(`Could not discard cancelled job ${jobId}:`, err));
 }
 
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
@@ -140,6 +142,7 @@ export default function App() {
       if (!response.ok || !data?.job) throw new Error(data?.error || 'บันทึกงานตรวจแก้ SRT บนเซิร์ฟเวอร์ไม่สำเร็จ');
       setJobId(data.job.job_id);
       setJobTitle(data.job.title);
+      titleTypedRef.current = false;
       navigate(jobPath(data.job.job_id));
     } catch (err) {
       if (token.aborted) return;
@@ -771,10 +774,8 @@ export default function App() {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const initData = await parseApiResponse<any>(initRes);
-      if (token.aborted) {
-        if (initData?.job?.job_id) discardCreatedJob(initData.job.job_id);
-        return;
-      }
+      // A Job created here is already analysing on the server, so it stays and shows in the Job List.
+      if (token.aborted) return;
       if (!initRes.ok || !initData?.job) {
         setVadProgress(null);
         setStatus('FAILED');
@@ -787,6 +788,7 @@ export default function App() {
       const initializedJob: PersistedJobState = initData.job;
       setJobId(initializedJob.job_id);
       setJobTitle(initializedJob.title);
+      titleTypedRef.current = false;
       navigate(jobPath(initializedJob.job_id));
       setBatches(initializedJob.batches);
       setSpots(initializedJob.spots);
@@ -890,15 +892,19 @@ export default function App() {
     titleTypedRef.current = false;
   }, [leaveCurrentJob, clearVideo]);
 
-  const unsavedWarning = videoMetadata && !jobId
-    ? 'งานนี้ยังไม่ได้บันทึกบนเซิร์ฟเวอร์และจะหายไป'
-    : jobId && saveStatus !== 'saved' ? 'การแก้ไขล่าสุดยังบันทึกไม่สำเร็จและจะหายไป' : null;
+  /** Waits for saves already sent, then names what leaving would lose, if anything. */
+  const leaveWarning = useCallback(async (): Promise<string | null> => {
+    if (videoMetadata && !jobId) return 'งานนี้ยังไม่ได้บันทึกบนเซิร์ฟเวอร์และจะหายไป';
+    if (!jobId) return null;
+    return (await saveQueue.wait()) === false ? 'การแก้ไขล่าสุดยังบันทึกไม่สำเร็จและจะหายไป' : null;
+  }, [videoMetadata, jobId, saveQueue]);
 
   // Back and forward move between Jobs by URL, so the workspace follows whatever the URL now names.
   useEffect(() => {
-    const handlePopState = () => {
+    const handlePopState = async () => {
+      const warning = await leaveWarning();
       // Back cannot be cancelled, so declining puts the page's own URL back.
-      if (unsavedWarning && !window.confirm(`ออกจากหน้านี้? ${unsavedWarning}`)) {
+      if (warning && !window.confirm(`ออกจากหน้านี้? ${warning}`)) {
         window.history.pushState(null, '', path);
         return;
       }
@@ -907,9 +913,10 @@ export default function App() {
       const pathJobId = jobIdFromPath(window.location.pathname);
       if (pathJobId) restoreJob(pathJobId);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [resetWorkspace, restoreJob, unsavedWarning, path]);
+    const onPopState = () => void handlePopState();
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [resetWorkspace, restoreJob, leaveWarning, path]);
 
   const openJob = (openJobId: string) => {
     navigate(jobPath(openJobId));
@@ -937,8 +944,9 @@ export default function App() {
   };
 
   // Navigate first so leaving the Job does not also push `/new` onto the history.
-  const openJobList = () => {
-    if (unsavedWarning && !window.confirm(`กลับไปรายการงาน? ${unsavedWarning}`)) return;
+  const openJobList = async () => {
+    const warning = await leaveWarning();
+    if (warning && !window.confirm(`กลับไปรายการงาน? ${warning}`)) return;
     navigate('/');
     resetWorkspace();
   };
@@ -974,7 +982,7 @@ export default function App() {
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="min-h-16 shrink-0 bg-white border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openJobList(); }} aria-label="TCC Envisio รายการงาน" className="inline-flex min-w-0 items-center gap-2.5 rounded-md">
+          <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void openJobList(); }} aria-label="TCC Envisio รายการงาน" className="inline-flex min-w-0 items-center gap-2.5 rounded-md">
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
             <span className="min-w-0">
               <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-slate-900">
@@ -1046,12 +1054,12 @@ export default function App() {
         <section role="alert" className="w-[calc(100%_-_2rem)] max-w-xl mx-auto my-14 text-center">
           <h1 className="text-2xl font-semibold text-slate-900">{jobLoad === 'missing' ? 'ไม่พบงานนี้' : 'เปิดงานไม่สำเร็จ'}</h1>
           <p className="mt-3 text-base text-slate-600">{jobLoad === 'missing' ? 'งานอาจถูกลบไปแล้ว หรือลิงก์ไม่ถูกต้อง' : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองโหลดหน้านี้อีกครั้ง'}</p>
-          <button type="button" onClick={openJobList} className="btn-primary mt-6 inline-flex min-h-10 items-center px-4 py-2 text-sm">กลับหน้าแรก</button>
+          <button type="button" onClick={() => void openJobList()} className="btn-primary mt-6 inline-flex min-h-10 items-center px-4 py-2 text-sm">กลับหน้าแรก</button>
         </section>
       ) : !hasProject && path === '/' ? (
         <JobList onOpen={openJob} onNew={() => navigate('/new')} />
       ) : !hasProject && mode === null ? (
-        <ModeChooser onBack={openJobList} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
+        <ModeChooser onBack={() => void openJobList()} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
       ) : !hasProject && mode === 'review' ? (
         <ReviewIntake
           checkingFileName={checkingFileName}
@@ -1078,7 +1086,7 @@ export default function App() {
         onStartGeminiAnalysis={handleStartGeminiAnalysis}
         onRetryFailedBatches={handleRetryFailedBatches}
         onResetJob={handleResetJob}
-        onOpenJobList={openJobList}
+        onOpenJobList={() => void openJobList()}
         jobTitle={jobTitle}
         onRenameJob={handleRenameJob}
         onSelectSpot={handleSelectSpot}

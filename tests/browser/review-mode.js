@@ -76,7 +76,7 @@ async page => {
   for (let i = 0; i < 100 && !patched; i++) await page.waitForTimeout(50);
   assert(patched && patched[0].text === 'ชายเปิดประตูห้อง', 'Text edit is saved to the Review Mode job');
   await page.getByText('บันทึกบนเซิร์ฟเวอร์แล้ว').waitFor();
-  await page.getByRole('group').filter({ has: page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1' }) }).locator('summary').click();
+  await page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1' }).click();
   const rename = page.locator('#job-title');
   await rename.fill('ตรวจบท ตอนที่ 1 (แก้)');
   await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();

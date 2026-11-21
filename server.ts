@@ -573,7 +573,8 @@ async function startServer() {
         is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
       }));
       res.json({ jobs });
-    } catch {
+    } catch (err) {
+      console.error('Could not list jobs:', err);
       res.status(500).json({ error: 'ไม่สามารถอ่านรายการงานได้' });
     }
   });
