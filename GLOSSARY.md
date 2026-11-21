@@ -45,8 +45,20 @@ Narration that runs longer than its AD Spot because playback pauses while it is 
 _Avoid_: Overrun, overflow
 
 **Job**:
-One video's persisted authoring work: video metadata, VAD output, Analysis Batches, and AD Spots, stored under `.data/jobs/<job_id>/`. One Job is active at a time.
+One video's persisted authoring work: its Job Title, video metadata, VAD output, Analysis Batches, and AD Spots. Authors reopen any Job from the Job List; several Jobs can be open at once in different browser tabs.
 _Avoid_: Project, session, task
+
+**Job List**:
+The landing view listing every stored Job and Unfinished Upload, most recently changed first, from which an author reopens or deletes one or starts a new Job.
+_Avoid_: Dashboard, storage manager, history
+
+**Unfinished Upload**:
+A Generate Mode video copy whose upload never became a Job. It appears in the Job List only so it can be deleted.
+_Avoid_: Orphan, partial job
+
+**Job Title**:
+The name authors know a Job by. It defaults to the video's file name when the Job is created.
+_Avoid_: Job name, label
 
 **Analysis Batch**:
 A 240-second slice of the timeline whose Candidate Spots Gemini analyses in one request, read with 20 seconds of context before and 10 seconds after.
