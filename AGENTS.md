@@ -26,11 +26,11 @@ For local setup, Docker hot reload, dependency or environment changes, productio
 
 Maintain `bun.lock` (lockfileVersion 2) with Bun 1.4 or newer, and change `package.json` and `bun.lock` together; Docker installs with `--frozen-lockfile`. When the local Bun is older, run the dependency command inside the dev container (`docker exec -w /app <container> bun add …`), which ships Bun 1.4. With npm, use `npm install --legacy-peer-deps` because of the Vite/esbuild peer dependency conflict.
 
-Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. The project root is bind mounted to `/app`, and jobs persist directly in `.data/jobs` on both the host and the container.
+Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. The project root is bind mounted to `/app`, and Jobs persist directly in `.data` (`envisio.db` plus `jobs/`) on both the host and the container. The Job store uses `node:sqlite`, which needs Bun 1.4 or newer for `bun test`; with an older local Bun, run the tests in the dev container (`docker exec -w /app <container> bun test`).
 
 ## Verification
 
-Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; the README shows how to run them). In a running app with real data, keep to read-only checks: changing the video, rescanning audio, and starting a new job all call `DELETE /api/jobs/:jobId`, which detaches the author's active Job.
+Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; the README shows how to run them). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes another author's Job too.
 
 ## UX conventions
 

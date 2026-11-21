@@ -1,13 +1,16 @@
 async page => {
   await page.unrouteAll({ behavior: 'wait' });
   let created = null;
-  let patched = null;
+  let patched = null, renamed = null;
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
-    if (url.endsWith('/api/jobs/current')) return route.fulfill({ json: { job: null, isRunning: false } });
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       created = request.postDataJSON();
-      return route.fulfill({ json: { job: { ...created, job_id: 'job_review_fixture', schema_version: 2, mode: 'review', status: 'READY', batches: [], created_at: '2026-11-20T00:00:00Z', updated_at: '2026-11-20T00:00:00Z' }, isRunning: false } });
+      return route.fulfill({ json: { job: { ...created, job_id: 'job_review_fixture', schema_version: 3, title: created.title, mode: 'review', status: 'READY', batches: [], created_at: '2026-11-20T00:00:00Z', updated_at: '2026-11-20T00:00:00Z' }, isRunning: false } });
+    }
+    if (url.endsWith('/api/jobs/job_review_fixture') && request.method() === 'PATCH') {
+      renamed = request.postDataJSON().title;
+      return route.fulfill({ json: { job: { job_id: 'job_review_fixture', title: renamed } } });
     }
     if (url.endsWith('/api/jobs/job_review_fixture/spots')) {
       patched = request.postDataJSON().spots;
@@ -15,7 +18,7 @@ async page => {
     }
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto('http://127.0.0.1:4173/new');
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   assert(await page.getByRole('button', { name: /สร้างบทบรรยาย/ }).isVisible(), 'Generate Mode card is offered');
   await page.getByRole('button', { name: /แก้ไข SRT ที่มีอยู่/ }).click();
@@ -23,11 +26,19 @@ async page => {
   assert(await process.isDisabled(), 'Process waits for both files');
   await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles('/tmp/ad-review-1080p.mp4');
   await page.getByLabel('เลือกไฟล์ SRT').setInputFiles('/tmp/ad-review.srt');
+  const titleField = page.getByRole('textbox', { name: 'ชื่องาน' });
+  assert(await titleField.inputValue() === 'ad-review-1080p', 'Job Title defaults to the video file name');
+  await titleField.fill('ตรวจบท ตอนที่ 1');
+  await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles('/tmp/ad-review-1080p.mp4');
+  assert(await titleField.inputValue() === 'ตรวจบท ตอนที่ 1', 'Choosing the video again keeps a typed title');
   await process.click();
   const firstLine = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
   await firstLine.waitFor({ timeout: 60000 });
   for (let i = 0; i < 100 && !created; i++) await page.waitForTimeout(50);
   assert(created, 'Review Mode job was created on the server');
+  assert(created.title === 'ตรวจบท ตอนที่ 1', 'The typed Job Title is sent when the Job is created');
+  for (let i = 0; i < 100 && new URL(page.url()).pathname !== '/jobs/job_review_fixture'; i++) await page.waitForTimeout(50);
+  assert(new URL(page.url()).pathname === '/jobs/job_review_fixture', 'The new Job opens at its own URL');
   assert(created.video_source.kind === 'local_file' && created.video_source.file_name === 'ad-review-1080p.mp4', 'Video source is the local file');
   assert(created.video_metadata.height === 1080, '1080p video is accepted');
   assert(created.vad_output.waveform && created.vad_output.waveform.peaksBase64.length > 0, 'Audio of a moov-at-end MP4 was decoded');
@@ -65,5 +76,12 @@ async page => {
   for (let i = 0; i < 100 && !patched; i++) await page.waitForTimeout(50);
   assert(patched && patched[0].text === 'ชายเปิดประตูห้อง', 'Text edit is saved to the Review Mode job');
   await page.getByText('บันทึกบนเซิร์ฟเวอร์แล้ว').waitFor();
-  return { modeChooser: true, reviewJobCreated: true, generateHidden: true, warnings: warningCount, skippedReported: true, savedEdit: true };
+  await page.getByRole('group').filter({ has: page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1' }) }).locator('summary').click();
+  const rename = page.locator('#job-title');
+  await rename.fill('ตรวจบท ตอนที่ 1 (แก้)');
+  await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
+  await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
+  assert(renamed === 'ตรวจบท ตอนที่ 1 (แก้)', 'Renaming in the editor saves the Job Title');
+  assert(await page.locator('summary', { hasText: 'ตรวจบท ตอนที่ 1 (แก้)' }).count() === 1, 'The header shows the new title');
+  return { titled: true, renamed: true, modeChooser: true, reviewJobCreated: true, generateHidden: true, warnings: warningCount, skippedReported: true, savedEdit: true };
 }

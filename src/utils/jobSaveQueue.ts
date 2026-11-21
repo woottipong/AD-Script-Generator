@@ -35,12 +35,6 @@ export function createJobSaveQueue(
         }
       });
     },
-    leave(jobId: string) {
-      generation++;
-      queue = queue.then(async () => {
-        await request(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' }).catch(() => {});
-      });
-    },
     wait() {
       return queue;
     },

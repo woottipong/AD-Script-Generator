@@ -25,7 +25,7 @@ export function isMp4Url(value: string): boolean {
   }
 }
 
-function fileNameFromUrl(url: string): string {
+export function fileNameFromUrl(url: string): string {
   const segment = new URL(url).pathname.split('/').pop() || 'video.mp4';
   try {
     return decodeURIComponent(segment);

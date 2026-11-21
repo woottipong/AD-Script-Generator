@@ -6,6 +6,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
 import { pollJob } from './jobPolling';
+import type { PersistedJobState } from '../types/ad';
+import { createJobStore } from './jobStore';
 
 const root = process.cwd();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -98,11 +100,11 @@ globalThis.fetch = async (input, init) => {
   const id = pathname.split('/').at(-1);
   return Response.json({ name: 'files/' + id, state: 'ACTIVE', uri: 'https://fake.invalid/' + id, mimeType: 'video/mp4' });
 };`);
-  const jobDir = path.join(dir, '.data/jobs/job_test');
-  fs.mkdirSync(jobDir, { recursive: true });
-  const source = path.join(jobDir, 'source_video.mp4');
+  const source = path.join(dir, '.data/jobs/job_test/source_video.mp4');
+  const seed = createJobStore(path.join(dir, '.data'));
+  seed.save({ ...makeJob(twoBatches), schema_version: 3, title: 'test', mode: 'generate', video_source: { kind: 'server_copy', local_file_path: source } } as unknown as PersistedJobState);
+  seed.close();
   fs.writeFileSync(source, '1');
-  fs.writeFileSync(path.join(jobDir, 'job.json'), JSON.stringify({ ...makeJob(twoBatches), local_file_path: source }));
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], {
     cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
@@ -302,7 +304,7 @@ test('a failed job read never replaces the unreadable persisted data', { timeout
   await withServer(false, async ({ dir, request, otherJob }) => {
     const pending = request('/analyze-batch', 'POST', { batch_id: 'batch_1' });
     await until(() => fs.existsSync(path.join(dir, 'entered-1')));
-    const jobFile = path.join(dir, '.data/jobs/job_test/job.json');
+    const jobFile = path.join(dir, '.data/jobs/job_test/vad_output.json');
     fs.writeFileSync(jobFile, '{invalid');
     fs.writeFileSync(path.join(dir, 'release-all'), '1');
     assert.equal((await pending).status, 500);

@@ -4,7 +4,6 @@ async page => {
   let created = null;
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
-    if (url.endsWith('/api/jobs/current')) return route.fulfill({ json: { job: null, isRunning: false } });
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       created = request.postDataJSON();
       return route.fulfill({ json: { job: { ...created, job_id: 'job_review_url', schema_version: 2, mode: 'review', status: 'READY', batches: [] }, isRunning: false } });
@@ -13,7 +12,7 @@ async page => {
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto('http://127.0.0.1:4173/new');
   await page.getByRole('button', { name: /แก้ไข SRT ที่มีอยู่/ }).click();
   const link = page.getByPlaceholder('https://…/video.mp4');
   const process = page.getByRole('button', { name: 'ประมวลผล' });

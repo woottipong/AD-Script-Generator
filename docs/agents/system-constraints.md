@@ -52,17 +52,18 @@ Batching runs in `src/utils/formatters.ts`. Prompt building and response validat
 
 ## Data storage and persistence
 
-Job state persists as JSON on disk inside `.data/jobs/`. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, the active pointer, storage listing, and deletable directories. Route code goes through the store.
+Job state persists in SQLite at `.data/envisio.db` (built-in `node:sqlite`, WAL mode), with per-Job files under `.data/jobs/<job_id>/`; [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md) records why. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, renames, storage listing, and deletion. Route code goes through the store and never opens the database or Job files itself.
 
-Each Job records `schema_version` (currently 2), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). The store upgrades jobs without `schema_version` on read to Generate Mode with a `server_copy` source, and the next save writes the new shape. Only a `server_copy` source has a video file on the server.
+Each Job records `schema_version` (currently 3), its Job Title (`title`, 1 to 120 characters, defaulting to the video file name without its extension; `resolveJobTitle` in `src/utils/jobValidation.ts` owns this rule), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). Job files from before schema version 3 are not supported: clear `.data` when upgrading (there is no migration). Only a `server_copy` source has a video file on the server.
 
-- Path format: `.data/jobs/<job_id>/job.json`
-- Active pointer: `.data/jobs/active_job.json` contains `{ "active_job_id": "<job_id>", "updated_at": "…" }`
+- Tables: `jobs` (one row per Job; Analysis Batches as `batches_json`) and `job_spots` (AD Spots in order by `position`, deleted with their Job).
+- VAD output: `.data/jobs/<job_id>/vad_output.json`, written once when the Job is first saved (`.tmp` then rename) and never rewritten.
 - Local video copy: `.data/jobs/<job_id>/source_video.mp4` stored during upload for range streaming (`/api/jobs/:jobId/video`) and automatic re-upload if Gemini file TTL expires.
-- Writes: `job.json` and the pointer are written to a `.tmp` file and renamed, so an interrupted save keeps the previous file.
-- Reads: `load` treats any unreadable job as missing; `activeJobId` throws on a corrupt pointer so storage routes answer HTTP 500 instead of acting on bad data.
+- Writes: a save upserts the Job row and replaces its spots in one transaction, so a failed save keeps the previous state. Renaming updates only the title. Saving spots replaces the whole list, so two tabs editing one Job overwrite each other (last write wins; see [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md)).
+- Reads: `load` treats a Job without a row or without a readable VAD file as missing; `loadMeta` reads the row only (used to stream video).
+- There is no active Job. The browser opens the Job named in its `/jobs/:jobId` URL, so several tabs can work on different Jobs. On startup the server returns every Job left `ANALYZING` to `VAD_READY`.
 
-Keep job files inside `.data/jobs/`. Clean orphaned pointers via `DELETE /api/jobs/:jobId`.
+Keep Job data inside `.data/`.
 
 ## API contract
 

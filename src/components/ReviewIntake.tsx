@@ -1,17 +1,15 @@
 import { useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { AlertCircle, ArrowLeft, FileText, FileVideo, Play } from 'lucide-react';
 import type { VideoValidationIssue } from '../types/ad';
-import { JobStorageManager } from './JobStorageManager';
-import { isMp4Url } from '../utils/byteSource';
+import { fileNameFromUrl, isMp4Url } from '../utils/byteSource';
+import { defaultJobTitle } from '../utils/jobValidation';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
 
-export function ReviewIntake({ headerActionsElement, checkingFileName, errorMessage, validationIssues, onProcess, onBack }: {
-  headerActionsElement: HTMLDivElement | null;
+export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, onBack }: {
   checkingFileName: string | null;
   errorMessage: string | null;
   validationIssues: VideoValidationIssue[];
-  onProcess: (video: File | string, srt: File) => void;
+  onProcess: (video: File | string, srt: File, title: string) => void;
   onBack: () => void;
 }) {
   const videoInputRef = useRef<HTMLInputElement | null>(null);
@@ -22,6 +20,9 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
   const link = videoLink.trim();
   const linkInvalid = link !== '' && !isMp4Url(link);
   const chosenVideo: File | string | null = link ? (linkInvalid ? null : link) : video;
+  // The title follows the chosen video until the author types their own.
+  const [typedTitle, setTypedTitle] = useState<string | null>(null);
+  const title = typedTitle ?? (typeof chosenVideo === 'string' ? defaultJobTitle(fileNameFromUrl(chosenVideo)) : chosenVideo ? defaultJobTitle(chosenVideo.name) : '');
   const blockingIssues = validationIssues.filter((issue) => issue.severity === 'error');
 
   const fileButton = (label: string, file: File | null, onClick: () => void, Icon: typeof FileVideo) => (
@@ -36,10 +37,6 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
 
   return (
     <section className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0">
-      {headerActionsElement && createPortal(
-        <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
-        headerActionsElement
-      )}
       <button type="button" onClick={onBack} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />เลือกโหมดอื่น
       </button>
@@ -73,11 +70,22 @@ export function ReviewIntake({ headerActionsElement, checkingFileName, errorMess
             </span>
           </label>
           {fileButton('ไฟล์ SRT', srt, () => srtInputRef.current?.click(), FileText)}
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-semibold text-slate-900">ชื่องาน</span>
+            <input
+              type="text"
+              value={title}
+              maxLength={120}
+              onChange={(event) => setTypedTitle(event.target.value)}
+              placeholder="ตั้งจากชื่อไฟล์วิดีโอ"
+              className="field px-3 py-2.5 text-sm"
+            />
+          </label>
           <p className="text-sm text-slate-600">MP4 ที่มีเสียง AAC · ทุกความละเอียด · ไม่เกิน 60 นาที</p>
           <button
             type="button"
             disabled={!chosenVideo || !srt}
-            onClick={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt); }}
+            onClick={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}
             className="btn-primary mt-2 inline-flex items-center justify-center gap-2 self-start px-6 py-3 text-sm"
           >
             <Play className="h-4 w-4" aria-hidden="true" />ประมวลผล

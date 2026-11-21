@@ -7,7 +7,7 @@ async page => {
 
   const spot = { spot_id: 'cue_001', start_ms: 1000, end_ms: 3000, duration_ms: 2000, original_start_ms: 1000, original_end_ms: 3000, decision: 'generate', text: 'บทที่บันทึกไว้', is_edited: true };
   const reviewJob = (video_source) => ({
-    job_id: 'job_review_restore', schema_version: 2, mode: 'review', status: 'READY', video_source,
+    job_id: 'job_review_restore', schema_version: 3, title: 'lesson', mode: 'review', status: 'READY', video_source,
     srt_source: { file_name: 'lesson.srt', cue_count: 1, imported_at: '2026-11-21T00:00:00Z' },
     video_metadata: { fileName: 'ad-review-1080p.mp4', fileSize: fixtureSize, mimeType: 'video/mp4', width: 1920, height: 1080, durationMs: 12000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
     vad_output: { duration_ms: 12000, speech_segments: [{ start_ms: 5000, end_ms: 6000 }], candidate_spots: [], waveform: { sampleIntervalMs: 20, peaksBase64: 'AAAA' } },
@@ -17,12 +17,12 @@ async page => {
   let scanStarted = false;
   await page.route('**/api/**', async route => {
     const url = route.request().url();
-    if (url.endsWith('/api/jobs/current')) return route.fulfill({ json: { job: current, isRunning: false } });
+    if (url.endsWith('/api/jobs/job_review_restore')) return route.fulfill({ json: { job: current, isRunning: false } });
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
   page.on('worker', () => { scanStarted = true; });
 
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto('http://127.0.0.1:4173/jobs/job_review_restore');
   const line = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
   await line.waitFor();
   assert(await line.inputValue() === 'บทที่บันทึกไว้', 'Saved Review Mode lines are restored');

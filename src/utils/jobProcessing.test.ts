@@ -20,8 +20,9 @@ function spot(id: string, start: number): ADSpot {
 
 function job(spots: ADSpot[]): PersistedJobState {
   return {
-    schema_version: 2,
+    schema_version: 3,
     job_id: 'job_test',
+    title: 'test',
     mode: 'generate',
     video_source: { kind: 'server_copy', local_file_path: '/tmp/source_video.mp4' },
     created_at: '2026-01-01T00:00:00.000Z',

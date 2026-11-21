@@ -5,10 +5,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
+import type { PersistedJobState } from '../types/ad';
+import { createJobStore } from './jobStore';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-test('storage only lists and deletes inactive persisted jobs', { timeout: 20000 }, async () => {
+test('storage lists every persisted job and deletes any that is not analysing or uploading', { timeout: 20000 }, async () => {
   const root = process.cwd();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-storage-test-'));
   const socket = net.createServer();
@@ -16,24 +18,30 @@ test('storage only lists and deletes inactive persisted jobs', { timeout: 20000 
   const port = (socket.address() as net.AddressInfo).port;
   await new Promise<void>((resolve, reject) => socket.close(err => err ? reject(err) : resolve()));
   const data = path.join(dir, '.data/jobs');
-  fs.mkdirSync(data, { recursive: true });
-  const makeJob = (id: string) => {
-    const jobDir = path.join(data, id); fs.mkdirSync(jobDir);
-    fs.writeFileSync(path.join(jobDir, 'job.json'), JSON.stringify({ job_id: id, status: 'READY', video_metadata: { fileName: 'sample.mp4' }, batches: [], spots: [], updated_at: '2026-01-01' }));
-    fs.writeFileSync(path.join(jobDir, 'source_video.mp4'), 'sample');
+  const candidate = { spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000 };
+  const batch = { batch_id: 'batch_1', batch_index: 1, batch_start_ms: 0, batch_end_ms: 10000, window_start_ms: 0, window_end_ms: 10000, candidate_spots: [candidate], status: 'pending' as const, retry_count: 0 };
+  const makeJob = (id: string, extra: Partial<PersistedJobState> = {}): PersistedJobState => ({
+    schema_version: 3, job_id: id, title: id, mode: 'generate',
+    video_source: { kind: 'server_copy', local_file_path: path.join(data, id, 'source_video.mp4') },
+    created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', status: 'READY',
+    video_metadata: { fileName: 'sample.mp4', fileSize: 6, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
+    vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
+    vad_output: { duration_ms: 10000, speech_segments: [], candidate_spots: [candidate] },
+    batches: [], spots: [], ...extra,
+  });
+  const processing = {
+    status: 'VAD_READY' as const, batches: [batch],
+    spots: [{ ...candidate, original_start_ms: 1000, original_end_ms: 5000, decision: 'pending' as const, text: '', is_edited: false }],
+    gemini_file_name: 'files/example', gemini_file_uri: 'https://fake.invalid/file', gemini_file_expires_at: '2099-01-01T00:00:00Z',
   };
-  makeJob('job_active'); makeJob('job_old');
-  makeJob('job_processing');
-  const processingPath = path.join(data, 'job_processing/job.json');
-  const processing = JSON.parse(fs.readFileSync(processingPath, 'utf8'));
-  processing.status = 'VAD_READY';
-  processing.vad_output = { duration_ms: 10000, speech_segments: [], candidate_spots: [{ spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000 }] };
-  processing.spots = [{ spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'pending', text: '', is_edited: false }];
-  processing.batches = [{ batch_id: 'batch_1', batch_index: 1, batch_start_ms: 0, batch_end_ms: 10000, window_start_ms: 0, window_end_ms: 10000, candidate_spots: processing.vad_output.candidate_spots, status: 'pending', retry_count: 0 }];
-  processing.gemini_file_name = 'files/example';
-  processing.gemini_file_uri = 'https://fake.invalid/file';
-  processing.gemini_file_expires_at = '2099-01-01T00:00:00Z';
-  fs.writeFileSync(processingPath, JSON.stringify(processing));
+  const seed = createJobStore(path.join(dir, '.data'));
+  seed.save(makeJob('job_old'));
+  seed.save(makeJob('job_processing', processing));
+  seed.save(makeJob('job_recovering', { ...processing, status: 'ANALYZING', progress_stage: 'stale', batches: [{ ...batch, status: 'processing' }] }));
+  seed.close();
+  for (const id of ['job_old', 'job_processing', 'job_recovering']) fs.writeFileSync(path.join(data, id, 'source_video.mp4'), 'sample');
+  const processingPath = path.join(data, 'job_processing');
+  const recoveringPath = path.join(data, 'job_recovering');
   fs.writeFileSync(path.join(dir, 'fake.ts'), `import fs from 'node:fs';
 const real = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
@@ -48,9 +56,8 @@ globalThis.fetch = async (input, init) => {
 };`);
   fs.mkdirSync(path.join(data, 'job_upload'));
   fs.writeFileSync(path.join(data, 'job_upload/source_video.mp4'), 'unfinished');
-  fs.writeFileSync(path.join(data, 'active_job.json'), JSON.stringify({ active_job_id: 'job_active' }));
   const outside = path.join(dir, 'outside'); fs.mkdirSync(outside);
-  fs.writeFileSync(path.join(outside, 'job.json'), JSON.stringify({ job_id: 'job_link', video_metadata: { fileName: 'outside' } }));
+  fs.writeFileSync(path.join(outside, 'source_video.mp4'), 'outside');
   fs.symlinkSync(outside, path.join(data, 'job_link'));
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api/jobs`;
@@ -59,28 +66,29 @@ globalThis.fetch = async (input, init) => {
     for (let i = 0; i < 200; i++) { try { ready = (await fetch(base)).ok; } catch {} if (ready) break; await sleep(25); }
     assert.ok(ready, 'server starts');
     const listing = await (await fetch(base)).json();
-    assert.deepEqual(listing.jobs.map((job: { job_id: string }) => job.job_id).sort(), ['job_active', 'job_old', 'job_processing', 'job_upload']);
-    assert.equal((await fetch(`${base}/job_active/files`, { method: 'DELETE' })).status, 409);
+    assert.deepEqual(listing.jobs.map((job: { job_id: string }) => job.job_id).sort(), ['job_old', 'job_processing', 'job_recovering', 'job_upload']);
+    assert.equal(listing.jobs.some((job: object) => 'is_active' in job), false, 'there is no active Job');
+    const recovered = (await (await fetch(`${base}/job_recovering`)).json()).job;
+    assert.equal(recovered.status, 'VAD_READY', 'a Job left analysing by a crash is recovered on startup');
+    assert.equal(recovered.batches[0].status, 'pending');
+    assert.equal((await fetch(`${base}/current`)).status, 404);
     const upload = await (await fetch(`http://127.0.0.1:${port}/api/upload/init`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileName: 'new.mp4', fileSize: 5 }) })).json();
     assert.equal((await fetch(`${base}/${upload.uploadId}/files`, { method: 'DELETE' })).status, 409);
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/upload/${upload.uploadId}/abandon`, { method: 'POST' })).status, 200);
     assert.equal((await fetch(`${base}/${upload.uploadId}/files`, { method: 'DELETE' })).status, 200);
     assert.equal((await fetch(`${base}/job_link/files`, { method: 'DELETE' })).status, 404);
-    assert.equal((await fetch(`${base}/job_old%2F..%2Fjob_active/files`, { method: 'DELETE' })).status, 404);
-    fs.writeFileSync(path.join(data, 'active_job.json'), '{bad json');
-    assert.equal((await fetch(`${base}/job_old/files`, { method: 'DELETE' })).status, 500);
-    assert.ok(fs.existsSync(path.join(data, 'job_old/job.json')));
-    fs.writeFileSync(path.join(data, 'active_job.json'), JSON.stringify({ active_job_id: 'job_active' }));
+    assert.equal((await fetch(`${base}/job_old%2F..%2Fjob_recovering/files`, { method: 'DELETE' })).status, 404);
     assert.equal((await fetch(`${base}/job_old/files`, { method: 'DELETE' })).status, 200);
     assert.equal(fs.existsSync(path.join(data, 'job_old')), false);
-    assert.ok(fs.existsSync(path.join(outside, 'job.json')));
-    assert.ok(fs.existsSync(path.join(data, 'job_active/job.json')));
+    assert.ok(fs.existsSync(path.join(outside, 'source_video.mp4')), 'a symlink escape is never followed');
+    assert.ok(fs.existsSync(recoveringPath));
     assert.ok(fs.existsSync(path.join(data, 'job_upload/source_video.mp4')));
     assert.equal((await fetch(`${base}/job_processing/start`, { method: 'POST' })).status, 200);
     for (let i = 0; i < 200 && !fs.existsSync(path.join(dir, 'entered')); i++) await sleep(25);
     assert.ok(fs.existsSync(path.join(dir, 'entered')), 'Gemini request is running');
-    assert.equal((await fetch(`${base}/job_processing`, { method: 'DELETE' })).status, 200);
+    assert.equal((await fetch(`${base}/job_processing`, { method: 'DELETE' })).status, 404, 'there is no active pointer to clear');
     assert.equal((await fetch(`${base}/job_processing/files`, { method: 'DELETE' })).status, 409);
+    assert.equal((await fetch(`${base}/job_processing`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'renamed while analysing' }) })).status, 200);
     assert.ok(fs.existsSync(processingPath));
     fs.writeFileSync(path.join(dir, 'release'), '1');
     let status = '';
@@ -91,9 +99,10 @@ globalThis.fetch = async (input, init) => {
       await sleep(25);
     }
     assert.equal(status, 'READY');
-    assert.equal((await (await fetch(`${base}/current`)).json()).job, null);
+    assert.equal((await (await fetch(`${base}/job_processing`)).json()).job.title, 'renamed while analysing', 'analysis keeps a title renamed meanwhile');
     assert.equal((await fetch(`${base}/job_processing/files`, { method: 'DELETE' })).status, 200);
     assert.equal((await fetch(`${base}/job_upload/files`, { method: 'DELETE' })).status, 200);
+    assert.equal((await fetch(`${base}/job_recovering/files`, { method: 'DELETE' })).status, 200);
   } finally {
     child.kill('SIGTERM');
     await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), sleep(1000)]);

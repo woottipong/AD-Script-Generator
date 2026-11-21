@@ -19,8 +19,9 @@ A job response contains a `job` object. The fields below describe the current Ty
 
 | Field | Type or values |
 |---|---|
-| `schema_version` | `2`. Jobs saved before this field existed are read as version 2 Generate Mode jobs and rewritten on their next save |
+| `schema_version` | `3` |
 | `job_id` | Opaque string ID |
+| `title` | The Job Title, 1 to 120 characters. Defaults to the video file name without its extension |
 | `mode` | `generate` or `review` |
 | `video_source` | Where the video lives: `{ kind: "server_copy", local_file_path }`, `{ kind: "url", url }`, or `{ kind: "local_file", file_name, file_size }`. Generate Mode jobs use `server_copy` |
 | `srt_source` | Optional imported SRT details for Review Mode: `file_name`, `cue_count`, `imported_at` |
@@ -47,7 +48,7 @@ The server reuses the Gemini file across batches. After the last batch or a proc
 
 ### GET /api/config
 
-Returns fixed server configuration and whether the active pointer resolves to a job. It does not validate the API key or contact Gemini.
+Returns fixed server configuration. It does not validate the API key or contact Gemini.
 
 HTTP 200 example:
 
@@ -62,33 +63,19 @@ HTTP 200 example:
     "analysisBatchSeconds": 240,
     "contextBeforeSeconds": 20,
     "contextAfterSeconds": 10
-  },
-  "hasActiveJob": false
+  }
 }
 ```
 
 The fallback model is `gemini-3.5-flash-lite`. It is not returned by this endpoint.
 
-### GET /api/jobs/current
-
-Reads `.data/jobs/active_job.json` and returns the referenced job as `{ job, isRunning }`. With no readable active job, HTTP 200 contains:
-
-```json
-{
-  "job": null,
-  "isRunning": false
-}
-```
-
-The pointer contains `active_job_id` and `updated_at`. A job's full metadata is stored in `.data/jobs/<jobId>/job.json`.
-
 ### GET /api/jobs
 
-Returns `{ jobs }` for readable saved jobs and recognizable unfinished uploads. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, `is_active`, and `is_processing`. An active upload has both `is_upload` and `is_processing` set. An unreadable active pointer returns HTTP 500.
+Returns `{ jobs }` for readable saved jobs and recognizable unfinished uploads. Items are sorted by `updated_at`, most recent first. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, and `is_processing`; saved jobs also carry `title`, `mode`, and `status`. An active upload has both `is_upload` and `is_processing` set. There is no active job: the browser opens the job named in its `/jobs/:jobId` URL.
 
 ### GET /api/jobs/:jobId
 
-Returns HTTP 200 with `{ job, isRunning }`. The browser polls this route during background analysis.
+Returns HTTP 200 with `{ job, isRunning }`. The browser loads the job named in its `/jobs/:jobId` URL from this route and polls it during background analysis.
 
 An unknown or unreadable job returns HTTP 404:
 
@@ -112,7 +99,7 @@ The handler does not validate malformed ranges or implement a documented HTTP 41
 
 ### POST /api/upload/init
 
-Creates `.data/jobs/<uploadId>/source_video.mp4` as an empty file. This creates an upload directory, not a persisted job or active pointer.
+Creates `.data/jobs/<uploadId>/source_video.mp4` as an empty file. This creates an upload directory, not a persisted job.
 
 JSON request example:
 
@@ -171,7 +158,7 @@ Marks an upload session as no longer active without deleting its files. The brow
 
 ### POST /api/jobs/init
 
-Registers a job from an uploaded file and VAD output. Candidate spots become `pending` spots. The server groups them into 240-second timeline batches by spot start time and omits empty time buckets. Batch windows include 20 seconds before and 10 seconds after, extend to cover a spot crossing a batch boundary, and stay within the video duration.
+Registers a job from an uploaded file and VAD output. An optional `title` sets the Job Title; blank or missing uses the video file name without its extension, and more than 120 characters returns HTTP 400. Candidate spots become `pending` spots. The server groups them into 240-second timeline batches by spot start time and omits empty time buckets. Batch windows include 20 seconds before and 10 seconds after, extend to cover a spot crossing a batch boundary, and stay within the video duration.
 
 The browser uses a JSON request with `uploadId`:
 
@@ -236,9 +223,9 @@ The server checks for `GEMINI_API_KEY` before saving a job with candidate spots.
 
 ### POST /api/jobs/review
 
-Registers a Review Mode job: an existing SRT script plus the browser's VAD output, with no video stored on the server. The body has `video_metadata`, `vad_config`, `vad_output` (as in job initialization), `video_source` (`{ kind: "url", url }` with an `http(s)` URL, or `{ kind: "local_file", file_name, file_size }`), `srt_source` (`{ file_name, cue_count }`), and a non-empty `spots` array built from the SRT cues. Each spot must start before the video ends, end after it starts, have `duration_ms` equal to `end_ms - start_ms`, and have original times equal to its imported times. Spots may overlap speech or each other. Review Mode accepts any resolution, video codec, and file size, up to 3,600,000 ms; an AAC audio track is still required.
+Registers a Review Mode job: an existing SRT script plus the browser's VAD output, with no video stored on the server. The body has `video_metadata`, `vad_config`, `vad_output` (as in job initialization), `video_source` (`{ kind: "url", url }` with an `http(s)` URL, or `{ kind: "local_file", file_name, file_size }`), `srt_source` (`{ file_name, cue_count }`), a non-empty `spots` array built from the SRT cues, and an optional `title` handled as in job initialization. Each spot must start before the video ends, end after it starts, have `duration_ms` equal to `end_ms - start_ms`, and have original times equal to its imported times. Spots may overlap speech or each other. Review Mode accepts any resolution, video codec, and file size, up to 3,600,000 ms; an AAC audio track is still required.
 
-HTTP 200 returns `{ job, isRunning: false }` with `mode: "review"`, `status: "READY"`, `batches: []`, and `srt_source.imported_at`, and makes it the active job. Invalid input returns HTTP 400. A running Gemini analysis returns HTTP 409.
+HTTP 200 returns `{ job, isRunning: false }` with `mode: "review"`, `status: "READY"`, `batches: []`, and `srt_source.imported_at`. Invalid input returns HTTP 400. Review Mode does not wait for another job's Gemini analysis.
 
 ### POST /api/jobs/:jobId/start
 
@@ -249,10 +236,10 @@ Starts or resumes background processing. Review Mode jobs return HTTP 409. No re
 - If all batches are completed and the job still has a Gemini file name, HTTP 200 returns `{ job, isRunning: true }` and retries deletion in the background. The server skips analysis and keeps the job `READY`.
 - If all batches are completed and the job has no Gemini file name, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first in both cases.
 - HTTP 404 means that the job was not found.
-- HTTP 409 means that another job holds the lock.
+- HTTP 409 means that another job holds the lock. The error reads `มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ`.
 - Classified client errors return HTTP 401, 429, or 500 with `error`.
 
-On backend restart, recovery applies only to the job referenced by the active pointer. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
+On backend restart, recovery applies to every saved job. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
 
 ### POST /api/jobs/:jobId/analyze-batch
 
@@ -271,6 +258,10 @@ If the same job is already processing, the request waits for it to finish before
 If no batch matches, including an unknown explicit `batch_id`, the route sets the job status to `READY` and returns HTTP 200 with `{ job }`.
 
 HTTP 404 means that the job was not found. HTTP 409 means that another job holds an active lock. Analysis failures return HTTP 401, 429, or 500 with `error`, `isRateLimit`, `job`, and `batch` after persisting the failed state. If the failed state cannot be saved, the route returns HTTP 500 with `error` only.
+
+### PATCH /api/jobs/:jobId
+
+Renames a job. The body is `{ "title": "…" }`; the title is trimmed and must be 1 to 120 characters. HTTP 200 returns `{ job }`. A blank or too-long title returns HTTP 400 and an unknown job returns HTTP 404. A rename during analysis is kept: background saves never change the title.
 
 ### PATCH /api/jobs/:jobId/spots
 
@@ -308,21 +299,9 @@ The route validates each spot's fields, requires the same set of unique IDs as t
 
 The browser serializes saves and shows success only after receiving an acknowledgement for the job. When a user changes `skip` to `generate`, the editor keeps existing text. If that text is blank, it uses `reason` as the starting text. Changing back to `skip` retains the text. This text selection happens in the browser, not in this endpoint.
 
-### DELETE /api/jobs/:jobId
-
-Removes `.data/jobs/active_job.json` only when its `active_job_id` matches `jobId`. The route does not delete job directories or source video, cancel a background task, or delete a Gemini file. Background progress no longer recreates a cleared pointer.
-
-The route returns HTTP 200 even when the pointer does not match, is missing, or an exception is caught:
-
-```json
-{
-  "ok": true
-}
-```
-
 ### DELETE /api/jobs/:jobId/files
 
-Permanently deletes a saved job directory and its video, or a recognizable unfinished upload. HTTP 200 returns `{ ok: true }`. The route returns HTTP 404 for an unknown or unsafe path, HTTP 409 for the active or processing job or active upload, and HTTP 500 if storage or the active pointer cannot be read. There is no automatic deletion.
+Permanently deletes a saved job directory and its video, or a recognizable unfinished upload. HTTP 200 returns `{ ok: true }`. The route returns HTTP 404 for an unknown or unsafe path, HTTP 409 while the job is being analysed or uploaded, and HTTP 500 if storage cannot be read. A job open in another tab can be deleted; that tab's next save fails. There is no automatic deletion.
 
 ## Validation boundaries
 

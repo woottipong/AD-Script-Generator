@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { JobStorageManager } from './JobStorageManager';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
@@ -12,6 +11,7 @@ import {
   FileText,
   FileVideo,
   Layers,
+  List,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -78,6 +78,9 @@ interface UploadAndVadPanelProps {
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
   onResetJob: () => void;
+  onOpenJobList: () => void;
+  jobTitle: string;
+  onRenameJob: (title: string) => Promise<'saved' | 'local'>;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onExportSrt: () => void;
   errorMessage: string | null;
@@ -101,6 +104,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onStartGeminiAnalysis,
   onRetryFailedBatches,
   onResetJob,
+  onOpenJobList,
+  jobTitle,
+  onRenameJob,
   onSelectSpot,
   onExportSrt,
   errorMessage,
@@ -109,6 +115,20 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const managementRef = useRef<HTMLDetailsElement | null>(null);
+  const [titleDraft, setTitleDraft] = useState(jobTitle);
+  const [renameState, setRenameState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'local' | 'error'; message?: string }>({ status: 'idle' });
+  useEffect(() => {
+    setTitleDraft(jobTitle);
+  }, [jobTitle]);
+  const renameJob = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRenameState({ status: 'saving' });
+    try {
+      setRenameState({ status: await onRenameJob(titleDraft) });
+    } catch (err) {
+      setRenameState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
   const analysisDetailsRef = useRef<HTMLDivElement | null>(null);
   const statusButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -247,10 +267,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <section
         className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
       >
-        {headerActionsElement && createPortal(
-          <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
-          headerActionsElement
-        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -340,12 +356,25 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const projectControls = (
     <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
       <details ref={videoDetailsRef} name="project-header" className="group relative min-w-0 flex-1 basis-36 lg:max-w-xs">
-        <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
+        <summary aria-label={`รายละเอียดงาน: ${jobTitle || fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
           <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
-          <span className="truncate font-medium">{fileName}</span>
+          <span className="truncate font-medium">{jobTitle || fileName}</span>
           <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="menu-panel left-0 w-80 p-4 lg:left-auto lg:right-0">
+          <form onSubmit={(event) => void renameJob(event)} className="mb-4 flex flex-col gap-1.5 border-b border-slate-200 pb-4">
+            <label htmlFor="job-title" className="font-semibold text-slate-900">ชื่องาน</label>
+            <div className="flex gap-2">
+              <input id="job-title" type="text" value={titleDraft} maxLength={120} onChange={(event) => { setTitleDraft(event.target.value); setRenameState({ status: 'idle' }); }} className="field min-w-0 flex-1 px-2.5 py-2" />
+              <button type="submit" disabled={!titleDraft.trim() || titleDraft.trim() === jobTitle || renameState.status === 'saving'} className="btn-primary shrink-0 px-3 py-2">บันทึกชื่อ</button>
+            </div>
+            <p role="status" className={renameState.status === 'error' ? 'text-red-700' : 'text-slate-600'}>
+              {renameState.status === 'saving' ? 'กำลังบันทึกชื่อ…'
+                : renameState.status === 'saved' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
+                : renameState.status === 'local' ? 'ชื่อนี้จะบันทึกเมื่อสร้างงานบนเซิร์ฟเวอร์'
+                : renameState.status === 'error' ? renameState.message : ''}
+            </p>
+          </form>
           <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
           {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
             <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
@@ -423,13 +452,13 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-300 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
         จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
       </summary>
-      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="menu-panel right-0 w-60 p-1.5">
+      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && managementRef.current) managementRef.current.open = false; }} className="menu-panel right-0 w-60 p-1.5">
         {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="menu-item"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
         {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="menu-item"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
         {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
         {(!isReview || (canShowGenerate && isRegenerating)) && <div className="my-1.5 border-t border-slate-200" />}
         <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
-        <div data-job-storage><JobStorageManager /></div>
+        <button type="button" onClick={onOpenJobList} className="menu-item"><List className="w-4 h-4" aria-hidden="true" />รายการงาน</button>
       </div>
     </details>
   );

@@ -28,6 +28,7 @@ import {
 } from './utils/formatters';
 import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { ModeChooser } from './components/ModeChooser';
+import { JobList } from './components/JobList';
 import { ReviewIntake } from './components/ReviewIntake';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
@@ -35,6 +36,7 @@ import { VideoPreviewTimeline } from './components/VideoPreviewTimeline';
 import { AdScriptEditor } from './components/AdScriptEditor';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
 import { parseApiResponse } from './utils/apiResponse';
+import { defaultJobTitle, resolveJobTitle } from './utils/jobValidation';
 import { createJobSaveQueue } from './utils/jobSaveQueue';
 import { pollJob } from './utils/jobPolling';
 
@@ -42,6 +44,20 @@ const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
 const FIXED_MAX_UPLOAD_SIZE_MB = 2000;         // 2 GB
 const FIXED_CONTEXT_BEFORE_SECONDS = 20;       // 20s context before
 const FIXED_CONTEXT_AFTER_SECONDS = 10;        // 10s context after
+
+/** The Job a `/jobs/:jobId` URL opens; the URL, not the server, says which Job this tab works on. */
+function jobIdFromPath(pathname: string): string | null {
+  return /^\/jobs\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
+}
+
+function jobPath(jobId: string): string {
+  return `/jobs/${encodeURIComponent(jobId)}`;
+}
+
+/** A Job the author cancelled while the server was creating it would otherwise stay in storage unasked. */
+function discardCreatedJob(jobId: string): void {
+  void fetch(`/api/jobs/${encodeURIComponent(jobId)}/files`, { method: 'DELETE' }).catch(() => {});
+}
 
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
 type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoSource: VideoSource; vadInput: ByteSourceInput; metadata: VideoMetadata };
@@ -54,6 +70,12 @@ export default function App() {
   const [headerActionsElement, setHeaderActionsElement] = useState<HTMLDivElement | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
+  const [jobTitle, setJobTitle] = useState('');
+  // The title can change while the Job is still being created, so creation reads the latest one.
+  const jobTitleRef = useRef('');
+  jobTitleRef.current = jobTitle;
+  /** The author named this not-yet-created Job, so a newly chosen video must not rename it. */
+  const titleTypedRef = useRef(false);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
   const [checkingFileName, setCheckingFileName] = useState<string | null>(null);
 
@@ -72,6 +94,9 @@ export default function App() {
   const [importSkipped, setImportSkipped] = useState<SkippedCue[]>([]);
   /** A restored Review Mode job whose video was a local file: the author must pick the same file again. */
   const [missingLocalVideo, setMissingLocalVideo] = useState<{ file_name: string; file_size: number } | null>(null);
+  /** `/` is the Job List, `/new` starts a Job, `/jobs/:jobId` opens one. */
+  const [path, setPath] = useState(() => window.location.pathname);
+  const [jobLoad, setJobLoad] = useState<'loading' | 'missing' | 'failed' | null>(() => (jobIdFromPath(window.location.pathname) ? 'loading' : null));
   const reviewImportRef = useRef<ReviewImport | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -80,6 +105,11 @@ export default function App() {
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const [saveQueue] = useState(() => createJobSaveQueue(setSaveStatus));
+
+  const navigate = useCallback((to: string) => {
+    if (window.location.pathname !== to) window.history.pushState(null, '', to);
+    setPath(to);
+  }, []);
 
   useEffect(() => {
     saveQueue.invalidate();
@@ -99,20 +129,23 @@ export default function App() {
           video_source: review.videoSource,
           srt_source: { file_name: review.srtFileName, cue_count: review.spots.length },
           spots: review.spots,
+          title: jobTitleRef.current,
         }),
       });
       const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
       if (token.aborted) {
-        if (data?.job?.job_id) void fetch(`/api/jobs/${encodeURIComponent(data.job.job_id)}`, { method: 'DELETE' }).catch(() => {});
+        if (data?.job?.job_id) discardCreatedJob(data.job.job_id);
         return;
       }
       if (!response.ok || !data?.job) throw new Error(data?.error || 'บันทึกงานตรวจแก้ SRT บนเซิร์ฟเวอร์ไม่สำเร็จ');
       setJobId(data.job.job_id);
+      setJobTitle(data.job.title);
+      navigate(jobPath(data.job.job_id));
     } catch (err) {
       if (token.aborted) return;
       setErrorMessage(`${err instanceof Error ? err.message : String(err)} การแก้ไขจะอยู่ในหน้านี้เท่านั้น กรุณาส่งออก SRT ก่อนปิดหน้า`);
     }
-  }, []);
+  }, [navigate]);
 
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
@@ -257,34 +290,26 @@ export default function App() {
     });
   }, []);
 
-  // 1. Check Browser Compatibility & Active Persisted Job on Mount
-  useEffect(() => {
-    const clearLegacyHash = () => {
-      if (['#main-workspace', '#section-upload-vad', '#section-preview-timeline', '#section-script-editor'].includes(window.location.hash)) {
-        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
-      }
-    };
-    clearLegacyHash();
-    window.addEventListener('hashchange', clearLegacyHash);
-    let mounted = true;
-    const restoreToken = { aborted: false };
-    pollAbortRef.current = restoreToken;
-
-    checkBrowserCompatibility().then((res) => {
-      if (mounted) {
-        setBrowserCompat(res);
-      }
-    });
-
-    fetch('/api/jobs/current')
-      .then((r) =>
-        r.ok && r.headers.get('content-type')?.includes('application/json') ? r.json() : null
-      )
+  // Opens the Job named by the URL, picking up its analysis if the server is still running it.
+  const restoreJob = useCallback((restoreJobId: string) => {
+    const token = { aborted: false };
+    pollAbortRef.current = token;
+    setJobLoad('loading');
+    fetch(`/api/jobs/${encodeURIComponent(restoreJobId)}`)
+      .then((r) => {
+        if (r.status === 404) return 'missing' as const;
+        if (!r.ok || !r.headers.get('content-type')?.includes('application/json')) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
-        if (!mounted || restoreToken.aborted || !data?.job) return;
+        if (token.aborted) return;
+        if (data === 'missing') { setJobLoad('missing'); return; }
+        if (!data?.job) throw new Error('Invalid job response');
+        setJobLoad(null);
         const savedJob: PersistedJobState = data.job;
         setJobId(savedJob.job_id);
         setVideoMetadata(savedJob.video_metadata);
+        setJobTitle(savedJob.title);
         setVadOutput(savedJob.vad_output);
         setBatches(savedJob.batches);
         setSpots(savedJob.spots);
@@ -317,7 +342,28 @@ export default function App() {
           setStatus('READY');
         }
       })
-      .catch(() => {});
+      .catch(() => { if (!token.aborted) setJobLoad('failed'); });
+  }, [pollJobUntilComplete]);
+
+  // 1. Check Browser Compatibility & the Job named by the URL on Mount
+  useEffect(() => {
+    const clearLegacyHash = () => {
+      if (['#main-workspace', '#section-upload-vad', '#section-preview-timeline', '#section-script-editor'].includes(window.location.hash)) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+      }
+    };
+    clearLegacyHash();
+    window.addEventListener('hashchange', clearLegacyHash);
+    let mounted = true;
+
+    checkBrowserCompatibility().then((res) => {
+      if (mounted) {
+        setBrowserCompat(res);
+      }
+    });
+
+    const pathJobId = jobIdFromPath(window.location.pathname);
+    if (pathJobId) restoreJob(pathJobId);
 
     return () => {
       window.removeEventListener('hashchange', clearLegacyHash);
@@ -332,18 +378,21 @@ export default function App() {
         objectUrlRef.current = null;
       }
     };
-  }, [pollJobUntilComplete]);
+  }, [restoreJob]);
 
   const leaveCurrentJob = useCallback(() => {
     pollAbortRef.current.aborted = true;
-    if (jobId) saveQueue.leave(jobId);
+    saveQueue.invalidate();
+    // Back navigation has already moved the URL; only leave the Job's URL when it still shows this Job.
+    if (jobId && jobIdFromPath(window.location.pathname) === jobId) navigate('/new');
     setJobId(null);
+    setJobLoad(null);
     setVadOutput(null);
     setBatches([]);
     setSpots([]);
     setSelectedSpotId(null);
     setRestoredIncompleteJob(false);
-  }, [jobId, saveQueue]);
+  }, [jobId, saveQueue, navigate]);
 
   const clearVideo = useCallback(() => {
     if (objectUrlRef.current) {
@@ -372,7 +421,7 @@ export default function App() {
     setErrorMessage(null);
   };
 
-  const handleProcessReview = useCallback(async (video: File | string, srtFile: File) => {
+  const handleProcessReview = useCallback(async (video: File | string, srtFile: File, title: string) => {
     const vadInput: ByteSourceInput = typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'file', file: video };
     reviewImportRef.current = null;
     setImportSkipped([]);
@@ -437,6 +486,7 @@ export default function App() {
       vadInput,
       metadata: validation.metadata,
     };
+    setJobTitle(title.trim());
     setVideoMetadata(validation.metadata);
     if (typeof video === 'string') {
       setVideoUrl(video);
@@ -480,6 +530,7 @@ export default function App() {
       if (validation.valid && validation.metadata) {
         setVideoFile(file);
         setVideoMetadata(validation.metadata);
+        if (!titleTypedRef.current) setJobTitle(defaultJobTitle(file.name));
         const blobUrl = URL.createObjectURL(file);
         objectUrlRef.current = blobUrl;
         setVideoUrl(blobUrl);
@@ -623,20 +674,14 @@ export default function App() {
         }
         startedJob = startData.job;
       } catch {
-        if (token.aborted) {
-          saveQueue.leave(existingJobId);
-          return;
-        }
+        if (token.aborted) return;
         const polling = pollJobUntilComplete(existingJobId, startError);
         setVadProgress(null);
         setErrorMessage('ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กำลังตรวจสถานะอีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         await polling;
         return;
       }
-      if (token.aborted) {
-        saveQueue.leave(existingJobId);
-        return;
-      }
+      if (token.aborted) return;
 
       setBatches(startedJob.batches);
       setSpots(startedJob.spots);
@@ -720,15 +765,14 @@ export default function App() {
           vad_config: effectiveVadConfig,
           ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
           vad_output: vadOutput,
+          title: jobTitle,
         }),
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const initData = await parseApiResponse<any>(initRes);
       if (token.aborted) {
-        if (initData?.job?.job_id) {
-          void fetch(`/api/jobs/${encodeURIComponent(initData.job.job_id)}`, { method: 'DELETE' }).catch(() => {});
-        }
+        if (initData?.job?.job_id) discardCreatedJob(initData.job.job_id);
         return;
       }
       if (!initRes.ok || !initData?.job) {
@@ -742,6 +786,8 @@ export default function App() {
 
       const initializedJob: PersistedJobState = initData.job;
       setJobId(initializedJob.job_id);
+      setJobTitle(initializedJob.title);
+      navigate(jobPath(initializedJob.job_id));
       setBatches(initializedJob.batches);
       setSpots(initializedJob.spots);
 
@@ -753,10 +799,7 @@ export default function App() {
 
       await pollJobUntilComplete(initializedJob.job_id);
     } catch (err) {
-      if (token.aborted) {
-        if (uploadId) saveQueue.leave(uploadId);
-        return;
-      }
+      if (token.aborted) return;
       setVadProgress(null);
       setStatus('FAILED');
       setErrorMessage(
@@ -829,18 +872,81 @@ export default function App() {
     [jobId, spots, saveQueue]
   );
 
-  // 8. Reset Job
-  const handleResetJob = () => {
-    if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+  const resetWorkspace = useCallback(() => {
     reviewImportRef.current = null;
     setImportSkipped([]);
     leaveCurrentJob();
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
     clearVideo();
     setVadProgress(null);
     setErrorMessage(null);
     setStatus('IDLE');
     setMode(null);
     setSrtFileName(null);
+    setJobTitle('');
+    titleTypedRef.current = false;
+  }, [leaveCurrentJob, clearVideo]);
+
+  const unsavedWarning = videoMetadata && !jobId
+    ? 'งานนี้ยังไม่ได้บันทึกบนเซิร์ฟเวอร์และจะหายไป'
+    : jobId && saveStatus !== 'saved' ? 'การแก้ไขล่าสุดยังบันทึกไม่สำเร็จและจะหายไป' : null;
+
+  // Back and forward move between Jobs by URL, so the workspace follows whatever the URL now names.
+  useEffect(() => {
+    const handlePopState = () => {
+      // Back cannot be cancelled, so declining puts the page's own URL back.
+      if (unsavedWarning && !window.confirm(`ออกจากหน้านี้? ${unsavedWarning}`)) {
+        window.history.pushState(null, '', path);
+        return;
+      }
+      setPath(window.location.pathname);
+      resetWorkspace();
+      const pathJobId = jobIdFromPath(window.location.pathname);
+      if (pathJobId) restoreJob(pathJobId);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [resetWorkspace, restoreJob, unsavedWarning, path]);
+
+  const openJob = (openJobId: string) => {
+    navigate(jobPath(openJobId));
+    restoreJob(openJobId);
+  };
+
+  /** Before the Job exists the title is kept here and sent when it is created; afterwards the server stores it. */
+  const handleRenameJob = async (title: string): Promise<'saved' | 'local'> => {
+    const checked = resolveJobTitle(title);
+    if (!checked.success) throw new Error(checked.error);
+    if (!jobId) {
+      titleTypedRef.current = true;
+      setJobTitle(checked.title);
+      return 'local';
+    }
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: checked.title }),
+    });
+    const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
+    if (!response.ok || data?.job?.job_id !== jobId) throw new Error(data?.error || 'บันทึกชื่องานไม่สำเร็จ กรุณาลองอีกครั้ง');
+    setJobTitle(data.job.title);
+    return 'saved';
+  };
+
+  // Navigate first so leaving the Job does not also push `/new` onto the history.
+  const openJobList = () => {
+    if (unsavedWarning && !window.confirm(`กลับไปรายการงาน? ${unsavedWarning}`)) return;
+    navigate('/');
+    resetWorkspace();
+  };
+
+  // 8. Reset Job
+  const handleResetJob = () => {
+    if (!window.confirm('เริ่มงานใหม่และออกจากงานปัจจุบัน? กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน')) return;
+    resetWorkspace();
   };
 
   // 9. Export SRT
@@ -868,7 +974,7 @@ export default function App() {
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="min-h-16 shrink-0 bg-white border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
         <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="inline-flex min-w-0 items-center gap-2.5">
+          <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openJobList(); }} aria-label="TCC Envisio รายการงาน" className="inline-flex min-w-0 items-center gap-2.5 rounded-md">
             <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
             <span className="min-w-0">
               <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-slate-900">
@@ -876,7 +982,7 @@ export default function App() {
               </span>
               <span className="hidden truncate text-xs font-medium leading-tight text-slate-600 sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
             </span>
-          </div>
+          </a>
 
           <div ref={setHeaderActionsElement} className="contents" />
         </div>
@@ -934,11 +1040,20 @@ export default function App() {
       )}
 
       {/* Top Studio Project & Queue Command Bar */}
-      {!hasProject && mode === null ? (
-        <ModeChooser headerActionsElement={headerActionsElement} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
+      {jobLoad === 'loading' && !hasProject ? (
+        <p role="status" className="my-14 text-center text-base text-slate-600">กำลังเปิดงาน…</p>
+      ) : jobLoad && !hasProject ? (
+        <section role="alert" className="w-[calc(100%_-_2rem)] max-w-xl mx-auto my-14 text-center">
+          <h1 className="text-2xl font-semibold text-slate-900">{jobLoad === 'missing' ? 'ไม่พบงานนี้' : 'เปิดงานไม่สำเร็จ'}</h1>
+          <p className="mt-3 text-base text-slate-600">{jobLoad === 'missing' ? 'งานอาจถูกลบไปแล้ว หรือลิงก์ไม่ถูกต้อง' : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองโหลดหน้านี้อีกครั้ง'}</p>
+          <button type="button" onClick={openJobList} className="btn-primary mt-6 inline-flex min-h-10 items-center px-4 py-2 text-sm">กลับหน้าแรก</button>
+        </section>
+      ) : !hasProject && path === '/' ? (
+        <JobList onOpen={openJob} onNew={() => navigate('/new')} />
+      ) : !hasProject && mode === null ? (
+        <ModeChooser onBack={openJobList} onChoose={(chosen) => { setMode(chosen); setErrorMessage(null); setValidationIssues([]); }} />
       ) : !hasProject && mode === 'review' ? (
         <ReviewIntake
-          headerActionsElement={headerActionsElement}
           checkingFileName={checkingFileName}
           errorMessage={errorMessage}
           validationIssues={validationIssues}
@@ -963,6 +1078,9 @@ export default function App() {
         onStartGeminiAnalysis={handleStartGeminiAnalysis}
         onRetryFailedBatches={handleRetryFailedBatches}
         onResetJob={handleResetJob}
+        onOpenJobList={openJobList}
+        jobTitle={jobTitle}
+        onRenameJob={handleRenameJob}
         onSelectSpot={handleSelectSpot}
         onExportSrt={handleExportSrt}
         errorMessage={errorMessage}

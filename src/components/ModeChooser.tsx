@@ -1,23 +1,20 @@
-import { createPortal } from 'react-dom';
-import { FileText, Sparkles } from 'lucide-react';
+import { ArrowLeft, FileText, Sparkles } from 'lucide-react';
 import type { JobMode } from '../types/ad';
-import { JobStorageManager } from './JobStorageManager';
 
 const modes: { mode: JobMode; title: string; description: string; Icon: typeof Sparkles }[] = [
   { mode: 'generate', title: 'สร้างบทบรรยาย', description: 'หาช่วงว่างในวิดีโอ แล้วให้ Gemini เขียนบทบรรยายภาพใหม่ให้ตรวจแก้', Icon: Sparkles },
   { mode: 'review', title: 'แก้ไข SRT ที่มีอยู่', description: 'เปิดวิดีโอกับไฟล์ SRT ที่ทำไว้แล้ว เพื่อตรวจและแก้บทเทียบกับเสียงพูด', Icon: FileText },
 ];
 
-export function ModeChooser({ headerActionsElement, onChoose }: {
-  headerActionsElement: HTMLDivElement | null;
+export function ModeChooser({ onChoose, onBack }: {
   onChoose: (mode: JobMode) => void;
+  onBack: () => void;
 }) {
   return (
     <section className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0">
-      {headerActionsElement && createPortal(
-        <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
-        headerActionsElement
-      )}
+      <button type="button" onClick={onBack} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />รายการงาน
+      </button>
       <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">เริ่มงานบทบรรยายภาพ</h1>
       <p className="mt-3 text-base text-slate-600 leading-relaxed">เลือกว่าจะสร้างบทใหม่ หรือแก้บทที่มีอยู่แล้ว</p>
       <div className="mt-7 grid gap-4 sm:grid-cols-2">

@@ -148,7 +148,7 @@ export type VideoSource =
   | { kind: 'url'; url: string }
   | { kind: 'local_file'; file_name: string; file_size: number };
 
-export const JOB_SCHEMA_VERSION = 2;
+export const JOB_SCHEMA_VERSION = 3;
 
 /** Review Mode accepts longer videos because nothing is uploaded or sent to Gemini. */
 export const REVIEW_MAX_DURATION_MS = 3_600_000;
@@ -156,6 +156,7 @@ export const REVIEW_MAX_DURATION_MS = 3_600_000;
 export interface PersistedJobState {
   schema_version: typeof JOB_SCHEMA_VERSION;
   job_id: string;
+  title: string;
   mode: JobMode;
   video_source: VideoSource;
   srt_source?: { file_name: string; cue_count: number; imported_at: string };
