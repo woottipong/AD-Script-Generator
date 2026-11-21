@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ADSpot } from '../types/ad';
-import { computeClampedSpotDrag, findSpotIssues, validateSpotTimestampEdit } from './spotTiming';
+import { computeClampedSpotDrag, findSpotIssues, spotTimingKey, validateSpotTimestampEdit } from './spotTiming';
 
 const gen = (speechSegments: { start_ms: number; end_ms: number }[], videoDurationMs = 10000) => ({ mode: 'generate' as const, speechSegments, videoDurationMs });
 
@@ -134,4 +134,12 @@ test('Review Mode issues flag speech overlap, neighbour overlap, short lines, an
 test('a line that overlaps a later, non-adjacent line is flagged with it', () => {
   const issues = findSpotIssues([cue('long', 1000, 9000), cue('x', 2000, 3000), cue('y', 5000, 6000)], [], 10000);
   assert.deepEqual([...issues.keys()].sort(), ['long', 'x', 'y']);
+});
+
+test('the timing key ignores text edits but changes with times and skip decisions', () => {
+  const spots = [cue('a', 1000, 2000), cue('b', 3000, 4000)];
+  const key = spotTimingKey(spots);
+  assert.equal(spotTimingKey([{ ...spots[0], text: 'แก้คำ' }, spots[1]]), key);
+  assert.notEqual(spotTimingKey([{ ...spots[0], end_ms: 2100 }, spots[1]]), key);
+  assert.notEqual(spotTimingKey([spots[0], { ...spots[1], decision: 'skip' }]), key);
 });

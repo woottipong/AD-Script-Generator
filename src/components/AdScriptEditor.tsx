@@ -18,7 +18,7 @@ import {
   formatTimestampDisplay,
   parseTimestampInput,
 } from '../utils/formatters';
-import { computeClampedSpotDrag, findSpotIssues, validateSpotTimestampEdit, type SpotIssue, type SpotTimingContext } from '../utils/spotTiming';
+import { computeClampedSpotDrag, findSpotIssues, spotTimingKey, validateSpotTimestampEdit, type SpotIssue, type SpotTimingContext } from '../utils/spotTiming';
 import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 
 interface AdScriptEditorProps {
@@ -170,14 +170,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   };
 
   const handleResetTimestamps = () => {
-    setTimestampError(null);
-    onUpdate({
-      ...spot,
-      start_ms: spot.original_start_ms,
-      end_ms: spot.original_end_ms,
-      duration_ms: spot.original_end_ms - spot.original_start_ms,
-      is_edited: true,
-    });
+    applyTimestampChange(spot.original_start_ms, spot.original_end_ms);
   };
 
   const estimatedSpeechMs =
@@ -497,7 +490,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                       onClick={handleResetTimestamps}
                       className="text-xs font-semibold text-amber-900 underline whitespace-nowrap shrink-0 cursor-pointer"
                     >
-                      ขยายเวลาเต็มช่วงว่าง ({((spot.original_end_ms - spot.original_start_ms) / 1000).toFixed(1)}s)
+                      {timingContext.mode === 'review' ? 'คืนเวลาตาม SRT' : 'ขยายเวลาเต็มช่วงว่าง'} ({((spot.original_end_ms - spot.original_start_ms) / 1000).toFixed(1)}s)
                     </button>
                   )}
                 </div>
@@ -625,9 +618,13 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   }, [selectedSpotId]);
 
   // Map each spot_id to its parent AnalysisBatch for live queue visibility
+  // Text edits change `spots` but not timing, so timing-derived values key on spotTimingKey instead.
+  const timingKey = mode === 'review' ? spotTimingKey(spots) : '';
   const timingContext = React.useMemo<SpotTimingContext>(() => mode === 'review'
     ? { mode, spots, videoDurationMs }
-    : { mode, speechSegments, videoDurationMs }, [mode, spots, speechSegments, videoDurationMs]);
+    : { mode, speechSegments, videoDurationMs },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [mode, timingKey, speechSegments, videoDurationMs]);
 
   const spotBatchMap = React.useMemo(() => {
     const map: Record<string, AnalysisBatch> = {};
@@ -661,7 +658,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 
   const spotIssues = React.useMemo(
     () => (mode === 'review' ? findSpotIssues(spots, speechSegments, videoDurationMs) : new Map<string, SpotIssue[]>()),
-    [mode, spots, speechSegments, videoDurationMs]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, timingKey, speechSegments, videoDurationMs]
   );
 
   const filteredSpots = React.useMemo(() => {

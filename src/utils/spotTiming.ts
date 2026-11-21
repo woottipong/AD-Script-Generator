@@ -166,3 +166,8 @@ export function findSpotIssues(spots: ADSpot[], speechSegments: SpeechSegment[],
   }
   return issues;
 }
+
+/** Changes only when a spot's id, times, or skip decision change: the inputs every timing rule reads. */
+export function spotTimingKey(spots: ADSpot[]): string {
+  return spots.map((spot) => `${spot.spot_id}:${spot.start_ms}:${spot.end_ms}:${spot.decision === 'skip' ? 's' : ''}`).join('|');
+}
