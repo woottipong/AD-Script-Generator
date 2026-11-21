@@ -37,7 +37,8 @@ async page => {
   await page.waitForTimeout(500);
   if (!await chooser.isVisible()) throw new Error('Late resume restored the old job');
   await page.reload();
-  if (!await chooser.isVisible()) throw new Error('Old job returned after reload');
+  await chooser.waitFor();
+  if (new URL(page.url()).pathname !== '/new') throw new Error('Old job returned after reload');
   await page.goBack();
   await page.getByRole('button', { name: 'ทำต่อจากชุดที่ค้าง' }).waitFor();
   if (new URL(page.url()).pathname !== '/jobs/job_fixture') throw new Error('Back did not reopen the job');

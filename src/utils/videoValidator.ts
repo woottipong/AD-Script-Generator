@@ -1,4 +1,3 @@
-import { createFile } from 'mp4box';
 import { JobMode, VideoMetadata, VideoValidationIssue } from '../types/ad';
 import type { ByteSource } from './byteSource';
 
@@ -269,6 +268,7 @@ export async function validateAndInspectMp4File(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function parseMp4HeaderChunked(file: ByteSource): Promise<any> {
   const CHUNK_SIZE = 1024 * 1024; // 1 MB chunks
+  const { createFile } = await import('mp4box');
   const mp4boxfile = createFile();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

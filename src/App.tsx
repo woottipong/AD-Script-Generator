@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AlertOctagon, ChevronDown, FileVideo, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -32,33 +32,49 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { JobList } from './components/JobList';
-import { ReviewIntake } from './components/ReviewIntake';
-import { UploadAndVadPanel } from './components/UploadAndVadPanel';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
-
-const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
-const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
 import { parseApiResponse } from './utils/apiResponse';
 import { defaultJobTitle, resolveJobTitle } from './utils/jobValidation';
 import { createJobSaveQueue } from './utils/jobSaveQueue';
 import { pollJob } from './utils/jobPolling';
+import { jobIdFromPath, jobPath } from './utils/jobPath';
+
+const ReviewIntake = lazy(() => import('./components/ReviewIntake').then((m) => ({ default: m.ReviewIntake })));
+const UploadAndVadPanel = lazy(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
+const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
+const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
+
+class WorkspaceLoadBoundary extends Component<PropsWithChildren<{ onReady: (element: HTMLElement | null) => void }>, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <Empty ref={this.props.onReady} role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><WifiOff aria-hidden="true" /></EmptyMedia>
+          <EmptyTitle><h1 className="text-xl font-semibold text-foreground">โหลดพื้นที่ทำงานไม่สำเร็จ</h1></EmptyTitle>
+          <EmptyDescription>ตรวจการเชื่อมต่อ แล้วลองโหลดหน้านี้อีกครั้ง</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button size="lg" onClick={() => window.location.reload()}>โหลดหน้าใหม่</Button>
+        </EmptyContent>
+      </Empty>
+    );
+  }
+}
 
 const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
 const FIXED_MAX_UPLOAD_SIZE_MB = 2000;         // 2 GB
 const FIXED_CONTEXT_BEFORE_SECONDS = 20;       // 20s context before
 const FIXED_CONTEXT_AFTER_SECONDS = 10;        // 10s context after
-
-/** The Job a `/jobs/:jobId` URL opens; the URL, not the server, says which Job this tab works on. */
-function jobIdFromPath(pathname: string): string | null {
-  return /^\/jobs\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
-}
-
-function jobPath(jobId: string): string {
-  return `/jobs/${encodeURIComponent(jobId)}`;
-}
 
 /** A Review Mode Job the author cancelled while the server was creating it would otherwise stay in storage unasked. */
 function discardCreatedJob(jobId: string): void {
@@ -195,6 +211,7 @@ export default function App() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const focusOpenedJob = useRef<string | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
@@ -1026,6 +1043,7 @@ export default function App() {
   // Back and forward move between Jobs by URL, so the workspace follows whatever the URL now names.
   useEffect(() => {
     const handlePopState = async () => {
+      focusOpenedJob.current = null;
       const warning = await leaveWarning();
       // Back cannot be cancelled, so declining puts the page's own URL back.
       if (warning && !(await confirm({ title: 'ออกจากหน้านี้?', description: warning, confirmLabel: 'ออกจากหน้านี้', destructive: true }))) {
@@ -1043,7 +1061,9 @@ export default function App() {
   }, [resetWorkspace, restoreJob, leaveWarning, path, confirm]);
 
   const openJob = (openJobId: string) => {
-    navigate(jobPath(openJobId));
+    const target = jobPath(openJobId);
+    focusOpenedJob.current = target;
+    navigate(target);
     restoreJob(openJobId);
   };
 
@@ -1099,6 +1119,11 @@ export default function App() {
   };
 
   const hasProject = Boolean(videoMetadata);
+  const focusWhenJobReady = useCallback((element: HTMLElement | null) => {
+    if (!element || focusOpenedJob.current !== path) return;
+    focusOpenedJob.current = null;
+    workspaceRef.current?.focus();
+  }, [path]);
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
 
   return (
@@ -1179,14 +1204,20 @@ export default function App() {
       )}
 
       {/* Top Studio Project & Queue Command Bar */}
-      <Suspense fallback={null}>
+      <WorkspaceLoadBoundary key={path === '/' ? 'list' : 'workspace'} onReady={focusWhenJobReady}>
+      <Suspense fallback={
+        <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
+          <Spinner aria-hidden="true" />
+          กำลังโหลดพื้นที่ทำงาน…
+        </p>
+      }>
       {jobLoad === 'loading' && !hasProject ? (
         <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
           <Spinner aria-hidden="true" />
           กำลังเปิดงาน…
         </p>
       ) : jobLoad && !hasProject ? (
-        <Empty role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
+        <Empty ref={focusWhenJobReady} role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
           <EmptyHeader>
             <EmptyMedia variant="icon">{jobLoad === 'missing' ? <SearchX /> : <WifiOff />}</EmptyMedia>
             <EmptyTitle><h1 className="text-xl font-semibold text-foreground">{jobLoad === 'missing' ? 'ไม่พบงานนี้' : 'เปิดงานไม่สำเร็จ'}</h1></EmptyTitle>
@@ -1233,7 +1264,7 @@ export default function App() {
         errorMessage={errorMessage}
       />}
 
-      {hasProject && <section aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
+      {hasProject && <section ref={focusWhenJobReady} aria-label="ตรวจและแก้ไขบทบรรยาย" className="flex-1 min-h-0 w-full grid grid-cols-1 lg:grid-cols-12 lg:overflow-hidden">
         {/* Left Pane: Video Monitor, Caption Strip, Transport & Multi-Track Timeline (6 cols) */}
         <div className="lg:col-span-6 min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-border lg:overflow-hidden">
           <VideoPreviewTimeline
@@ -1285,6 +1316,7 @@ export default function App() {
         </div>
       </section>}
       </Suspense>
+      </WorkspaceLoadBoundary>
       </main>
       {confirmDialog}
     </div>
