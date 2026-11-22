@@ -9,7 +9,7 @@ import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectI
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
 
@@ -147,14 +147,9 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
             data-invalid={linkInvalid || undefined}
             aria-labelledby={video ? 'review-video-label' : undefined}
           >
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              {video
-                ? <FieldTitle id="review-video-label">วิดีโอ MP4</FieldTitle>
-                : <FieldLabel htmlFor="review-link">วิดีโอ MP4</FieldLabel>}
-              <span id="review-video-requirements" className="text-xs text-muted-foreground">
-                เสียง AAC · ทุกความละเอียด · ไม่เกิน 60 นาที
-              </span>
-            </div>
+            {video
+              ? <FieldTitle id="review-video-label">วิดีโอ MP4</FieldTitle>
+              : <FieldLabel htmlFor="review-link">วิดีโอ MP4</FieldLabel>}
             {video ? (
               <IntakeDropzone
                 file={video}
@@ -216,6 +211,9 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                 </Button>
               </div>
             )}
+            <FieldDescription id="review-video-requirements" className="text-xs">
+              รองรับเสียง AAC · ทุกความละเอียด · ไม่เกิน 60 นาที
+            </FieldDescription>
             {!video && linkInvalid && (
               <FieldError id="review-link-feedback" role="status">
                 ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4
@@ -224,12 +222,7 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
           </Field>
 
           <Field aria-labelledby="review-srt-label">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <FieldTitle id="review-srt-label">ไฟล์ SRT</FieldTitle>
-              <span id="review-srt-requirements" className="text-xs text-muted-foreground">
-                UTF-8 หรือ Windows-874
-              </span>
-            </div>
+            <FieldTitle id="review-srt-label">ไฟล์ SRT</FieldTitle>
             <IntakeDropzone
               file={srt}
               isDragging={draggingTarget === 'srt'}
@@ -249,13 +242,16 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
               clearLabel="ล้างไฟล์ SRT"
               pickDescribedBy="review-srt-requirements"
             />
+            <FieldDescription id="review-srt-requirements" className="text-xs">
+              รองรับรหัสภาษา UTF-8 หรือ Windows-874
+            </FieldDescription>
           </Field>
 
           <Field>
-            <div className="flex items-baseline justify-between gap-2">
-              <FieldLabel htmlFor="review-title">ชื่องาน</FieldLabel>
-              <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
-            </div>
+            <FieldLabel htmlFor="review-title" className="gap-1.5">
+              <span>ชื่องาน</span>
+              <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
+            </FieldLabel>
             <Input
               id="review-title"
               type="text"
@@ -268,13 +264,12 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
 
           {errorAlert}
 
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             วิดีโอจะเล่นบนเครื่องของคุณโดยไม่อัปโหลดขึ้นเซิร์ฟเวอร์ และบันทึกเฉพาะบทบรรยายที่ตรวจแก้
           </p>
 
           <IntakeFooter
             actionLabel="เริ่มตรวจแก้"
-            hint={chosenVideo && srt ? 'พร้อมเริ่มตรวจแก้' : !chosenVideo && !srt ? 'เลือกวิดีโอ MP4 และไฟล์ SRT เพื่อเริ่ม' : !chosenVideo ? 'เลือกวิดีโอ MP4 หรือวางลิงก์เพื่อเริ่ม' : 'เลือกไฟล์ SRT เพื่อเริ่ม'}
             disabled={!chosenVideo || !srt || Boolean(inputError) || blockingIssues.length > 0 || !intake.canProcess}
             onCancel={onBack}
             onAction={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}

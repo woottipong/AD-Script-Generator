@@ -184,14 +184,47 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
   expect((await uploadRow.innerText()).includes('0.1 KB'), 'An upload shows its size before deletion').toBe(true);
 
   const search = page.getByRole('searchbox', { name: 'ค้นหาชื่องานหรือชื่อไฟล์' });
-  const modeGroup = page.getByRole('group', { name: 'กรองตามโหมด' });
-  await modeGroup.getByRole('button', { name: /ตรวจแก้ SRT/ }).click();
+  const modeFilter = page.getByRole('combobox', { name: 'กรองตามโหมด' });
+  const statusFilter = page.getByRole('combobox', { name: 'กรองตามสถานะ' });
+
+  await modeFilter.click();
+  await page.getByRole('option', { name: /ตรวจแก้ SRT/ }).click();
   expect(
     (await rows.count()) === 1 && ((await rows.first().textContent())?.includes('บทเรียนที่ 1') ?? false),
     'Mode filter narrows to Review Mode Jobs'
   ).toBe(true);
-  await modeGroup.getByRole('button', { name: /ทั้งหมด/ }).click();
+  expect(new URL(page.url()).searchParams.get('mode'), 'Mode filter syncs mode query param').toBe('review');
+  await modeFilter.click();
+  await page.getByRole('option', { name: /ทั้งหมด/ }).click();
   expect(await rows.count(), 'All mode filter restores every Job').toBe(4);
+  expect(new URL(page.url()).search, 'Clearing mode filter removes query params').toBe('');
+
+  await statusFilter.click();
+  await page.getByRole('option', { name: /กำลังดำเนินการ/ }).click();
+  expect(
+    (await rows.count()) === 1 && ((await rows.first().textContent())?.includes('busy.mp4') ?? false),
+    'Status filter narrows to Processing Jobs'
+  ).toBe(true);
+  await modeFilter.click();
+  await page.getByRole('option', { name: /สร้างบทบรรยาย/ }).click();
+  await statusFilter.click();
+  await page.getByRole('option', { name: /พร้อมแก้/ }).click();
+  expect(
+    (await rows.count()) === 1 && ((await rows.first().textContent())?.includes('old.mp4') ?? false),
+    'Combined mode and status filters narrow to matching Jobs'
+  ).toBe(true);
+
+  await page.reload();
+  await page.getByRole('link', { name: 'เปิดงาน old.mp4' }).waitFor();
+  expect(await rows.count(), 'Reload preserves filtered rows from URL query params').toBe(1);
+  expect(new URL(page.url()).searchParams.get('mode'), 'Reload preserves mode query param').toBe('generate');
+  expect(new URL(page.url()).searchParams.get('status'), 'Reload preserves status query param').toBe('ready');
+
+  const clearFilters = page.getByRole('button', { name: 'ล้างตัวกรอง' });
+  await clearFilters.click();
+  expect(await rows.count(), 'Toolbar reset button restores every Job').toBe(4);
+  expect(new URL(page.url()).search, 'Toolbar reset button clears URL query params').toBe('');
+  expect(await clearFilters.count(), 'Toolbar reset button hides when unfiltered').toBe(0);
 
   const durationHeader = list.getByRole('columnheader', { name: 'ความยาว' });
   await durationHeader.getByRole('button', { name: 'ความยาว' }).click();

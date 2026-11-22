@@ -114,7 +114,6 @@ export function IntakeDropzone({
   onClear,
   icon,
   emptyTitle,
-  emptySubtitle,
   fileSubtitle,
   pickLabel,
   replaceLabel = 'เปลี่ยนไฟล์',
@@ -130,7 +129,6 @@ export function IntakeDropzone({
   onClear: () => void;
   icon: ReactNode;
   emptyTitle: string;
-  emptySubtitle?: string;
   fileSubtitle: string;
   pickLabel: string;
   replaceLabel?: string;
@@ -138,7 +136,7 @@ export function IntakeDropzone({
   pickDescribedBy?: string;
 }) {
   const pickButton = useRef<HTMLButtonElement>(null);
-  const subtitle = file ? fileSubtitle : emptySubtitle;
+  const subtitle = file ? fileSubtitle : undefined;
 
   return (
     <div
@@ -210,17 +208,15 @@ export function IntakeDropzone({
 /**
  * Shared intake footer bar placing the cancel and primary cerulean action buttons on the right.
  */
-export function IntakeFooter({ actionLabel, cancelLabel = 'ยกเลิก', hint, disabled, onCancel, onAction }: {
+export function IntakeFooter({ actionLabel, cancelLabel = 'ยกเลิก', disabled, onCancel, onAction }: {
   actionLabel: string;
   cancelLabel?: string;
-  hint?: string;
   disabled: boolean;
   onCancel?: () => void;
   onAction: () => void;
 }) {
   return (
     <div className="-mx-5 -mb-5 mt-2 flex flex-wrap items-center justify-end gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:-mx-7 sm:-mb-7 sm:px-7">
-      {hint && <p className="w-full text-xs text-muted-foreground sm:mr-auto sm:w-auto">{hint}</p>}
       {onCancel && (
         <Button type="button" variant="outline" size="lg" onClick={onCancel} className="h-auto min-h-10 max-w-full whitespace-normal py-2 [overflow-wrap:anywhere] pointer-coarse:min-h-11">
           {cancelLabel}
@@ -277,12 +273,9 @@ export function IntakeSkeleton() {
           <Skeleton variant="shimmer" delay={380} className="h-4 w-3/4 rounded bg-muted/70" />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:px-7">
-          <Skeleton variant="shimmer" delay={400} className="h-3.5 w-36 rounded bg-muted/80" />
-          <div className="flex items-center gap-2.5">
-            <Skeleton variant="shimmer" delay={440} className="h-10 w-20 rounded-lg bg-muted/80" />
-            <Skeleton variant="shimmer" delay={480} className="h-10 w-44 rounded-lg bg-brand-100/70" />
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:px-7">
+          <Skeleton variant="shimmer" delay={440} className="h-10 w-20 rounded-lg bg-muted/80" />
+          <Skeleton variant="shimmer" delay={480} className="h-10 w-44 rounded-lg bg-brand-100/70" />
         </div>
       </div>
     </section>

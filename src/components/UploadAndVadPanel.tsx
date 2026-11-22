@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
@@ -283,12 +283,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         ) : (
           <FieldGroup className="gap-5">
             <Field aria-labelledby="generate-video-label">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
-                <span id="upload-requirements" className="text-xs text-muted-foreground">
-                  480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
-                </span>
-              </div>
+              <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
               <IntakeDropzone
                 file={stagedFile}
                 isDragging={isDragging}
@@ -317,13 +312,16 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 clearLabel="ล้างไฟล์วิดีโอ"
                 pickDescribedBy={errorAlert ? 'upload-requirements upload-feedback' : 'upload-requirements'}
               />
+              <FieldDescription id="upload-requirements" className="text-xs">
+                รองรับ 480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
+              </FieldDescription>
             </Field>
 
             <Field>
-              <div className="flex items-baseline justify-between gap-2">
-                <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
-                <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
-              </div>
+              <FieldLabel htmlFor="generate-title" className="gap-1.5">
+                <span>ชื่องาน</span>
+                <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
+              </FieldLabel>
               <Input
                 id="generate-title"
                 type="text"
@@ -335,13 +333,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </Field>
 
             {errorAlert}
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               ระบบจะตรวจเสียงบนเครื่องแล้วบันทึกวิดีโอไว้บนเซิร์ฟเวอร์ คุณเลือกเริ่มสร้างบทด้วย AI ได้ในหน้าตัดต่อ
             </p>
 
             <IntakeFooter
               actionLabel="เริ่มเตรียมงาน"
-              hint={stagedFile ? 'พร้อมเริ่มเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
               disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}

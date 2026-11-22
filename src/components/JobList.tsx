@@ -21,7 +21,6 @@ import {
   Search,
   Trash2,
   Upload,
-  UserRound,
   X,
 } from 'lucide-react';
 import type { JobMode } from '../types/ad';
@@ -45,6 +44,8 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -60,7 +61,80 @@ const UPDATED_AT_FORMAT = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium'
 
 const MODE_LABEL: Record<JobMode, string> = { generate: 'สร้างบทบรรยาย', review: 'ตรวจแก้ SRT' };
 
+type OwnerScope = 'all' | 'mine';
 type ModeFilter = 'all' | JobMode;
+type JobStatusBucket = 'processing' | 'failed' | 'incomplete_upload' | 'ready' | 'pending';
+type StatusFilter = 'all' | JobStatusBucket;
+type JobListFilters = {
+  query: string;
+  ownerScope: OwnerScope;
+  modeFilter: ModeFilter;
+  statusFilter: StatusFilter;
+};
+
+const MODE_FILTER_LABEL: Record<ModeFilter, string> = {
+  all: 'ทั้งหมด',
+  generate: MODE_LABEL.generate,
+  review: MODE_LABEL.review,
+};
+
+const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  all: 'ทั้งหมด',
+  ready: 'พร้อมแก้',
+  processing: 'กำลังดำเนินการ',
+  failed: 'วิเคราะห์ไม่สำเร็จ',
+  incomplete_upload: 'อัปโหลดไม่สมบูรณ์',
+  pending: 'รอวิเคราะห์',
+};
+
+const STATUS_FILTER_OPTIONS = Object.entries(STATUS_FILTER_LABEL) as [StatusFilter, string][];
+
+const VALID_MODES = new Set<JobMode>(['generate', 'review']);
+const VALID_STATUS_BUCKETS = new Set<JobStatusBucket>(
+  STATUS_FILTER_OPTIONS.filter(([value]) => value !== 'all').map(([value]) => value as JobStatusBucket),
+);
+
+function jobStatusBucket(job: StoredJob): JobStatusBucket {
+  if (job.is_processing) return 'processing';
+  if (job.is_upload) return 'incomplete_upload';
+  if (job.status === 'FAILED') return 'failed';
+  if (job.status === 'READY') return 'ready';
+  return 'pending';
+}
+
+function readFiltersFromSearch(search: string, showOwners: boolean): JobListFilters {
+  const params = new URLSearchParams(search);
+  const rawScope = params.get('scope');
+  const rawMode = params.get('mode');
+  const rawStatus = params.get('status');
+  return {
+    query: params.get('q') ?? '',
+    ownerScope: showOwners && rawScope === 'mine' ? 'mine' : 'all',
+    modeFilter: rawMode && VALID_MODES.has(rawMode as JobMode) ? (rawMode as JobMode) : 'all',
+    statusFilter: rawStatus && VALID_STATUS_BUCKETS.has(rawStatus as JobStatusBucket) ? (rawStatus as JobStatusBucket) : 'all',
+  };
+}
+
+function syncFiltersToUrl(filters: JobListFilters, showOwners: boolean): void {
+  if (window.location.pathname !== '/') return;
+  const params = new URLSearchParams(window.location.search);
+  const trimmedQuery = filters.query.trim();
+  if (trimmedQuery) params.set('q', trimmedQuery);
+  else params.delete('q');
+  if (showOwners && filters.ownerScope !== 'all') params.set('scope', filters.ownerScope);
+  else params.delete('scope');
+  if (filters.modeFilter !== 'all') params.set('mode', filters.modeFilter);
+  else params.delete('mode');
+  if (filters.statusFilter !== 'all') params.set('status', filters.statusFilter);
+  else params.delete('status');
+  const nextSearch = params.toString();
+  const nextUrl = nextSearch ? `/?${nextSearch}` : '/';
+  const currentUrl = `${window.location.pathname}${window.location.search}`;
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(null, '', nextUrl);
+  }
+}
+
 type SortField = 'updated_at' | 'name' | 'duration' | 'spots';
 type SortDirection = 'asc' | 'desc';
 
@@ -91,60 +165,102 @@ type JobVisualState = {
 
 function jobVisualState(job: StoredJob): JobVisualState {
   const modeIcon = job.mode === 'review' ? FileText : FileVideo;
-  if (job.is_processing) {
-    const pct = !job.is_upload && typeof job.progress_percent === 'number' && job.progress_percent > 0
-      ? ` ${Math.round(job.progress_percent)}%`
-      : '';
+  switch (jobStatusBucket(job)) {
+    case 'processing': {
+      const pct = !job.is_upload && typeof job.progress_percent === 'number' && job.progress_percent > 0
+        ? ` ${Math.round(job.progress_percent)}%`
+        : '';
+      return {
+        label: job.is_upload ? 'กำลังอัปโหลด' : `กำลังวิเคราะห์${pct}`,
+        variant: 'info-strong',
+        icon: Loader2,
+        tileIcon: job.is_upload ? Upload : modeIcon,
+        tileClass: 'border-brand-200 bg-brand-50 text-brand-700',
+        rowClass: 'hover:bg-accent/60',
+        spinning: true,
+      };
+    }
+    case 'incomplete_upload':
+      return {
+        label: 'อัปโหลดไม่สมบูรณ์',
+        variant: 'warning',
+        icon: AlertTriangle,
+        tileIcon: Upload,
+        tileClass: 'border-warning-border bg-warning text-warning-foreground',
+        rowClass: 'bg-warning/60 hover:bg-warning',
+      };
+    case 'failed':
+      return {
+        label: 'วิเคราะห์ไม่สำเร็จ',
+        variant: 'destructive',
+        icon: AlertCircle,
+        tileIcon: modeIcon,
+        tileClass: 'border-error-border bg-error-surface text-error-foreground',
+        rowClass: 'bg-error-surface/60 hover:bg-error-surface',
+        errorDetails: job.error_message,
+      };
+    case 'ready':
+      return {
+        label: 'พร้อมแก้',
+        variant: 'secondary',
+        icon: CheckCircle2,
+        tileIcon: modeIcon,
+        tileClass: job.mode === 'review'
+          ? 'border-border bg-secondary text-secondary-foreground'
+          : 'border-brand-200 bg-brand-50 text-brand-700',
+        rowClass: 'hover:bg-accent/60',
+      };
+    case 'pending':
+      return {
+        label: 'รอวิเคราะห์',
+        variant: 'warning',
+        icon: Clock,
+        tileIcon: modeIcon,
+        tileClass: 'border-warning-border bg-warning text-warning-foreground',
+        rowClass: 'hover:bg-accent/60',
+      };
+  }
+}
+
+function emptyFilterCopy(
+  searchTerm: string,
+  showMineOnly: boolean,
+  modeFilter: ModeFilter,
+  statusFilter: StatusFilter,
+): { title: string; description: string; actionLabel: string } {
+  if (searchTerm) {
+    const hasExtraFilters = showMineOnly || modeFilter !== 'all' || statusFilter !== 'all';
     return {
-      label: job.is_upload ? 'กำลังอัปโหลด' : `กำลังวิเคราะห์${pct}`,
-      variant: 'info-strong',
-      icon: Loader2,
-      tileIcon: job.is_upload ? Upload : modeIcon,
-      tileClass: 'border-brand-200 bg-brand-50 text-brand-700',
-      rowClass: 'hover:bg-accent/60',
-      spinning: true,
+      title: 'ไม่พบงานที่ตรงกับการค้นหา',
+      description: 'ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ',
+      actionLabel: hasExtraFilters ? 'ล้างตัวกรองและคำค้นหา' : 'ล้างการค้นหา',
     };
   }
-  if (job.is_upload) {
+  if (showMineOnly && modeFilter === 'all' && statusFilter === 'all') {
     return {
-      label: 'อัปโหลดไม่สมบูรณ์',
-      variant: 'warning',
-      icon: AlertTriangle,
-      tileIcon: Upload,
-      tileClass: 'border-warning-border bg-warning text-warning-foreground',
-      rowClass: 'bg-warning/60 hover:bg-warning',
+      title: 'คุณยังไม่มีงานของตัวเอง',
+      description: 'เลือก "ทุกคน" เพื่อดูงานของผู้เขียนคนอื่น',
+      actionLabel: 'แสดงทั้งหมด',
     };
   }
-  if (job.status === 'FAILED') {
+  if (statusFilter !== 'all' && modeFilter === 'all') {
     return {
-      label: 'วิเคราะห์ไม่สำเร็จ',
-      variant: 'destructive',
-      icon: AlertCircle,
-      tileIcon: modeIcon,
-      tileClass: 'border-error-border bg-error-surface text-error-foreground',
-      rowClass: 'bg-error-surface/60 hover:bg-error-surface',
-      errorDetails: job.error_message,
+      title: 'ไม่มีงานในสถานะนี้',
+      description: showMineOnly ? 'เลือก "ทุกคน" หรือสลับตัวกรองสถานะเพื่อดูรายการงานอื่น' : 'สลับตัวกรองสถานะเพื่อดูรายการงานอื่น',
+      actionLabel: 'แสดงทั้งหมด',
     };
   }
-  if (job.status === 'READY') {
+  if (modeFilter !== 'all' && statusFilter === 'all') {
     return {
-      label: 'พร้อมแก้',
-      variant: 'secondary',
-      icon: CheckCircle2,
-      tileIcon: modeIcon,
-      tileClass: job.mode === 'review'
-        ? 'border-border bg-secondary text-secondary-foreground'
-        : 'border-brand-200 bg-brand-50 text-brand-700',
-      rowClass: 'hover:bg-accent/60',
+      title: 'ไม่มีงานในโหมดนี้',
+      description: showMineOnly ? 'เลือก "ทุกคน" หรือสลับตัวกรองโหมดเพื่อดูรายการงานอื่น' : 'สลับตัวกรองโหมดเพื่อดูรายการงานอื่น',
+      actionLabel: 'แสดงทั้งหมด',
     };
   }
   return {
-    label: 'รอวิเคราะห์',
-    variant: 'warning',
-    icon: Clock,
-    tileIcon: modeIcon,
-    tileClass: 'border-warning-border bg-warning text-warning-foreground',
-    rowClass: 'hover:bg-accent/60',
+    title: 'ไม่มีงานที่ตรงกับตัวกรอง',
+    description: 'ลองเปลี่ยนตัวกรองโหมดหรือสถานะเพื่อดูรายการงานอื่น',
+    actionLabel: 'แสดงทั้งหมด',
   };
 }
 
@@ -279,9 +395,11 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
   const [deleteMessage, setDeleteMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshMessage, setRefreshMessage] = useState('');
-  const [query, setQuery] = useState('');
-  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
-  const [ownerScope, setOwnerScope] = useState<'all' | 'mine'>('all');
+  const [initialFilters] = useState(() => readFiltersFromSearch(window.location.search, showOwners));
+  const [query, setQuery] = useState(initialFilters.query);
+  const [ownerScope, setOwnerScope] = useState<OwnerScope>(initialFilters.ownerScope);
+  const [modeFilter, setModeFilter] = useState<ModeFilter>(initialFilters.modeFilter);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialFilters.statusFilter);
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
@@ -289,6 +407,9 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
   const emptyNewJobButton = useRef<HTMLButtonElement>(null);
   const mounted = useRef(false);
   const activeRequest = useRef<{ controller: AbortController; announce: boolean } | null>(null);
+  const ownerScopeTouched = useRef(false);
+  const prevShowOwners = useRef(showOwners);
+  const isFirstSync = useRef(true);
 
   const loadJobs = useCallback(async (announce = false) => {
     if (!mounted.current || activeRequest.current) return;
@@ -358,6 +479,24 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
   const scopedJobs = useMemo(() => (jobs ?? []).filter((job) => !showMineOnly || isMine(job)), [jobs, showMineOnly, isMine]);
   // Every row is the Author's own while narrowed, so the owner column would repeat one email.
   const showOwnerColumn = showOwners && !showMineOnly;
+  useEffect(() => {
+    // Preserve ?scope=mine while /api/me is still resolving showOwners from false to true.
+    if (!prevShowOwners.current && showOwners && !ownerScopeTouched.current) {
+      const restoredScope = readFiltersFromSearch(window.location.search, true).ownerScope;
+      if (restoredScope !== ownerScope) {
+        setOwnerScope(restoredScope);
+        prevShowOwners.current = showOwners;
+        return;
+      }
+    }
+    prevShowOwners.current = showOwners;
+    if (isFirstSync.current) {
+      isFirstSync.current = false;
+      return;
+    }
+    syncFiltersToUrl({ query, ownerScope, modeFilter, statusFilter }, showOwners);
+  }, [query, ownerScope, modeFilter, statusFilter, showOwners]);
+
   const { generateCount, reviewCount } = useMemo(() => {
     let generate = 0;
     let review = 0;
@@ -369,11 +508,40 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
     return { generateCount: generate, reviewCount: review };
   }, [scopedJobs]);
 
+  const modeScopedJobs = useMemo(
+    () => scopedJobs.filter((job) => modeFilter === 'all' || (!job.is_upload && job.mode === modeFilter)),
+    [scopedJobs, modeFilter],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<JobStatusBucket, number> = {
+      ready: 0,
+      processing: 0,
+      failed: 0,
+      incomplete_upload: 0,
+      pending: 0,
+    };
+    for (const job of modeScopedJobs) {
+      counts[jobStatusBucket(job)]++;
+    }
+    return counts;
+  }, [modeScopedJobs]);
+
   const searchTerm = query.trim().toLocaleLowerCase('th-TH');
-  const isFiltered = Boolean(searchTerm) || modeFilter !== 'all' || showMineOnly;
+  const isFiltered = Boolean(searchTerm) || modeFilter !== 'all' || statusFilter !== 'all' || showMineOnly;
+  const resetFilters = () => {
+    ownerScopeTouched.current = true;
+    setQuery('');
+    setOwnerScope('all');
+    setModeFilter('all');
+    setStatusFilter('all');
+    setPage(1);
+    searchInput.current?.focus();
+  };
+
   const matchingJobs = useMemo(() => {
-    const filtered = scopedJobs.filter((job) => {
-      if (modeFilter !== 'all' && (job.is_upload || job.mode !== modeFilter)) return false;
+    const filtered = modeScopedJobs.filter((job) => {
+      if (statusFilter !== 'all' && jobStatusBucket(job) !== statusFilter) return false;
       if (!searchTerm) return true;
       return [jobName(job), job.file_name, showOwners ? job.owner_email ?? '' : '']
         .some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
@@ -397,7 +565,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
       }
       return sortDirection === 'asc' ? delta : -delta;
     });
-  }, [scopedJobs, modeFilter, searchTerm, sortField, sortDirection, showOwners]);
+  }, [modeScopedJobs, statusFilter, searchTerm, sortField, sortDirection, showOwners]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -542,7 +710,11 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
           {jobs === null ? (
             <div aria-hidden="true" className="flex flex-col gap-3 border-b bg-card px-4 py-3 @min-[42rem]:flex-row @min-[42rem]:flex-wrap @min-[42rem]:items-center @min-[42rem]:justify-between @min-[42rem]:px-5">
               <Skeleton className="h-9 w-full @min-[42rem]:w-80" />
-              <Skeleton className="h-8 w-64 max-w-full" />
+              <div className="flex flex-wrap items-center gap-2">
+                {showOwners && <Skeleton className="h-9 w-40" />}
+                <Skeleton className="h-9 w-38" />
+                <Skeleton className="h-9 w-40" />
+              </div>
             </div>
           ) : Boolean(jobs.length) && (
             <div className="flex flex-col gap-3 border-b bg-card px-4 py-3 @min-[42rem]:flex-row @min-[42rem]:flex-wrap @min-[42rem]:items-center @min-[42rem]:justify-between @min-[42rem]:px-5">
@@ -575,97 +747,159 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                 <p role="status" className={isFiltered ? 'text-xs text-muted-foreground tabular-nums' : 'sr-only'}>
                   {isFiltered ? `พบ ${matchingJobs.length} รายการ` : ''}
                 </p>
+                {isFiltered && (
+                  <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground">
+                    <X data-icon="inline-start" aria-hidden="true" />
+                    ล้างตัวกรอง
+                  </Button>
+                )}
               </div>
               <div className="flex max-w-full flex-wrap items-center gap-2">
               {showOwners && (
-                <ToggleGroup
-                  appearance="segmented"
-                  aria-label="กรองตามเจ้าของ"
-                  value={[ownerScope]}
-                  onValueChange={(next) => {
-                    const chosen = next[0] as 'all' | 'mine' | undefined;
-                    if (!chosen) return;
-                    setOwnerScope(chosen);
-                    setPage(1);
-                  }}
-                  className="max-w-full flex-wrap"
-                >
-                  {([
-                    ['all', 'ทุกคน', jobs.length],
-                    ['mine', 'งานของฉัน', mineCount],
-                  ] as const).map(([value, label, count]) => (
-                    <ToggleGroupItem
-                      key={value}
-                      value={value}
-                      variant="segmented"
-                      size="sm"
-                      className="gap-1.5 text-xs pointer-coarse:min-h-10"
-                    >
-                      {value === 'mine' && <UserRound aria-hidden="true" />}
-                      <span>{label}</span>
-                      <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+                <>
+                  <ToggleGroup
+                    appearance="segmented"
+                    aria-label="กรองตามเจ้าของ"
+                    value={[ownerScope]}
+                    onValueChange={(next) => {
+                      const chosen = next[0] as OwnerScope | undefined;
+                      if (!chosen) return;
+                      ownerScopeTouched.current = true;
+                      setOwnerScope(chosen);
+                      setPage(1);
+                    }}
+                    className="min-h-9 max-w-full flex-nowrap items-center p-0.5"
+                  >
+                    {([
+                      ['all', 'ทุกคน', jobs.length],
+                      ['mine', 'งานของฉัน', mineCount],
+                    ] as const).map(([value, label, count]) => (
+                      <ToggleGroupItem
+                        key={value}
+                        value={value}
+                        variant="segmented"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs pointer-coarse:min-h-10"
+                      >
+                        <span>{label}</span>
+                        <span
+                          className={cn(
+                            'text-xs tabular-nums',
+                            ownerScope === value ? 'text-muted-foreground' : 'text-muted-foreground/85',
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  <Separator orientation="vertical" className="hidden h-5 self-center @min-[42rem]:block" />
+                </>
               )}
-              <ToggleGroup
-                appearance="segmented"
-                aria-label="กรองตามโหมด"
-                value={[modeFilter]}
-                onValueChange={(next) => {
-                  const chosen = next[0] as ModeFilter | undefined;
-                  if (!chosen) return;
-                  setModeFilter(chosen);
+              <Select
+                value={modeFilter}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setModeFilter(value as ModeFilter);
                   setPage(1);
                 }}
-                className="max-w-full flex-wrap"
               >
-                {([
-                  ['all', 'ทั้งหมด', scopedJobs.length],
-                  ['generate', MODE_LABEL.generate, generateCount],
-                  ['review', MODE_LABEL.review, reviewCount],
-                ] as const).map(([value, label, count]) => (
-                  <ToggleGroupItem
-                    key={value}
-                    value={value}
-                    variant="segmented"
-                    size="sm"
-                    className="gap-1.5 text-xs pointer-coarse:min-h-10"
-                  >
-                    <span>{label}</span>
-                    <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                <SelectTrigger
+                  aria-label="กรองตามโหมด"
+                  className={cn(
+                    'w-auto min-w-[9.5rem] text-xs font-medium',
+                    modeFilter !== 'all' && 'border-brand-300 bg-brand-50/60 text-brand-900 [&_svg]:text-brand-700',
+                  )}
+                >
+                  <SelectValue>
+                    {(value: ModeFilter | null) => {
+                      const active = value ?? 'all';
+                      return (
+                        <>
+                          <span className={cn('font-normal', active !== 'all' ? 'text-brand-700/80' : 'text-muted-foreground')}>โหมด:</span>
+                          <span>{MODE_FILTER_LABEL[active]}</span>
+                        </>
+                      );
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-44">
+                  <SelectGroup>
+                    {([
+                      ['all', MODE_FILTER_LABEL.all, scopedJobs.length],
+                      ['generate', MODE_FILTER_LABEL.generate, generateCount],
+                      ['review', MODE_FILTER_LABEL.review, reviewCount],
+                    ] as const).map(([value, label, count]) => (
+                      <SelectItem key={value} value={value} className="text-xs">
+                        <span className="flex-1">{label}</span>
+                        <span className="text-muted-foreground tabular-nums">{count}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setStatusFilter(value as StatusFilter);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger
+                  aria-label="กรองตามสถานะ"
+                  className={cn(
+                    'w-auto min-w-[9.5rem] text-xs font-medium',
+                    statusFilter !== 'all' && 'border-brand-300 bg-brand-50/60 text-brand-900 [&_svg]:text-brand-700',
+                  )}
+                >
+                  <SelectValue>
+                    {(value: StatusFilter | null) => {
+                      const active = value ?? 'all';
+                      return (
+                        <>
+                          <span className={cn('font-normal', active !== 'all' ? 'text-brand-700/80' : 'text-muted-foreground')}>สถานะ:</span>
+                          <span>{STATUS_FILTER_LABEL[active]}</span>
+                        </>
+                      );
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-48">
+                  <SelectGroup>
+                    {STATUS_FILTER_OPTIONS.map(([value, label]) => {
+                      const count = value === 'all' ? modeScopedJobs.length : statusCounts[value];
+                      return (
+                        <SelectItem key={value} value={value} className="text-xs">
+                          <span className="flex-1">{label}</span>
+                          <span className="text-muted-foreground tabular-nums">{count}</span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
               </div>
             </div>
           )}
 
-          {jobs && matchingJobs.length === 0 ? (
-            <Empty className="py-12">
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
-                <EmptyTitle>{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : showMineOnly && modeFilter === 'all' ? 'คุณยังไม่มีงานของตัวเอง' : 'ไม่มีงานในโหมดนี้'}</EmptyTitle>
-                <EmptyDescription>
-                  {searchTerm ? 'ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ' : showMineOnly ? 'เลือก "ทุกคน" เพื่อดูงานของผู้เขียนคนอื่น' : 'สลับตัวกรองโหมดเพื่อดูรายการงานอื่น'}
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setQuery('');
-                    setModeFilter('all');
-                    setOwnerScope('all');
-                    setPage(1);
-                    searchInput.current?.focus();
-                  }}
-                >
-                  {searchTerm ? 'ล้างการค้นหา' : 'แสดงทั้งหมด'}
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : (
+          {jobs && matchingJobs.length === 0 ? (() => {
+            const emptyCopy = emptyFilterCopy(searchTerm, showMineOnly, modeFilter, statusFilter);
+            return (
+              <Empty className="py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
+                  <EmptyTitle>{emptyCopy.title}</EmptyTitle>
+                  <EmptyDescription>{emptyCopy.description}</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button variant="outline" onClick={resetFilters}>
+                    {emptyCopy.actionLabel}
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            );
+          })() : (
             <>
               <Table aria-label="งานที่บันทึกไว้" aria-busy={loading} className="table-fixed">
                 <TableHeader className="bg-muted/50">
