@@ -245,6 +245,7 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
       // Ring / accumulator for 16kHz PCM samples waiting to form 512-sample frames
       let pendingPcm = new Float32Array(0);
       let pendingReadOffset = 0;
+      let pendingLength = 0;
       const frameProbabilities: number[] = [];
       const frameRmsValues: number[] = [];
 
@@ -272,16 +273,21 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
         if (recordWaveform) {
           waveformAccumulator.push(chunk16k);
         }
-        const unread = pendingPcm.length - pendingReadOffset;
-        const combined = new Float32Array(unread + chunk16k.length);
-        combined.set(pendingPcm.subarray(pendingReadOffset), 0);
-        combined.set(chunk16k, unread);
-        pendingPcm = combined;
-        pendingReadOffset = 0;
+        // Grow into a fresh buffer, never compacting in place: the frame being inferred is a view into the old one.
+        if (pendingLength + chunk16k.length > pendingPcm.length) {
+          const unread = pendingLength - pendingReadOffset;
+          const grown = new Float32Array(Math.max(2 * (unread + chunk16k.length), 8192));
+          grown.set(pendingPcm.subarray(pendingReadOffset, pendingLength), 0);
+          pendingPcm = grown;
+          pendingLength = unread;
+          pendingReadOffset = 0;
+        }
+        pendingPcm.set(chunk16k, pendingLength);
+        pendingLength += chunk16k.length;
       };
 
       const runPendingVadFrames = async () => {
-        while (pendingPcm.length - pendingReadOffset >= VAD_FRAME_SAMPLES) {
+        while (pendingLength - pendingReadOffset >= VAD_FRAME_SAMPLES) {
           const frame = pendingPcm.subarray(pendingReadOffset, pendingReadOffset + VAD_FRAME_SAMPLES);
 
           // Compute RMS energy of this 512-sample 16kHz frame for signal calibration
@@ -555,7 +561,7 @@ self.onmessage = async (event: MessageEvent<WorkerStartMessage>) => {
       await runPendingVadFrames();
 
       // 2. Pad any remaining trailing sub-frame (< 512 samples) with zeros to complete the final frame
-      const unreadPcmLength = pendingPcm.length - pendingReadOffset;
+      const unreadPcmLength = pendingLength - pendingReadOffset;
       if (unreadPcmLength > 0 && unreadPcmLength < VAD_FRAME_SAMPLES) {
         const padSize = VAD_FRAME_SAMPLES - unreadPcmLength;
         appendPcm16k(new Float32Array(padSize), false);

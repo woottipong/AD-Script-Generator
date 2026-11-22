@@ -116,10 +116,10 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
       await pending;
       return listFails ? route.fulfill({ status: 500, json: { error: 'fixture' } }) : route.fulfill({ json: snapshot });
     }
-    if (url.endsWith('/api/jobs/job_old') && request.method() === 'GET') {
+    if (new URL(url).pathname === '/api/jobs/job_old' && request.method() === 'GET') {
       return route.fulfill({ json: { job, isRunning: false } });
     }
-    if (url.endsWith('/api/jobs/job_old') && request.method() === 'PATCH') {
+    if (new URL(url).pathname === '/api/jobs/job_old' && request.method() === 'PATCH') {
       renameRequests++;
       const pending = nextRenameResponse;
       nextRenameResponse = undefined;

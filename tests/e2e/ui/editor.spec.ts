@@ -44,7 +44,7 @@ test('spot list filtering, searching, editing, transport toggles, and tooltips',
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
-    if (url.endsWith('/api/jobs/fixture')) return route.fulfill({ json: { job, isRunning: false } });
+    if (new URL(url).pathname === '/api/jobs/fixture') return route.fulfill({ json: { job, isRunning: false } });
     if (url.endsWith('/spots')) {
       job.spots = route.request().postDataJSON().spots;
       return route.fulfill({ json: { job } });

@@ -92,7 +92,7 @@ Returns `{ jobs }` for the signed-in Author's own saved Jobs; with All-Jobs Acce
 
 Returns HTTP 200 with `{ job, isRunning }`. The browser loads the job named in its `/jobs/:jobId` URL from this route.
 
-With `?view=progress`, which the browser uses to poll during background analysis, `job` holds only `job_id`, `status`, `batches`, `spots`, and the optional `progress_stage`, `progress_percent`, `active_model`, and `error_message`; the server does not read the VAD output for it.
+With `?view=progress`, which the browser uses to poll during background analysis, `job` holds only `job_id`, `status`, `batches`, `spots`, and the optional `progress_stage`, `progress_percent`, `active_model`, and `error_message`; the server does not read the VAD output for it, so a Job whose VAD file is missing or unreadable still answers HTTP 200 here while the full response answers HTTP 404.
 
 An unknown or unreadable job returns HTTP 404:
 

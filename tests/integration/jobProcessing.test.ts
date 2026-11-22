@@ -147,6 +147,10 @@ for (const route of ['single batch', 'background'] as const) for (const mode of 
       const pending = route === 'single batch' ? request('/analyze-batch', 'POST', { batch_id: 'batch_1' }) : undefined;
       if (!pending) assert.equal((await request('/start', 'POST')).status, 200);
       await until(() => fs.existsSync(path.join(dir, 'entered-1')));
+      const running = await (await request('?view=progress')).json();
+      assert.equal(running.isRunning, true, 'the progress view reports the running analysis');
+      assert.equal(running.job.status, 'ANALYZING');
+      if (route === 'background') assert.ok(running.job.progress_stage, 'background analysis publishes its stage');
       const current = await (await request()).json();
       const spots = current.job.spots.map((item: ReturnType<typeof spot>) => item.spot_id === 'b'
         ? { ...item, text: 'manual edit', start_ms: 7200, duration_ms: 3800 } : item);

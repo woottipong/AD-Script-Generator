@@ -56,7 +56,7 @@ test('review restore for URL and local sources, responsive header layout, and re
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
-    if (url.endsWith('/api/jobs/job_review_restore')) return route.fulfill({ json: { job: current, isRunning: false } });
+    if (new URL(url).pathname === '/api/jobs/job_review_restore') return route.fulfill({ json: { job: current, isRunning: false } });
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
   page.on('worker', () => {

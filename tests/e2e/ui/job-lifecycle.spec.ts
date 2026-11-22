@@ -38,7 +38,7 @@ test('failed save retention, leave warning, retry save, and reload persistence',
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
-    if (url.endsWith('/api/jobs/job_test')) return route.fulfill({ json: { job, isRunning: false } });
+    if (new URL(url).pathname === '/api/jobs/job_test') return route.fulfill({ json: { job, isRunning: false } });
     if (url.endsWith('/spots')) {
       patchCalls++;
       if (patchCalls === 1) return route.fulfill({ status: 500, json: { error: 'synthetic failure' } });
