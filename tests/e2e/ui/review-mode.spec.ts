@@ -89,8 +89,7 @@ test('review mode creation, queued rename, warnings filter, spot save, and creat
   try {
     await process.click();
     await firstLine.waitFor({ timeout: 55_000 });
-    for (let i = 0; i < 100 && !created; i++) await page.waitForTimeout(50);
-    expect(created, 'Review Mode job was sent to the server').toBeTruthy();
+    await expect.poll(() => created, { message: 'Review Mode job was sent to the server' }).toBeTruthy();
     expect(created!.title, 'The typed Job Title is sent when the Job is created').toBe('ตรวจบท ตอนที่ 1');
     await page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1', exact: true }).click();
     await editingTitle.fill('ตรวจบท ตอนที่ 1 ระหว่างสร้าง');
@@ -103,8 +102,9 @@ test('review mode creation, queued rename, warnings filter, spot save, and creat
     releaseCreation();
   }
 
-  for (let i = 0; i < 100 && new URL(page.url()).pathname !== '/jobs/job_review_fixture'; i++) await page.waitForTimeout(50);
-  expect(new URL(page.url()).pathname, 'The new Job opens at its own URL').toBe('/jobs/job_review_fixture');
+  await expect
+    .poll(() => new URL(page.url()).pathname, { message: 'The new Job opens at its own URL' })
+    .toBe('/jobs/job_review_fixture');
   const queuedTitle = page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1 ระหว่างสร้าง', exact: true });
   await queuedTitle.waitFor();
   expect(renamed, 'The queued title saves once the server creates the Job').toBe('ตรวจบท ตอนที่ 1 ระหว่างสร้าง');
@@ -174,9 +174,9 @@ test('review mode creation, queued rename, warnings filter, spot save, and creat
   await page.getByRole('listitem', { name: 'ช่วงบรรยายที่ 1' }).click();
   expect(await page.getByRole('button', { name: 'ส่งออก SRT' }).isVisible(), 'SRT export is available').toBe(true);
   await firstLine.fill('ชายเปิดประตูห้อง');
-  for (let i = 0; i < 100 && !patched; i++) await page.waitForTimeout(50);
-  const savedSpots = patched as Array<{ text: string }> | null;
-  expect(savedSpots && savedSpots[0].text === 'ชายเปิดประตูห้อง', 'Text edit is saved to the Review Mode job').toBe(true);
+  await expect
+    .poll(() => patched?.[0]?.text, { message: 'Text edit is saved to the Review Mode job' })
+    .toBe('ชายเปิดประตูห้อง');
   await page.getByText('บันทึกบนเซิร์ฟเวอร์แล้ว').waitFor();
 
   await queuedTitle.click();

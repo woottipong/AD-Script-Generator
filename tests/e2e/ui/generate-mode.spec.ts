@@ -9,16 +9,16 @@ test('generate intake validation, draft preservation, single VAD scan, and save 
   test.setTimeout(60_000);
 
   await page.addInitScript(() => {
-    const win = window as unknown as { createModeScanCount?: number };
-    if (win.createModeScanCount !== undefined) return;
-    win.createModeScanCount = 0;
+    const win = window as unknown as { generateModeScanCount?: number };
+    if (win.generateModeScanCount !== undefined) return;
+    win.generateModeScanCount = 0;
     const postMessage = Worker.prototype.postMessage;
     Worker.prototype.postMessage = function (message: { type?: string }, ...options: unknown[]) {
-      if (message?.type === 'PROCESS_FILE') win.createModeScanCount = (win.createModeScanCount ?? 0) + 1;
+      if (message?.type === 'PROCESS_FILE') win.generateModeScanCount = (win.generateModeScanCount ?? 0) + 1;
       return postMessage.apply(this, [message, ...(options as [StructuredSerializeOptions?])]);
     };
   });
-  const scanCount = () => page.evaluate(() => (window as unknown as { createModeScanCount?: number }).createModeScanCount ?? 0);
+  const scanCount = () => page.evaluate(() => (window as unknown as { generateModeScanCount?: number }).generateModeScanCount ?? 0);
 
   const initCalls: Array<{ autoStart?: boolean; vad_output: { candidate_spots: Array<{ start_ms: number; end_ms: number }> } }> = [];
   const geminiRequests: string[] = [];

@@ -150,6 +150,8 @@
 | `SESSION_SECRET` | จำเป็น อย่างน้อย 32 ตัวอักษร ใช้เข้ารหัส session cookie เปลี่ยนค่าแล้วรีสตาร์ตเพื่อให้ทุกคนออกจากระบบทันที |
 | `AUTH_ALL_JOBS_GROUPS` | ไม่บังคับ กลุ่ม Keycloak ที่ได้ All-Jobs Access คั่นด้วยจุลภาค ค่าเริ่มต้น `admin,supervisor` |
 | `PORT` | พอร์ตที่ `server.ts` ฟัง ค่าเริ่มต้นคือ `3000` และ Dockerfile กำหนดไว้ที่ `3000` |
+| `DEV_PORT` | ไม่บังคับ พอร์ตบนเครื่องสำหรับ [docker-compose.yml](docker-compose.yml) และ `APP_URL` ของ dev container ค่าเริ่มต้น `3003` |
+| `APP_PORT`, `APP_BIND`, `IMAGE_TAG` | ไม่บังคับ ค่าปรับแต่งสำหรับ [docker-compose.prod.yml](docker-compose.prod.yml): พอร์ตบนเครื่อง (เริ่มต้น `3000`), IP ที่ผูก (เช่น `127.0.0.1` หลัง reverse proxy) และแท็ก image (เริ่มต้น `latest`) |
 
 เซิร์ฟเวอร์ไม่ยอม start หากขาดค่าที่จำเป็นของการเข้าสู่ระบบ ทุกหน้าและทุก API ยกเว้น `/api/config` ต้องเข้าสู่ระบบผ่าน Keycloak ก่อน session อยู่ได้ 7 วันนับจากเข้าสู่ระบบ ดู [ADR-0004](docs/adr/0004-keycloak-sign-in-with-server-session-cookie.md) และ [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions) `GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น
 
@@ -161,7 +163,7 @@
 
 ### รันบนเครื่อง
 
-ใช้ Node.js 22.12 ขึ้นไปในสาย 22 หรือเวอร์ชันใหม่กว่าที่ Vite รองรับ Dockerfile ใช้ `node:22-slim` และ Bun `1.4.4` โปรเจกต์ใช้ `bun.lock` รูปแบบ `lockfileVersion: 2` ซึ่งต้องใช้ Bun 1.4 ขึ้นไป
+ใช้ Node.js 22.12 ขึ้นไปในสาย 22 หรือเวอร์ชันใหม่กว่าที่ Vite รองรับ Dockerfile ใช้ `node:22-bookworm-slim` และ Bun `1.4.4` โปรเจกต์ใช้ `bun.lock` รูปแบบ `lockfileVersion: 2` ซึ่งต้องใช้ Bun 1.4 ขึ้นไป
 
 ก่อนรันครั้งแรก คัดลอกไฟล์ตัวอย่างแล้วตั้ง `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ใน `.env` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม:
 
@@ -205,7 +207,7 @@ docker compose up --build -d
 
 รายละเอียดระบบ:
 
-- พอร์ต `3003` บนเครื่อง (`3003:3000` ไปยังพอร์ต `3000` ในคอนเทนเนอร์): เปิดที่ [http://localhost:3003](http://localhost:3003) สำหรับเว็บแอปพลิเคชันและ Express API
+- พอร์ต `3003` บนเครื่อง (`${DEV_PORT:-3003}:3000` ไปยังพอร์ต `3000` ในคอนเทนเนอร์ ปรับได้ด้วย `DEV_PORT`): เปิดที่ [http://localhost:3003](http://localhost:3003) สำหรับเว็บแอปพลิเคชันและ Express API
 - โฟลเดอร์โปรเจกต์ mount เข้า `/app` ในคอนเทนเนอร์
 - แก้ไขไฟล์ React หรือ CSS แล้วหน้าเว็บอัปเดตผ่าน Vite HMR อัตโนมัติ (ไม่ต้องรีเฟรชเอง)
 - แก้ไข `server.ts` เครื่องมือ `tsx watch` จะรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติ
@@ -231,7 +233,7 @@ docker compose up --build --renew-anon-volumes -d
 
 ### รันด้วย Docker สำหรับ production
 
-[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile), mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่พอร์ต 3000, รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ก่อน (ดู `.env.example`)
+[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile) เป็น `envisio:${IMAGE_TAG:-latest}`, mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่ `${APP_BIND:+${APP_BIND}:}${APP_PORT:-3000}:3000` (เริ่มต้นพอร์ต `3000`, กำหนด `APP_PORT`, `APP_BIND`, `IMAGE_TAG` ใน `.env` ได้), รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ก่อน (ดู `.env.example`)
 
 **ขึ้นระบบครั้งแรก และอัปเดตเป็นโค้ดล่าสุด** ใช้คำสั่งเดียวกัน:
 

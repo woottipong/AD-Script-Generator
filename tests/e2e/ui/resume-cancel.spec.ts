@@ -100,8 +100,7 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
   await page.keyboard.press('Escape');
 
   await resume.click();
-  for (let i = 0; i < 100 && !started; i++) await page.waitForTimeout(50);
-  expect(started, 'Resume did not start').toBe(true);
+  await expect.poll(() => started, { message: 'Resume did not start' }).toBe(true);
 
   const confirmReset = page.getByRole('alertdialog', { name: 'เริ่มงานใหม่และออกจากงานปัจจุบัน?' });
   await manage.click();

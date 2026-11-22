@@ -19,7 +19,7 @@ test('review mode from external MP4 URL scans audio and seeks cleanly', async ({
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       created = request.postDataJSON();
       return route.fulfill({
-        json: { job: { ...created, job_id: 'job_review_url', schema_version: 2, mode: 'review', status: 'READY', batches: [] }, isRunning: false },
+        json: { job: { ...created, job_id: 'job_review_url', schema_version: 3, mode: 'review', status: 'READY', batches: [] }, isRunning: false },
       });
     }
     if (url.endsWith('/api/jobs/job_review_url/spots')) return route.fulfill({ json: { job: { job_id: 'job_review_url' } } });
@@ -38,8 +38,7 @@ test('review mode from external MP4 URL scans audio and seeks cleanly', async ({
 
   await process.click();
   await page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true }).waitFor({ timeout: 55_000 });
-  for (let i = 0; i < 200 && !created; i++) await page.waitForTimeout(50);
-  expect(created, 'Review Mode job was created').toBeTruthy();
+  await expect.poll(() => created, { message: 'Review Mode job was created', timeout: 10_000 }).toBeTruthy();
   expect(created!.video_source.kind === 'url' && created!.video_source.url === videoUrl, 'Job records the URL source').toBe(true);
   expect(created!.video_metadata.height, '1080p video is accepted').toBe(1080);
   expect(Math.abs(created!.vad_output.duration_ms - 1483000) < 2000, 'Scan covered the whole video').toBe(true);

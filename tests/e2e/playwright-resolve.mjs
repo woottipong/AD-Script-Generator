@@ -1,22 +1,16 @@
 import { register, registerHooks } from 'node:module';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { anchorFor, isPlaywrightSpecifier } from './playwright-hook.mjs';
 
 const nmDir = process.env.PW_NODE_MODULES;
 if (nmDir) {
   if (typeof registerHooks === 'function') {
-    const fallbackAnchor = pathToFileURL(path.join(nmDir, '_playwright_anchor.mjs')).href;
+    const fallbackAnchor = anchorFor(nmDir);
     registerHooks({
       resolve(specifier, context, nextResolve) {
         try {
           return nextResolve(specifier, context);
         } catch (err) {
-          if (
-            specifier === '@playwright/test' ||
-            specifier.startsWith('@playwright/test/') ||
-            specifier === 'playwright' ||
-            specifier.startsWith('playwright/')
-          ) {
+          if (isPlaywrightSpecifier(specifier)) {
             return nextResolve(specifier, { ...context, parentURL: fallbackAnchor });
           }
           throw err;

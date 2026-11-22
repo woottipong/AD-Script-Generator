@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
+import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue } from '../../../src/utils/session';
 
 const SMOKE_PORT = 4174;
 const DEFAULT_BASE_URL = `http://127.0.0.1:${SMOKE_PORT}`;
+const SMOKE_SESSION_SECRET = process.env.SMOKE_SESSION_SECRET || '0123456789abcdef0123456789abcdef';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -45,7 +47,7 @@ test.beforeAll(async () => {
       '-e',
       'KEYCLOAK_CLIENT_ID=envisio-dev',
       '-e',
-      'SESSION_SECRET=0123456789abcdef0123456789abcdef',
+      `SESSION_SECRET=${SMOKE_SESSION_SECRET}`,
       '-e',
       'GEMINI_API_KEY=dummy',
       'envisio:latest',
@@ -65,7 +67,7 @@ test.afterAll(() => {
   }
 });
 
-test('production container serves config, auth gate, ONNX assets, and root page cleanly', async ({ page, request }) => {
+test('production container serves config, auth gate, ONNX assets, and root page cleanly', async ({ page, context, request }) => {
   const configRes = await request.get(`${baseUrl}/api/config`);
   expect(configRes.status()).toBe(200);
   const configBody = await configRes.json();
@@ -85,11 +87,26 @@ test('production container serves config, auth gate, ONNX assets, and root page 
   expect(modelRes.status()).toBe(200);
   expect(modelRes.headers()['cross-origin-resource-policy']).toBe('cross-origin');
 
+  const rootRedirectRes = await request.get(`${baseUrl}/`, {
+    headers: { accept: 'text/html' },
+    maxRedirects: 0,
+  });
+  expect(rootRedirectRes.status()).toBe(302);
+  expect(rootRedirectRes.headers()['location']).toBe('/auth/login?returnTo=%2F');
+
+  const sealedSession = sealValue(
+    SMOKE_SESSION_SECRET,
+    'session',
+    { sub: 'smoke-user', email: 'smoke@example.com', allJobs: false },
+    SESSION_MAX_AGE_MS
+  );
+  await context.addCookies([{ name: SESSION_COOKIE, value: sealedSession, url: baseUrl }]);
+
   const pageErrors: Error[] = [];
   page.on('pageerror', (err) => pageErrors.push(err));
   const response = await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
   expect(response).not.toBeNull();
-  await expect(page.locator('body')).toBeVisible();
-  expect((await page.locator('body').innerText()).trim().length).toBeGreaterThan(0);
+  expect(page.url()).toBe(`${baseUrl}/`);
+  await expect(page.getByRole('button', { name: 'บัญชี smoke@example.com' })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

@@ -43,7 +43,7 @@ bun run test:e2e
 
 - `tests/fixtures/ad-review.srt` มีอยู่ใน repo แล้ว (6 cues สำหรับทดสอบ Review Mode)
 - `tests/e2e/fixtures.ts` (`ensureVideoFixtures()`) สร้างไฟล์ต่อไปนี้ใน `tests/fixtures/.generated/` ด้วย `ffmpeg` อัตโนมัติหากยังไม่มี:
-  - `ad-generate-480p.mp4`: MP4 480p (`854x480`, AAC mono, `-movflags +faststart`) สำหรับ `create-mode.spec.ts`
+  - `ad-generate-480p.mp4`: MP4 480p (`854x480`, AAC mono, `-movflags +faststart`) สำหรับ `generate-mode.spec.ts`
   - `ad-review-1080p.mp4`: MP4 1080p (`1920x1080`, AAC sine wave, ไม่ใส่ `+faststart` เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) สำหรับ `review-mode.spec.ts` และ `review-restore.spec.ts`
 - `review-mode-url.spec.ts` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และตั้ง timeout ไว้ที่ `60_000` ms
 
@@ -56,7 +56,8 @@ bun run test:e2e
 - `GET /api/config` คืน HTTP 200 พร้อมฟิลด์คอนฟิก (`geminiModel`, `maxUploadSizeMb`, `vadThreshold`)
 - `GET /api/jobs` ที่ยังไม่เข้าสู่ระบบคืน HTTP 401 พร้อม `code: 'UNAUTHENTICATED'`
 - `GET /models/silero_vad.onnx` คืน HTTP 200 พร้อม header `cross-origin-resource-policy: cross-origin`
-- การเปิด `/` ใน Chromium โหลดได้โดยไม่มี `pageerror` และแสดงเนื้อหาบนหน้าจอ
+- `GET /` แบบยังไม่เข้าสู่ระบบคืน HTTP 302 ไปยัง `/auth/login?returnTo=%2F`
+- การเปิด `/` ด้วย session cookie ที่ถูกต้องใน Chromium อยู่บน `/` โดยไม่ redirect, แสดงปุ่ม `บัญชี smoke@example.com` ของ SPA และไม่มี `pageerror`
 
 build image production หากโค้ดเปลี่ยน แล้วรันบนเครื่อง:
 
