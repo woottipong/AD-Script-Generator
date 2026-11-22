@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-/** The signed-in Author's email and the way to sign out. */
-export function AccountMenu({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+/** The signed-in Author's name and email, and the way to sign out. */
+export function AccountMenu({ email, name, onSignOut }: { email: string; name?: string; onSignOut: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -28,7 +28,10 @@ export function AccountMenu({ email, onSignOut }: { email: string; onSignOut: ()
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+          <DropdownMenuLabel className="flex min-w-0 flex-col gap-0.5">
+            {name && <span className="truncate text-sm font-semibold text-foreground">{name}</span>}
+            <span className="truncate">{email}</span>
+          </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut}><LogOut aria-hidden="true" />ออกจากระบบ</DropdownMenuItem>

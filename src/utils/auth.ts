@@ -142,6 +142,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       const session: AuthorSession = {
         sub: claims.sub,
         email,
+        ...(typeof claims.name === 'string' && claims.name.trim() ? { name: claims.name.trim() } : {}),
         allJobs: hasAllJobsAccess(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups),
         idToken: tokens.id_token!,
       };

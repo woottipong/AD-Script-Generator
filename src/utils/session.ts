@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 
 /** The signed-in Author, as the session cookie carries it. */
-export type AuthorSession = { sub: string; email: string; allJobs: boolean; idToken: string };
+export type AuthorSession = { sub: string; email: string; name?: string; allJobs: boolean; idToken: string };
 
 export const SESSION_COOKIE = 'envisio_session';
 export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

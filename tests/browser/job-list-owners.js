@@ -9,7 +9,7 @@ async page => {
   ];
   await page.route('**/api/**', async route => {
     const url = route.request().url();
-    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'lead@example.com', allJobs } });
+    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'a@example.com', allJobs } });
     if (url.endsWith('/api/jobs')) return route.fulfill({ json: { jobs: allJobs ? jobs : jobs.slice(0, 1) } });
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
@@ -27,11 +27,24 @@ async page => {
   await page.getByText('พบ 1 รายการ').waitFor();
   assert(await table.getByRole('link', { name: 'งานของบี', exact: true }).isVisible(), 'Search finds Jobs by owner email');
   assert(!(await table.getByRole('link', { name: 'งานของเอ', exact: true }).isVisible()), 'Search hides other owners');
+  await search.fill('');
+
+  const scope = page.getByRole('group', { name: 'กรองตามเจ้าของ' });
+  const mine = scope.getByRole('button', { name: /งานของฉัน/ });
+  assert((await mine.textContent()).includes('1'), 'The my-Jobs filter counts the signed-in Author\'s Jobs');
+  await mine.click();
+  await page.getByText('พบ 1 รายการ').waitFor();
+  assert(await table.getByRole('link', { name: 'งานของเอ', exact: true }).isVisible(), 'งานของฉัน keeps the Author\'s own Job');
+  assert(!(await table.getByRole('link', { name: 'งานของบี', exact: true }).isVisible()), 'งานของฉัน hides other owners');
+  assert(await table.getByRole('columnheader', { name: 'เจ้าของ' }).count() === 0, 'The owner column hides when every row is the Author\'s own');
+  await scope.getByRole('button', { name: /ทุกคน/ }).click();
+  await table.getByRole('link', { name: 'งานของบี', exact: true }).waitFor();
 
   allJobs = false;
   await page.goto('http://127.0.0.1:4173/');
   await table.getByRole('link', { name: 'งานของเอ', exact: true }).waitFor();
   assert(await table.getByRole('columnheader', { name: 'เจ้าของ' }).count() === 0, 'An Author without All-Jobs Access sees no owner column');
+  assert(await page.getByRole('group', { name: 'กรองตามเจ้าของ' }).count() === 0, 'Without All-Jobs Access every Job is the Author\'s own, so there is no owner filter');
   await page.getByRole('searchbox').fill('a@example');
   await page.getByText('ไม่พบงานที่ตรงกับการค้นหา').waitFor();
 }

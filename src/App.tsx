@@ -191,7 +191,7 @@ const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', titl
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
-  const [signedInAuthor, setSignedInAuthor] = useState<{ email: string; allJobs: boolean } | null>(null);
+  const [signedInAuthor, setSignedInAuthor] = useState<{ email: string; name?: string; allJobs: boolean } | null>(null);
   const [status, setStatus] = useState<JobStatus>('IDLE');
   const [jobId, setJobId] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -1515,7 +1515,7 @@ export default function App() {
         {signedInAuthor && (
           // On a phone the editor header has no room left; the Job List header still offers sign-out there.
           <div className={`ml-2 shrink-0 ${isCompactHeader ? 'hidden sm:block' : ''}`}>
-            <AccountMenu email={signedInAuthor.email} onSignOut={() => void signOut()} />
+            <AccountMenu email={signedInAuthor.email} name={signedInAuthor.name} onSignOut={() => void signOut()} />
           </div>
         )}
         {hasProject && (
@@ -1636,7 +1636,7 @@ export default function App() {
           </EmptyContent>
         </Empty>
       ) : !hasProject && path === '/' ? (
-        <JobList onOpen={openJob} onNew={() => navigate('/new')} showOwners={signedInAuthor?.allJobs === true} />
+        <JobList onOpen={openJob} onNew={() => navigate('/new')} showOwners={signedInAuthor?.allJobs === true} ownEmail={signedInAuthor?.email} />
       ) : !hasProject && (mode ?? 'generate') === 'review' ? (
         <ReviewIntake
           checkingFileName={checkingFileName}

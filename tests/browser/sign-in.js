@@ -4,7 +4,7 @@ async page => {
   let listAnswer = 'ok';
   await page.route('**/api/**', async route => {
     const url = route.request().url();
-    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
+    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', name: 'ผู้เขียน ทดสอบ', allJobs: false } });
     if (url.endsWith('/api/jobs')) {
       if (listAnswer === 'session-ended') return route.fulfill({ status: 401, json: { error: 'กรุณาเข้าสู่ระบบอีกครั้ง', code: 'UNAUTHENTICATED' } });
       if (listAnswer === 'other-401') return route.fulfill({ status: 401, json: { error: 'Gemini permission denied' } });
@@ -21,6 +21,7 @@ async page => {
   await account.click();
   await page.getByRole('menuitem', { name: 'ออกจากระบบ' }).waitFor();
   assert(await page.getByRole('menu').getByText('author@example.com').isVisible(), 'The account menu names the signed-in Author');
+  assert(await page.getByRole('menu').getByText('ผู้เขียน ทดสอบ').isVisible(), 'The account menu shows the Author\'s name');
   await page.getByRole('menuitem', { name: 'ออกจากระบบ' }).click();
   await page.waitForURL('**/auth/logout');
 

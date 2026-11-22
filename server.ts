@@ -623,8 +623,8 @@ async function startServer() {
   });
 
   app.get('/api/me', (_req: Request, res: Response) => {
-    const { email, allJobs } = res.locals.author as AuthorSession;
-    res.json({ email, allJobs });
+    const { email, name, allJobs } = res.locals.author as AuthorSession;
+    res.json({ email, name, allJobs });
   });
 
   // 1. GET /api/config — Return server default configuration (no secrets)
