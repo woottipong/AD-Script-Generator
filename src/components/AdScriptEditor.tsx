@@ -5,14 +5,12 @@ import {
   ChevronDown,
   Clock,
   FileText,
-  Loader2,
   Maximize2,
   Minus,
   MinusCircle,
   Plus,
   RotateCcw,
   Search,
-  X,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
@@ -35,8 +33,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
@@ -412,7 +412,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               className={spot.decision === 'skip' ? 'text-muted-foreground' : undefined}
             >
               {isBatchProcessing ? (
-                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                <Spinner aria-hidden="true" />
               ) : spot.decision === 'pending' ? (
                 <Clock aria-hidden="true" />
               ) : spot.decision === 'generate' ? (
@@ -557,12 +557,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       {spot.decision === 'pending' && isBatchProcessing && (
         <div
           aria-hidden="true"
-          style={{ '--shimmer-delay': `${(spotOrder % 4) * 140}ms` } as React.CSSProperties}
           className="mt-1.5 w-full space-y-2"
         >
-          <div className="soft-shimmer h-3.5 w-full rounded bg-brand-100/80" />
-          <div
-            className="soft-shimmer h-3.5 rounded bg-brand-100/60"
+          <Skeleton variant="shimmer" delay={(spotOrder % 4) * 140} className="h-3.5 w-full rounded bg-brand-100/80" />
+          <Skeleton
+            variant="shimmer"
+            delay={(spotOrder % 4) * 140}
+            className="h-3.5 rounded bg-brand-100/60"
             style={{ width: `${[68, 54, 78, 60][spotOrder % 4]}%` }}
           />
         </div>
@@ -790,18 +791,13 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               className="text-xs md:text-xs [&::-webkit-search-cancel-button]:hidden"
             />
             {searchQuery && (
-              <InputGroupAddon align="inline-end">
-                <InputGroupButton
-                  size="icon-xs"
-                  aria-label="ล้างคำค้นหา"
-                  onClick={() => {
-                    setSearchQuery('');
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  <X aria-hidden="true" />
-                </InputGroupButton>
-              </InputGroupAddon>
+              <InputGroupClearButton
+                label="ล้างคำค้นหา"
+                onClear={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+              />
             )}
           </InputGroup>
           <Select
@@ -879,16 +875,12 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           emptyState === 'preparing' ? (
             <div className="flex h-full min-h-full flex-col">
               <div aria-hidden="true" className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
-                <div data-slot="skeleton" className="soft-shimmer h-9 flex-1 rounded-lg bg-muted/70" />
-                <div
-                  data-slot="skeleton"
-                  style={{ '--shimmer-delay': '120ms' } as React.CSSProperties}
-                  className="soft-shimmer h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40"
-                />
+                <Skeleton variant="shimmer" className="h-9 flex-1 rounded-lg bg-muted/70" />
+                <Skeleton variant="shimmer" delay={120} className="h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40" />
               </div>
               <div role="status" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
                 <div className="flex shrink-0 items-center gap-2 border-b border-border bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
+                  <Spinner className="size-3.5 shrink-0 text-brand-600" aria-hidden="true" />
                   <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
                 </div>
                 <div className="min-h-0 flex-1 divide-y divide-border overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)]">
@@ -896,20 +888,19 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                     <div
                       key={idx}
                       aria-hidden="true"
-                      style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
                       className="px-4 py-3.5"
                     >
                       <div className="mb-2.5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                          <div data-slot="skeleton" className="soft-shimmer h-4 w-12 rounded bg-border/80" />
-                          <div data-slot="skeleton" className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
-                          <div data-slot="skeleton" className="soft-shimmer h-4 w-10 rounded bg-muted" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-4 w-12 rounded bg-border/80" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 w-28 rounded bg-muted" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-4 w-10 rounded bg-muted" />
                         </div>
-                        <div data-slot="skeleton" className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-5 w-16 rounded-md bg-brand-100/60" />
                       </div>
                       <div className="w-full space-y-2">
-                        <div data-slot="skeleton" className="soft-shimmer h-3.5 w-full rounded bg-muted" />
-                        <div data-slot="skeleton" className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 w-full rounded bg-muted" />
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
                       </div>
                     </div>
                   ))}
@@ -917,18 +908,10 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </div>
               <div aria-hidden="true" className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <div data-slot="skeleton" className="soft-shimmer h-4 w-24 rounded bg-muted" />
-                  <div
-                    data-slot="skeleton"
-                    style={{ '--shimmer-delay': '100ms' } as React.CSSProperties}
-                    className="soft-shimmer h-4 w-20 rounded bg-muted"
-                  />
+                  <Skeleton variant="shimmer" className="h-4 w-24 rounded bg-muted" />
+                  <Skeleton variant="shimmer" delay={100} className="h-4 w-20 rounded bg-muted" />
                 </div>
-                <div
-                  data-slot="skeleton"
-                  style={{ '--shimmer-delay': '180ms' } as React.CSSProperties}
-                  className="soft-shimmer h-4 w-32 rounded bg-muted"
-                />
+                <Skeleton variant="shimmer" delay={180} className="h-4 w-32 rounded bg-muted" />
               </div>
             </div>
           ) : (
@@ -999,7 +982,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           <span>เล่น/หยุด</span>
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
-          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
+          {saveStatus === 'saving' ? <Spinner className="size-3.5 shrink-0 text-brand-700" aria-hidden="true" />
             : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
             : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}

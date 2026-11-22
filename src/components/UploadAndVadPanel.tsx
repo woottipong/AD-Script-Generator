@@ -16,6 +16,7 @@ import {
 import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
@@ -25,7 +26,6 @@ import {
   Download,
   Ellipsis,
   FileVideo,
-  Loader2,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -58,7 +58,7 @@ const batchColors = {
     surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
     foreground: 'text-brand-950',
     secondary: 'text-brand-900',
-    badge: 'bg-brand-800 text-white',
+    badge: 'bg-brand-800 text-primary-foreground',
   },
   completed: {
     surface: 'border-brand-200 bg-card hover:border-brand-300 hover:bg-brand-50',
@@ -371,7 +371,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           }
         >
           {isBusy ? (
-            <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
+            <Spinner data-icon="inline-start" className="text-brand-700" aria-hidden="true" />
           ) : hasStatusError ? (
             <AlertCircle data-icon="inline-start" className="max-sm:hidden text-error-foreground" aria-hidden="true" />
           ) : status === 'READY' || isReview ? (
@@ -455,7 +455,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                           <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
                         </div>
                         <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
-                          {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {batch.status === 'processing' ? <Spinner className="size-3.5" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
                           {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
                         </span>
                       </button>

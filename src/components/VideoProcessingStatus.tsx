@@ -1,7 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { formatCompactTime } from '../utils/formatters';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import { focusIntakeFeedback } from './IntakeShell';
@@ -66,10 +67,10 @@ export function VideoProcessingStatus({
         {SPEC_CHECKS.map((label, index) => (
           <div key={label} className="min-w-0 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
             <div className="text-xs text-muted-foreground">{label}</div>
-            <div
-              data-slot="skeleton"
-              className="soft-shimmer mt-1.5 h-3.5 w-16 max-w-full rounded bg-muted"
-              style={{ '--shimmer-delay': `${index * 120}ms` } as CSSProperties}
+            <Skeleton
+              variant="shimmer"
+              delay={index * 120}
+              className="mt-1.5 h-3.5 w-16 max-w-full rounded bg-muted"
             />
           </div>
         ))}

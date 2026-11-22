@@ -17,6 +17,10 @@ const toggleVariants = cva(
           "rounded-[calc(var(--radius)-2px)] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-primary",
         "solid-muted":
           "rounded-[calc(var(--radius)-2px)] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-slate-700 aria-pressed:text-white aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-slate-700",
+        soft:
+          "bg-transparent text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-1 aria-pressed:ring-brand-200 aria-pressed:ring-inset not-disabled:aria-pressed:hover:bg-brand-100/80",
+        segmented:
+          "rounded-[calc(var(--radius)-2px)] bg-transparent text-muted-foreground not-disabled:hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-background",
       },
       size: {
         default:
@@ -27,6 +31,12 @@ const toggleVariants = cva(
         icon: "size-8",
       },
     },
+    compoundVariants: [
+      {
+        variant: "segmented",
+        class: "rounded-[calc(var(--radius)-2px)]",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

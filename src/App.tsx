@@ -1,13 +1,13 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
 import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
-import { Alert, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SimpleTooltip, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ADSpot,
   AnalysisBatch,
@@ -1401,10 +1401,9 @@ export default function App() {
         <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="flex min-w-0 items-center gap-1">
             {isCompactHeader ? (
-              <Tooltip>
-                <TooltipTrigger render={logoLink} />
-                <TooltipContent role="tooltip" side="bottom">กลับรายการงาน</TooltipContent>
-              </Tooltip>
+              <SimpleTooltip label="กลับรายการงาน" side="bottom">
+                {logoLink}
+              </SimpleTooltip>
             ) : logoLink}
 
             {showEditorHeaderSkeleton && <EditorHeaderTitleSkeleton />}
@@ -1413,18 +1412,16 @@ export default function App() {
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-1">
                     {titleEditor.kind === 'display' ? (
-                      <Tooltip>
-                        <TooltipTrigger render={(
-                          <Button
-                            ref={focusTitleButton}
-                            variant="ghost"
-                            size="lg"
-                            aria-label={`เปลี่ยนชื่องาน: ${displayedTitle}`}
-                            aria-describedby={titleFeedback ? 'job-title-status' : undefined}
-                            className="h-9 min-w-12 max-w-full shrink justify-start gap-1.5 border border-transparent px-2 text-left text-base leading-[1.35] font-bold not-disabled:active:translate-y-0 not-disabled:hover:border-input not-disabled:hover:bg-muted/50 pointer-coarse:h-11"
-                            onClick={() => setTitleEditor({ kind: 'editing', draft: displayedTitle })}
-                          />
-                        )}>
+                      <SimpleTooltip label="แก้ไขชื่อ" side="bottom">
+                        <Button
+                          ref={focusTitleButton}
+                          variant="ghost"
+                          size="lg"
+                          aria-label={`เปลี่ยนชื่องาน: ${displayedTitle}`}
+                          aria-describedby={titleFeedback ? 'job-title-status' : undefined}
+                          className="h-9 min-w-12 max-w-full shrink justify-start gap-1.5 border border-transparent px-2 text-left text-base leading-[1.35] font-bold not-disabled:active:translate-y-0 not-disabled:hover:border-input not-disabled:hover:bg-muted/50 pointer-coarse:h-11"
+                          onClick={() => setTitleEditor({ kind: 'editing', draft: displayedTitle })}
+                        >
                           <span className="min-w-0">
                             <span className="block truncate">{displayedTitle}</span>
                             {titleAcknowledgement === 'local' && (
@@ -1436,9 +1433,8 @@ export default function App() {
                           {showSavedCheck && (
                             <Check className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                           )}
-                        </TooltipTrigger>
-                        <TooltipContent role="tooltip" side="bottom">แก้ไขชื่อ</TooltipContent>
-                      </Tooltip>
+                        </Button>
+                      </SimpleTooltip>
                     ) : (
                       <div className="relative inline-grid min-w-20 max-w-full grid-cols-[minmax(0,1fr)] items-center">
                         <span
@@ -1552,15 +1548,15 @@ export default function App() {
 
       {/* Browser Compatibility Blocking Banner */}
       {browserCompat && !browserCompat.supported && (
-        <div role="alert" className="px-4 py-3 border-b border-error-border bg-error-surface text-error-foreground flex items-center gap-3 shrink-0">
-          <AlertOctagon className="w-4 h-4 text-destructive shrink-0" />
-          <div className="text-xs">
+        <Alert variant="destructive" placement="strip">
+          <AlertOctagon aria-hidden="true" />
+          <AlertDescription className="text-xs">
             <strong className="font-bold">
               เบราว์เซอร์นี้ไม่รองรับการวิเคราะห์เสียง:
             </strong>{' '}
             {browserCompat.reason} กรุณาเปิดใช้งานด้วย Google Chrome หรือ Microsoft Edge เวอร์ชันล่าสุดบนคอมพิวเตอร์
-          </div>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       <main ref={workspaceRef} id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">

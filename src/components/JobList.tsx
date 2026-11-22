@@ -42,13 +42,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from 'cn';
 
 /** A `GET /api/jobs` row: the stored summary plus whether the server is analysing or uploading it right now. */
@@ -473,24 +473,19 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
         </div>
         {jobs?.length !== 0 && (
           <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon-lg"
-                    onClick={() => void loadJobs(true)}
-                    disabled={loading}
-                    focusableWhenDisabled
-                    aria-label="รีเฟรชรายการงาน"
-                    className="aria-disabled:cursor-wait aria-disabled:opacity-60"
-                  />
-                }
+            <SimpleTooltip label="รีเฟรชรายการงาน">
+              <Button
+                variant="outline"
+                size="icon-lg"
+                onClick={() => void loadJobs(true)}
+                disabled={loading}
+                focusableWhenDisabled
+                aria-label="รีเฟรชรายการงาน"
+                className="aria-disabled:cursor-wait aria-disabled:opacity-60"
               >
                 <RefreshCw className={loading ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
-              </TooltipTrigger>
-              <TooltipContent>รีเฟรชรายการงาน</TooltipContent>
-            </Tooltip>
+              </Button>
+            </SimpleTooltip>
             <Button size="lg" onClick={onNew}>
               <Plus data-icon="inline-start" aria-hidden="true" />
               งานใหม่
@@ -567,19 +562,14 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                     }}
                   />
                   {query && (
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        size="icon-xs"
-                        aria-label="ล้างคำค้นหา"
-                        onClick={() => {
-                          setQuery('');
-                          setPage(1);
-                          searchInput.current?.focus();
-                        }}
-                      >
-                        <X aria-hidden="true" />
-                      </InputGroupButton>
-                    </InputGroupAddon>
+                    <InputGroupClearButton
+                      label="ล้างคำค้นหา"
+                      onClear={() => {
+                        setQuery('');
+                        setPage(1);
+                        searchInput.current?.focus();
+                      }}
+                    />
                   )}
                 </InputGroup>
                 <p role="status" className={isFiltered ? 'text-xs text-muted-foreground tabular-nums' : 'sr-only'}>
@@ -607,8 +597,9 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                     <ToggleGroupItem
                       key={value}
                       value={value}
+                      variant="segmented"
                       size="sm"
-                      className="h-7 gap-1.5 rounded-[calc(var(--radius)-2px)] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
+                      className="gap-1.5 text-xs pointer-coarse:min-h-10"
                     >
                       {value === 'mine' && <UserRound aria-hidden="true" />}
                       <span>{label}</span>
@@ -637,8 +628,9 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                   <ToggleGroupItem
                     key={value}
                     value={value}
+                    variant="segmented"
                     size="sm"
-                    className="h-7 gap-1.5 rounded-[calc(var(--radius)-2px)] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
+                    className="gap-1.5 text-xs pointer-coarse:min-h-10"
                   >
                     <span>{label}</span>
                     <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>
@@ -779,29 +771,23 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                       const actions = (
                         <div className="flex items-center gap-1 @min-[42rem]:justify-end">
                           {!job.is_upload && (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <a
-                                    href={href}
-                                    onClick={(event) => openJobLink(event, job.job_id)}
-                                    aria-label={`เปิดงาน ${name}`}
-                                    className={cn(
-                                      buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                      'text-primary not-disabled:hover:bg-accent not-disabled:hover:text-primary pointer-coarse:size-11',
-                                    )}
-                                  />
-                                }
+                            <SimpleTooltip label="เปิดงาน">
+                              <a
+                                href={href}
+                                onClick={(event) => openJobLink(event, job.job_id)}
+                                aria-label={`เปิดงาน ${name}`}
+                                className={cn(
+                                  buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                  'text-primary not-disabled:hover:bg-accent not-disabled:hover:text-primary pointer-coarse:size-11',
+                                )}
                               >
                                 <ArrowRight strokeWidth={2.5} aria-hidden="true" />
-                              </TooltipTrigger>
-                              <TooltipContent>เปิดงาน</TooltipContent>
-                            </Tooltip>
+                              </a>
+                            </SimpleTooltip>
                           )}
-                          <Tooltip>
-                            <TooltipTrigger render={job.is_processing ? <span className="inline-flex">{deleteButton}</span> : deleteButton} />
-                            <TooltipContent>{job.is_processing ? 'กำลังประมวลผลอยู่ จึงยังลบไม่ได้' : 'ลบ'}</TooltipContent>
-                          </Tooltip>
+                          <SimpleTooltip label={job.is_processing ? 'กำลังประมวลผลอยู่ จึงยังลบไม่ได้' : 'ลบ'}>
+                            {job.is_processing ? <span className="inline-flex">{deleteButton}</span> : deleteButton}
+                          </SimpleTooltip>
                         </div>
                       );
                       return (

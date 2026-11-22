@@ -1,7 +1,8 @@
-import { useRef, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useRef, type DragEvent, type ReactNode } from 'react';
 import { ArrowRight, FileText, FileVideo, X } from 'lucide-react';
 import type { JobMode } from '../types/ad';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const INTAKE_MODES: ReadonlyArray<{
   mode: JobMode;
@@ -233,16 +234,6 @@ export function IntakeFooter({ actionLabel, cancelLabel = 'ยกเลิก', 
   );
 }
 
-function Shimmer({ delay = 0, className }: { delay?: number; className: string }) {
-  return (
-    <div
-      data-slot="skeleton"
-      className={`soft-shimmer ${className}`}
-      style={{ '--shimmer-delay': `${delay}ms` } as CSSProperties}
-    />
-  );
-}
-
 export function IntakeSkeleton() {
   return (
     <section
@@ -252,45 +243,45 @@ export function IntakeSkeleton() {
       <span role="status" className="sr-only">กำลังโหลดหน้าสร้างงาน…</span>
 
       <div aria-hidden="true" className="flex flex-col gap-1.5">
-        <Shimmer delay={0} className="h-7 w-52 max-w-full rounded-md bg-muted" />
-        <Shimmer delay={60} className="h-4 w-72 max-w-full rounded bg-muted/80" />
+        <Skeleton variant="shimmer" delay={0} className="h-7 w-52 max-w-full rounded-md bg-muted" />
+        <Skeleton variant="shimmer" delay={60} className="h-4 w-72 max-w-full rounded bg-muted/80" />
       </div>
 
       <div aria-hidden="true" className="@container overflow-hidden rounded-xl border border-border bg-card">
         <div className="grid grid-cols-1 border-b border-border bg-card @min-[17rem]:grid-cols-2">
           <div className="-mb-px flex min-h-12 items-center justify-center border-b-2 border-primary/40 px-3 py-3 sm:px-5">
-            <Shimmer delay={100} className="h-5 w-32 rounded bg-muted" />
+            <Skeleton variant="shimmer" delay={100} className="h-5 w-32 rounded bg-muted" />
           </div>
           <div className="-mb-px flex min-h-12 items-center justify-center border-b-2 border-transparent px-3 py-3 sm:px-5">
-            <Shimmer delay={160} className="h-5 w-32 rounded bg-muted/80" />
+            <Skeleton variant="shimmer" delay={160} className="h-5 w-32 rounded bg-muted/80" />
           </div>
         </div>
 
         <div className="space-y-5 p-5 sm:p-7">
           <div className="flex h-20 w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3.5">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <Shimmer delay={180} className="size-10 shrink-0 rounded-lg bg-brand-100/70" />
+              <Skeleton variant="shimmer" delay={180} className="size-10 shrink-0 rounded-lg bg-brand-100/70" />
               <div className="min-w-0 space-y-1.5">
-                <Shimmer delay={220} className="h-4 w-36 max-w-full rounded bg-muted" />
-                <Shimmer delay={260} className="h-3 w-24 max-w-full rounded bg-muted/70" />
+                <Skeleton variant="shimmer" delay={220} className="h-4 w-36 max-w-full rounded bg-muted" />
+                <Skeleton variant="shimmer" delay={260} className="h-3 w-24 max-w-full rounded bg-muted/70" />
               </div>
             </div>
-            <Shimmer delay={300} className="h-8 w-24 shrink-0 rounded-md bg-muted" />
+            <Skeleton variant="shimmer" delay={300} className="h-8 w-24 shrink-0 rounded-md bg-muted" />
           </div>
 
           <div className="space-y-2">
-            <Shimmer delay={280} className="h-4 w-16 rounded bg-muted" />
-            <Shimmer delay={340} className="h-9 w-full rounded-lg bg-muted/70" />
+            <Skeleton variant="shimmer" delay={280} className="h-4 w-16 rounded bg-muted" />
+            <Skeleton variant="shimmer" delay={340} className="h-9 w-full rounded-lg bg-muted/70" />
           </div>
 
-          <Shimmer delay={380} className="h-4 w-3/4 rounded bg-muted/70" />
+          <Skeleton variant="shimmer" delay={380} className="h-4 w-3/4 rounded bg-muted/70" />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:px-7">
-          <Shimmer delay={400} className="h-3.5 w-36 rounded bg-muted/80" />
+          <Skeleton variant="shimmer" delay={400} className="h-3.5 w-36 rounded bg-muted/80" />
           <div className="flex items-center gap-2.5">
-            <Shimmer delay={440} className="h-10 w-20 rounded-lg bg-muted/80" />
-            <Shimmer delay={480} className="h-10 w-44 rounded-lg bg-brand-100/70" />
+            <Skeleton variant="shimmer" delay={440} className="h-10 w-20 rounded-lg bg-muted/80" />
+            <Skeleton variant="shimmer" delay={480} className="h-10 w-44 rounded-lg bg-brand-100/70" />
           </div>
         </div>
       </div>

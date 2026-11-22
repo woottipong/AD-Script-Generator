@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, FileText, FileVideo, Upload, X } from 'lucide-react';
+import { AlertCircle, FileText, FileVideo, Upload } from 'lucide-react';
 import type { VideoValidationIssue } from '../types/ad';
 import { fileNameFromUrl, isMp4Url } from '../utils/byteSource';
 import { formatFileSize } from '../utils/formatters';
@@ -11,7 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
 
 export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, draft, setDraft, intake, onBack }: {
   checkingFileName: string | null;
@@ -198,15 +198,10 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                     aria-describedby={linkInvalid ? 'review-link-feedback review-video-requirements' : 'review-video-requirements'}
                   />
                   {videoLink && (
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        size="icon-xs"
-                        aria-label="ล้างลิงก์วิดีโอ"
-                        onClick={() => { updateLink(''); reviewLink.current?.focus(); }}
-                      >
-                        <X aria-hidden="true" />
-                      </InputGroupButton>
-                    </InputGroupAddon>
+                    <InputGroupClearButton
+                      label="ล้างลิงก์วิดีโอ"
+                      onClear={() => { updateLink(''); reviewLink.current?.focus(); }}
+                    />
                   )}
                 </InputGroup>
                 <Button
