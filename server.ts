@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
@@ -1008,109 +1008,113 @@ async function startServer() {
   });
 
   // 6b. POST /api/jobs/:jobId/analyze-batch — Backward-compatible single-batch endpoint
-  app.post('/api/jobs/:jobId/analyze-batch', async (req: Request, res: Response) => {
-    const { jobId } = req.params;
-    const { batch_id } = req.body as { batch_id?: string };
-
-    while (activeProcessingLock?.jobId === jobId) {
-      await activeProcessingLock.finished;
-      if (res.destroyed) return;
-    }
-
-    if (
-      activeProcessingLock &&
-      activeProcessingLock.jobId !== jobId
-    ) {
-      res.status(409).json({
-        error: 'ระบบจำกัดการประมวลผล Gemini ได้ทีละหนึ่งงานใน MVP กรุณารอให้งานที่กำลังรันอยู่เสร็จสิ้น',
-      });
-      return;
-    }
-
-    const job = store.load(jobId);
-    if (!job) {
-      res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
-      return;
-    }
-    if (job.mode === 'review') {
-      res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
-      return;
-    }
-
-    const batch = batch_id
-      ? job.batches.find((b) => b.batch_id === batch_id)
-      : job.batches.find((b) => b.status !== 'completed');
-
-    if (!batch) {
-      job.status = 'READY';
-      store.save(job);
-      res.json({ job });
-      return;
-    }
-
-    if (batch.status === 'completed') {
-      res.json({ job, batch });
-      return;
-    }
-
-    const lock = createProcessingLock(jobId);
-    activeProcessingLock = lock;
-    batch.status = 'processing';
-    batch.error = undefined;
-    job.status = 'ANALYZING';
-    job.error_message = undefined;
-    let uploadAi: GoogleGenAI | undefined;
+  app.post('/api/jobs/:jobId/analyze-batch', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      store.save(job);
-      uploadAi = getGeminiClient({ fastFail: false });
-      const fastAi = getGeminiClient({ fastFail: true });
-      const spotResults = await analyzeBatchWithGemini(
-        fastAi,
-        uploadAi,
-        job,
-        batch,
-        FIXED_SERVER_CONFIG
-      );
+      const { jobId } = req.params;
+      const { batch_id } = (req.body || {}) as { batch_id?: string };
 
-      batch.status = 'completed';
-      batch.error = undefined;
-
-      const allCompleted = job.batches.every((b) => b.status === 'completed');
-      if (allCompleted) {
-        job.status = 'READY';
+      while (activeProcessingLock?.jobId === jobId) {
+        await activeProcessingLock.finished;
+        if (res.destroyed) return;
       }
 
-      saveProcessingState(job, spotResults);
-      if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
-        try {
-          saveProcessingState(job);
-        } catch {
-          console.error('Failed to persist Gemini file cleanup');
-        }
-      }
-      res.json({ job, batch });
-    } catch (err) {
-      const parsed = parseGeminiError(err);
-      batch.status = 'failed';
-      batch.error = parsed.userMessage;
-      job.status = 'FAILED';
-      job.error_message = parsed.userMessage;
-      try {
-        if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
-        saveProcessingState(job);
-      } catch {
-        res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
+      if (
+        activeProcessingLock &&
+        activeProcessingLock.jobId !== jobId
+      ) {
+        res.status(409).json({
+          error: 'ระบบจำกัดการประมวลผล Gemini ได้ทีละหนึ่งงานใน MVP กรุณารอให้งานที่กำลังรันอยู่เสร็จสิ้น',
+        });
         return;
       }
 
-      res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
-        error: parsed.userMessage,
-        isRateLimit: parsed.isRateLimit,
-        job,
-        batch,
-      });
-    } finally {
-      releaseProcessingLock(lock);
+      const job = store.load(jobId);
+      if (!job) {
+        res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+        return;
+      }
+      if (job.mode === 'review') {
+        res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
+        return;
+      }
+
+      const batch = batch_id
+        ? job.batches.find((b) => b.batch_id === batch_id)
+        : job.batches.find((b) => b.status !== 'completed');
+
+      if (!batch) {
+        job.status = 'READY';
+        store.save(job);
+        res.json({ job });
+        return;
+      }
+
+      if (batch.status === 'completed') {
+        res.json({ job, batch });
+        return;
+      }
+
+      const lock = createProcessingLock(jobId);
+      activeProcessingLock = lock;
+      batch.status = 'processing';
+      batch.error = undefined;
+      job.status = 'ANALYZING';
+      job.error_message = undefined;
+      let uploadAi: GoogleGenAI | undefined;
+      try {
+        store.save(job);
+        uploadAi = getGeminiClient({ fastFail: false });
+        const fastAi = getGeminiClient({ fastFail: true });
+        const spotResults = await analyzeBatchWithGemini(
+          fastAi,
+          uploadAi,
+          job,
+          batch,
+          FIXED_SERVER_CONFIG
+        );
+
+        batch.status = 'completed';
+        batch.error = undefined;
+
+        const allCompleted = job.batches.every((b) => b.status === 'completed');
+        if (allCompleted) {
+          job.status = 'READY';
+        }
+
+        saveProcessingState(job, spotResults);
+        if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
+          try {
+            saveProcessingState(job);
+          } catch {
+            console.error('Failed to persist Gemini file cleanup');
+          }
+        }
+        res.json({ job, batch });
+      } catch (err) {
+        const parsed = parseGeminiError(err);
+        batch.status = 'failed';
+        batch.error = parsed.userMessage;
+        job.status = 'FAILED';
+        job.error_message = parsed.userMessage;
+        try {
+          if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
+          saveProcessingState(job);
+        } catch {
+          res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
+          return;
+        }
+
+        res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
+          error: parsed.userMessage,
+          isRateLimit: parsed.isRateLimit,
+          job,
+          batch,
+        });
+      } finally {
+        releaseProcessingLock(lock);
+      }
+    } catch (err) {
+      next(err);
     }
   });
 

@@ -360,7 +360,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               variant="ghost"
               size="lg"
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
-              className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 lg:max-w-[27rem] pointer-coarse:h-11 ${
+              className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:has-data-[icon=inline-end]:pr-1.5 lg:max-w-[27rem] pointer-coarse:h-11 ${
                 hasStatusError
                   ? 'border border-error-border bg-error-surface text-error-foreground not-disabled:hover:bg-destructive/15'
                   : activityFeedback
@@ -373,11 +373,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           {isBusy ? (
             <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
           ) : hasStatusError ? (
-            <AlertCircle data-icon="inline-start" className="text-error-foreground" aria-hidden="true" />
+            <AlertCircle data-icon="inline-start" className="max-sm:hidden text-error-foreground" aria-hidden="true" />
           ) : status === 'READY' || isReview ? (
-            <CheckCircle2 data-icon="inline-start" className="text-muted-foreground" aria-hidden="true" />
+            <CheckCircle2 data-icon="inline-start" className="max-sm:hidden text-muted-foreground" aria-hidden="true" />
           ) : (
-            <Clock data-icon="inline-start" className="text-warning-foreground" aria-hidden="true" />
+            <Clock data-icon="inline-start" className="max-sm:hidden text-warning-foreground" aria-hidden="true" />
           )}
           {activityFeedback ? (
             <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
@@ -469,12 +469,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       </Popover>
 
       {showPrimaryGenerate ? (
-        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs pointer-coarse:h-11">
+        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
           <Sparkles data-icon="inline-start" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
         </Button>
       ) : canExport && (
-        <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs pointer-coarse:h-11">
+        <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
           <Download data-icon="inline-start" aria-hidden="true" />
           ส่งออก SRT
         </Button>

@@ -253,6 +253,7 @@ export default function App() {
   const intakeCheckAbort = useRef<AbortController | null>(null);
   const reviewImportRef = useRef<ReviewImport | null>(null);
   const generateIntakeRef = useRef<GenerateIntake | null>(null);
+  const pendingLocalSpotsRef = useRef<ADSpot[] | null>(null);
   const relinkInputRef = useRef<HTMLInputElement | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -272,7 +273,13 @@ export default function App() {
 
   useEffect(() => {
     saveQueue.invalidate();
-    setSaveStatus('saved');
+    const dirtySpots = pendingLocalSpotsRef.current;
+    pendingLocalSpotsRef.current = null;
+    if (jobId && dirtySpots) {
+      saveQueue.save(jobId, dirtySpots);
+    } else {
+      setSaveStatus('saved');
+    }
   }, [jobId, saveQueue]);
 
   const registerJob = useCallback(async (endpoint: string, body: object, token: { aborted: boolean }) => {
@@ -331,6 +338,7 @@ export default function App() {
   const createGenerateJob = useCallback(async (generate: GenerateIntake, output: VADOutput) => {
     const token = pollAbortRef.current;
     if (token.aborted) return;
+    pendingLocalSpotsRef.current = null;
     setGenerateSaveFailure(null);
     let uploadId: string | undefined;
     let createdJob = false;
@@ -560,6 +568,7 @@ export default function App() {
 
   // Opens the Job named by the URL, picking up its analysis if the server is still running it.
   const restoreJob = useCallback((restoreJobId: string) => {
+    pendingLocalSpotsRef.current = null;
     const token = { aborted: false };
     pollAbortRef.current = token;
     setJobLoad('loading');
@@ -655,7 +664,10 @@ export default function App() {
     titleSave.current = null;
     registration.current = null;
     restoreTitleFocus.current = false;
+    titleTypedRef.current = false;
+    pendingLocalSpotsRef.current = null;
     setRegisteringJob(false);
+    setJobTitle('');
     setTitleEditor({ kind: 'display' });
     setTitleAcknowledgement(null);
     setShowVideoSummary(false);
@@ -672,7 +684,7 @@ export default function App() {
     setSpots([]);
     setSelectedSpotId(null);
     setRestoredIncompleteJob(false);
-  }, [jobId, saveQueue, navigate]);
+  }, [jobId, saveQueue, navigate, setJobTitle]);
 
   const clearVideo = useCallback(() => {
     if (objectUrlRef.current) {
@@ -1093,7 +1105,11 @@ export default function App() {
         spot.spot_id === updatedSpot.spot_id ? updatedSpot : spot
       );
       setSpots(nextSpots);
-      if (jobId) saveQueue.save(jobId, nextSpots);
+      if (jobId) {
+        saveQueue.save(jobId, nextSpots);
+      } else {
+        pendingLocalSpotsRef.current = nextSpots;
+      }
     },
     [jobId, spots, saveQueue]
   );
@@ -1360,7 +1376,7 @@ export default function App() {
     <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${isCompactHeader ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="relative flex min-h-16 shrink-0 items-center border-b border-brand-100 bg-card px-4 py-2 sm:px-6">
-        <div className="grid w-full min-w-0 items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="flex min-w-0 items-center gap-1">
             {isCompactHeader ? (
               <Tooltip>
@@ -1399,13 +1415,13 @@ export default function App() {
                             <Check className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                           )}
                         </TooltipTrigger>
-                        <TooltipContent role="tooltip" side="bottom">คลิกเพื่อเปลี่ยนชื่อ</TooltipContent>
+                        <TooltipContent role="tooltip" side="bottom">แก้ไขชื่อ</TooltipContent>
                       </Tooltip>
                     ) : (
-                      <div className="relative inline-grid min-w-20 max-w-full items-center">
+                      <div className="relative inline-grid min-w-20 max-w-full grid-cols-[minmax(0,1fr)] items-center">
                         <span
                           aria-hidden="true"
-                          className="invisible col-start-1 row-start-1 whitespace-pre pr-7 pl-2 text-base leading-[1.35] font-bold"
+                          className="invisible col-start-1 row-start-1 overflow-hidden whitespace-pre pr-7 pl-2 text-base leading-[1.35] font-bold"
                         >
                           {titleEditor.draft || 'ชื่องาน'}
                         </span>
