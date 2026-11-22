@@ -10,7 +10,7 @@ Status: ready-for-agent
 
 ## Solution
 
-Author ต้อง login ผ่าน Keycloak ขององค์กร (realm `rtt`, client `envisio-dev`, username เป็น email) ก่อนใช้ Envisio หลัง login แล้ว Job List แสดงเฉพาะงานที่ตัวเองเป็น Job Owner และเปิดหรือแก้ได้เฉพาะงานของตัวเอง Author ที่อยู่ในกลุ่ม `admin` หรือ `supervisor` ได้ All-Jobs Access คือเห็นทุกงาน รวมถึงงานที่ไม่มีเจ้าของและ Unfinished Upload และทำกับงานเหล่านั้นได้ทุกอย่างเหมือนเป็นเจ้าของ Job List ของคนกลุ่มนี้มีคอลัมน์ "เจ้าของ" แสดง email ของ Job Owner login อยู่ได้ 1 สัปดาห์ และ header มี email ของคนที่ login อยู่พร้อมปุ่มออกจากระบบ
+Author ต้อง login ผ่าน Keycloak ขององค์กร (realm `rtt`, client `envisio-dev`, username เป็น email) ก่อนใช้ Envisio หลัง login แล้ว Job List แสดงเฉพาะงานที่ตัวเองเป็น Job Owner และเปิดหรือแก้ได้เฉพาะงานของตัวเอง Author ที่อยู่ในกลุ่ม `admin` หรือ `supervisor` ได้ All-Jobs Access คือเห็นทุกงาน รวมถึงงานที่ไม่มีเจ้าของและ Unfinished Upload และทำกับงานเหล่านั้นได้ทุกอย่างเหมือนเป็นเจ้าของ Job List ของคนกลุ่มนี้มีตัวกรองเจ้าของ (`ทุกคน` / `งานของฉัน`) และคอลัมน์ "เจ้าของ" แสดง email ของ Job Owner login อยู่ได้ 1 สัปดาห์ และ header มีเมนูบัญชีผู้ใช้ (`Avatar` `AccountMenu` dropdown) แสดงชื่อ email สิทธิ์การเข้าถึง และปุ่มออกจากระบบ
 
 ## User Stories
 
@@ -59,7 +59,7 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 **Session cookie**
 - One cookie (`envisio_session`): httpOnly, `SameSite=Lax`, `Secure` when `APP_URL` is https, `Path=/`, lasting 7 days from sign-in, never extended, never re-checked with Keycloak.
 - Its value is sealed with AES-256-GCM from `node:crypto` using a key derived from `SESSION_SECRET`; no session library and no server-side session store. A cookie that fails to unseal or has expired counts as signed out.
-- It holds `sub`, `email`, the computed `allJobs` flag, the `id_token` (for logout), and the expiry. Groups are reduced to the flag at sign-in so the cookie stays small, so group changes take effect at the next sign-in.
+- It holds `sub`, `email`, optional `name`, the computed `allJobs` flag, optional `accessGroups` (the matching groups from `AUTH_ALL_JOBS_GROUPS` when `allJobs` is true), the `id_token` (for logout), and the expiry. Group changes take effect at the next sign-in.
 - `email` comes from the `email` claim, falling back to `preferred_username`.
 - `allJobs` is true when any entry of the token's `groups` claim, with a leading `/` stripped, matches a name in `AUTH_ALL_JOBS_GROUPS` (default `admin,supervisor`).
 
@@ -71,7 +71,7 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 - Public without a session: `GET /api/config` (used by the production healthcheck), `/auth/*`, and static files (built `/assets`, `/ort`, `/models`, and Vite's own module requests in development).
 - Every other `/api/*` route answers HTTP 401 `{ error, code: 'UNAUTHENTICATED' }` without a valid session.
 - A browser page navigation (a GET for a non-API path that accepts `text/html`) without a session is redirected to `/auth/login?returnTo=<path and query>` before `index.html` is served, so the SPA has no sign-in page of its own.
-- New `GET /api/me` returns `{ email, allJobs }`.
+- New `GET /api/me` returns `{ email, name?, allJobs, accessGroups? }` (`name` when present in the token, `accessGroups` when `allJobs` is true).
 
 **Ownership in the Job store (schema change)**
 - Append a migration to the store's `MIGRATIONS` list that adds nullable `owner_sub` and `owner_email` columns to `jobs`. Existing Jobs get no Job Owner (null).
@@ -94,9 +94,9 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 
 **Client**
 - At startup the client loads `/api/me` once.
-- The header shows the Author's email and a sign-out control that navigates to `/auth/logout`.
+- The header shows the `Avatar` `AccountMenu` dropdown on the right (hidden below `sm` in the editor, where sign-out stays reachable from the Job List), displaying the Author's name, email, access badge (`เห็นงานของทุกคน` + `กลุ่ม …` or `เห็นเฉพาะงานของตัวเอง`), and an `ออกจากระบบ` item that confirms unsaved edits before navigating to `/auth/logout`.
 - One place in the client intercepts every `/api` response with status 401 and navigates the page to `/auth/login?returnTo=<current path and query>`. All existing callers (Job List, editor, save queue, polling, uploads) are covered without changing each one.
-- The Job List shows the "เจ้าของ" column (email, or "ไม่มีเจ้าของ") and includes the owner's email in search only when `allJobs` is true. Its other behaviour is unchanged.
+- When `allJobs` is true, the Job List adds an owner filter (`ทุกคน` / `งานของฉัน`), shows the "เจ้าของ" column on wide viewports (and stacks the owner email cleanly inside the title cell whenever the column hides), and includes the owner's email in search; when narrowed to `งานของฉัน`, the "เจ้าของ" column hides. Its other behaviour is unchanged.
 - The "ไม่พบงานนี้" state for `/jobs/:jobId` also covers Jobs the Author may not open.
 
 **Docs to update**
@@ -121,9 +121,9 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
   - the page-navigation redirect to `/auth/login` with `returnTo`
 - **Seam 2, the Job store.** Extend the existing store tests for the new migration: a database at the previous version upgrades and keeps its Jobs with no owner, a save keeps the owner, the owner email updates for a `sub`, and owner filtering works.
 - **Seam 3, browser tests with mocked API.** Extend the existing scripts under the browser tests to mock `/api/me`. Add cases for:
-  - the owner column and owner-email search appearing only with `allJobs`
+  - the owner column, owner filter (`ทุกคน` / `งานของฉัน`), and owner-email search appearing only with `allJobs`
   - a 401 from any API sending the page to `/auth/login?returnTo=…`
-  - the header showing the email and the sign-out link
+  - the `AccountMenu` showing name, email, access badge/groups, and sign-out (including unsaved-edits confirmation)
 - The real Keycloak round trip (sign-in, callback, sign-out) is checked by hand against `envisio-dev`, not automated.
 
 ## Out of Scope
@@ -135,7 +135,6 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 - A sign-in page inside the SPA, or a sign-in bypass for development or tests.
 - Keeping an Unfinished Upload's uploader across server restarts.
 - Preventing two people from editing the same Job at once (still last write wins, per ADR-0003).
-- A "my Jobs only" filter for Authors with All-Jobs Access (search by owner email covers it).
 
 ## Further Notes
 

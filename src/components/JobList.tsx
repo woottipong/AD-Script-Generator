@@ -675,7 +675,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                     <TableHead scope="col" aria-sort={ariaSortFor('name')} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground @min-[42rem]:pl-5">
                       <SortableColumnButton label="ชื่องาน" field="name" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
                     </TableHead>
-                    {showOwnerColumn && <TableHead scope="col" className="hidden w-48 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">เจ้าของ</TableHead>}
+                    {showOwnerColumn && <TableHead scope="col" className="hidden w-48 px-3 text-xs font-semibold text-muted-foreground @min-[75rem]:table-cell">เจ้าของ</TableHead>}
                     <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
                     <TableHead scope="col" className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
                     <TableHead scope="col" aria-sort={ariaSortFor('duration')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
@@ -704,6 +704,9 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                                 <Skeleton className="h-5 w-20" />
                                 <Skeleton className="h-3.5 w-20" />
                               </div>
+                              {showOwnerColumn && (
+                                <Skeleton className="mt-1.5 hidden h-3.5 w-32 @min-[54rem]:block @min-[75rem]:hidden" />
+                              )}
                             </div>
                           </div>
                           <div className="mt-2 flex items-center gap-1 border-t border-border/60 pt-1 @min-[42rem]:hidden">
@@ -712,7 +715,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                           </div>
                         </TableCell>
                         {showOwnerColumn && (
-                          <TableCell className="hidden px-3 @min-[54rem]:table-cell">
+                          <TableCell className="hidden px-3 @min-[75rem]:table-cell">
                             <Skeleton className="h-3.5 w-32" />
                           </TableCell>
                         )}
@@ -830,12 +833,15 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                                   {!job.is_upload && job.mode && <ModeTag mode={job.mode} />}
                                   {showOwnerColumn && !job.is_upload && <span className="text-xs text-muted-foreground">{ownerNode}</span>}
                                 </div>
+                                {showOwnerColumn && !job.is_upload && (
+                                  <p className="mt-1 hidden text-xs text-muted-foreground @min-[54rem]:block @min-[75rem]:hidden">{ownerNode}</p>
+                                )}
                               </div>
                             </div>
                             <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
                           </TableCell>
                           {showOwnerColumn && (
-                            <TableCell className="hidden px-3 text-xs whitespace-normal text-foreground @min-[54rem]:table-cell">{ownerNode}</TableCell>
+                            <TableCell className="hidden px-3 text-xs whitespace-normal text-foreground @min-[75rem]:table-cell">{ownerNode}</TableCell>
                           )}
                           <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
                             {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}

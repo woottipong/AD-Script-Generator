@@ -15,6 +15,7 @@ export type AuthConfig = {
 const REQUIRED_SETTINGS = ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_CLIENT_ID', 'SESSION_SECRET', 'APP_URL'] as const;
 const LOGIN_COOKIE = 'envisio_login';
 const LOGIN_MAX_AGE_MS = 10 * 60 * 1000;
+const MAX_SESSION_COOKIE_BYTES = 3800;
 
 /** `new URL('localhost:3003')` parses with `localhost:` as the scheme, so the scheme is checked too. */
 function parseUrl(name: string, value: string): URL {
@@ -79,6 +80,26 @@ function accessFrom(accessGroups: string[]): Pick<AuthorSession, 'allJobs' | 'ac
   return accessGroups.length > 0 ? { allJobs: true, accessGroups } : { allJobs: false };
 }
 
+function trimmedString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+export function authorEmailFromClaims(claims: { email?: unknown; preferred_username?: unknown; sub: string }): string {
+  return trimmedString(claims.email) ?? trimmedString(claims.preferred_username) ?? (trimmedString(claims.sub) ?? claims.sub);
+}
+
+/** Omits `idToken` when sealing with it would exceed the 4 KB browser cookie budget. */
+export function sealSession(secret: string, session: AuthorSession, maxAgeMs = SESSION_MAX_AGE_MS): string {
+  const sealed = sealValue(secret, 'session', session, maxAgeMs);
+  if (!session.idToken || Buffer.byteLength(`${SESSION_COOKIE}=${sealed}`, 'utf8') <= MAX_SESSION_COOKIE_BYTES) {
+    return sealed;
+  }
+  const { idToken: _omitted, ...withoutIdToken } = session;
+  return sealValue(secret, 'session', withoutIdToken, maxAgeMs);
+}
+
 function signInFailedPage(res: Response, status: number, message: string): void {
   res.status(status).type('html').send(`<!doctype html><meta charset="utf-8"><title>เข้าสู่ระบบไม่สำเร็จ</title><p>${message}</p><p><a href="/auth/login">ลองเข้าสู่ระบบอีกครั้ง</a></p>`);
 }
@@ -105,6 +126,11 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
     const sealed = readCookie(req.headers.cookie, SESSION_COOKIE);
     return sealed ? unsealValue<AuthorSession>(config.sessionSecret, 'session', sealed) : null;
   }
+
+  app.use('/auth', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    next();
+  });
 
   app.get('/auth/login', async (req: Request, res: Response) => {
     let configuration: oidc.Configuration;
@@ -145,16 +171,16 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
         idTokenExpected: true,
       });
       const claims = tokens.claims()!;
-      const email = typeof claims.email === 'string' ? claims.email : typeof claims.preferred_username === 'string' ? claims.preferred_username : claims.sub;
+      const name = trimmedString(claims.name);
       const session: AuthorSession = {
         sub: claims.sub,
-        email,
-        ...(typeof claims.name === 'string' && claims.name.trim() ? { name: claims.name.trim() } : {}),
+        email: authorEmailFromClaims(claims),
+        ...(name ? { name } : {}),
         ...accessFrom(allJobsGroupsOf(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups)),
-        idToken: tokens.id_token!,
+        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       };
       onSignIn(session);
-      res.append('Set-Cookie', cookie(SESSION_COOKIE, sealValue(config.sessionSecret, 'session', session, SESSION_MAX_AGE_MS), SESSION_MAX_AGE_MS, '/'));
+      res.append('Set-Cookie', cookie(SESSION_COOKIE, sealSession(config.sessionSecret, session), SESSION_MAX_AGE_MS, '/'));
       res.redirect(pending.returnTo);
     } catch (err) {
       console.error('Sign-in callback failed:', err);
@@ -169,7 +195,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       const url = oidc.buildEndSessionUrl(await provider(), {
         client_id: config.clientId,
         post_logout_redirect_uri: `${config.appUrl}/`,
-        ...(session ? { id_token_hint: session.idToken } : {}),
+        ...(session?.idToken ? { id_token_hint: session.idToken } : {}),
       });
       // Keycloak before release 18 (this realm still serves under `/auth`) reads `redirect_uri` instead.
       url.searchParams.set('redirect_uri', `${config.appUrl}/`);

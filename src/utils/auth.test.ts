@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { allJobsGroupsOf, readAuthConfig, safeReturnTo } from './auth';
-import { readCookie, sealValue, unsealValue } from './session';
+import { allJobsGroupsOf, authorEmailFromClaims, readAuthConfig, safeReturnTo, sealSession } from './auth';
+import { SESSION_COOKIE, readCookie, sealValue, unsealValue, type AuthorSession } from './session';
 
 const SECRET = 'test-session-secret-at-least-32-chars';
 
@@ -53,4 +53,21 @@ test('sign-in settings are required and the session secret must be long', () => 
   assert.throws(() => readAuthConfig({ ...env, SESSION_SECRET: 'short' }), /SESSION_SECRET/);
   assert.throws(() => readAuthConfig({ ...env, APP_URL: 'not a url' }), /APP_URL/);
   assert.throws(() => readAuthConfig({ ...env, APP_URL: 'localhost:3003' }), /APP_URL must start with http/);
+});
+
+test('sealSession keeps normal idToken and drops oversized idToken to stay under 3,800 bytes', () => {
+  const base: AuthorSession = { sub: 'sub-1', email: 'a@example.com', name: 'Author', allJobs: false };
+  const normal = sealSession(SECRET, { ...base, idToken: 'header.payload.sig' });
+  assert.equal(unsealValue<AuthorSession>(SECRET, 'session', normal)?.idToken, 'header.payload.sig');
+
+  const trimmed = sealSession(SECRET, { ...base, idToken: 'x'.repeat(4000) });
+  assert.ok(Buffer.byteLength(`${SESSION_COOKIE}=${trimmed}`, 'utf8') <= 3800);
+  const opened = unsealValue<AuthorSession>(SECRET, 'session', trimmed);
+  assert.deepEqual(opened, base);
+});
+
+test('authorEmailFromClaims trims email and preferred_username before falling back', () => {
+  assert.equal(authorEmailFromClaims({ email: '  user@example.com  ', preferred_username: 'user', sub: 'sub-1' }), 'user@example.com');
+  assert.equal(authorEmailFromClaims({ email: '   ', preferred_username: '  user  ', sub: 'sub-1' }), 'user');
+  assert.equal(authorEmailFromClaims({ email: '', preferred_username: '   ', sub: ' sub-1 ' }), 'sub-1');
 });

@@ -1042,6 +1042,12 @@ async function startServer() {
   app.post('/api/jobs/:jobId/start', (req: Request, res: Response) => {
     const { jobId } = req.params;
 
+    const job = store.load(jobId);
+    if (!job) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+
     if (
       activeProcessingLock &&
       activeProcessingLock.jobId !== jobId
@@ -1049,12 +1055,6 @@ async function startServer() {
       res.status(409).json({
         error: ANOTHER_JOB_ANALYZING_ERROR,
       });
-      return;
-    }
-
-    const job = store.load(jobId);
-    if (!job) {
-      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     if (job.mode === 'review') {
@@ -1103,7 +1103,15 @@ async function startServer() {
       const { jobId } = req.params;
       const { batch_id } = (req.body || {}) as { batch_id?: string };
 
+      let job = store.load(jobId);
+      if (!job) {
+        res.status(404).json({ error: JOB_NOT_FOUND });
+        return;
+      }
+
+      let waited = false;
       while (activeProcessingLock?.jobId === jobId) {
+        waited = true;
         await activeProcessingLock.finished;
         if (res.destroyed) return;
       }
@@ -1118,10 +1126,12 @@ async function startServer() {
         return;
       }
 
-      const job = store.load(jobId);
-      if (!job) {
-        res.status(404).json({ error: JOB_NOT_FOUND });
-        return;
+      if (waited) {
+        job = store.load(jobId);
+        if (!job) {
+          res.status(404).json({ error: JOB_NOT_FOUND });
+          return;
+        }
       }
       if (job.mode === 'review') {
         res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
@@ -1210,6 +1220,10 @@ async function startServer() {
 
   // PATCH /api/jobs/:jobId — Rename a Job
   app.patch('/api/jobs/:jobId', (req: Request, res: Response) => {
+    if (!store.exists(req.params.jobId)) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
     const title = resolveJobTitle((req.body || {}).title);
     if (!title.success) {
       res.status(400).json({ error: title.error });

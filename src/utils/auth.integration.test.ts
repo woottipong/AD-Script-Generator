@@ -74,10 +74,12 @@ test('every API but config needs a session, and pages send signed-out Authors to
 
     const login = await fetch(`${base}/auth/login?returnTo=/jobs/job_1`, { redirect: 'manual' });
     assert.equal(login.status, 503, 'an unreachable Keycloak fails the sign-in, not the server');
+    assert.match(login.headers.get('cache-control') ?? '', /\bno-store\b/);
     assert.ok((await fetch(`${base}/api/config`)).ok);
 
     const logout = await fetch(`${base}/auth/logout`, { headers: { Cookie: sessionCookie(author) }, redirect: 'manual' });
     assert.equal(logout.status, 302);
+    assert.match(logout.headers.get('cache-control') ?? '', /\bno-store\b/);
     assert.match(logout.headers.get('set-cookie') ?? '', new RegExp(`${SESSION_COOKIE}=;.*Max-Age=0`, 'i'), 'signing out clears the session even when Keycloak is unreachable');
   } finally {
     child.kill('SIGTERM');

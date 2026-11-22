@@ -2,10 +2,12 @@ async page => {
   await page.unrouteAll({ behavior: 'wait' });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   let allJobs = true;
+  const longTitle = 'ละครโทรทัศน์ชุดการเดินทางของชุมชนริมแม่น้ำ ฉบับตรวจแก้บทบรรยายภาพ ตอน 08';
   const jobs = [
     { job_id: 'job_a', title: 'งานของเอ', file_name: 'a.mp4', updated_at: '2026-11-20T03:00:00Z', size_bytes: 1, is_upload: false, is_processing: false, mode: 'generate', status: 'READY', duration_ms: 60000, spot_count: 3, owner_email: 'a@example.com' },
     { job_id: 'job_b', title: 'งานของบี', file_name: 'b.mp4', updated_at: '2026-11-19T03:00:00Z', size_bytes: 1, is_upload: false, is_processing: false, mode: 'review', status: 'READY', duration_ms: 60000, spot_count: 2, owner_email: 'b@example.com' },
     { job_id: 'job_legacy', title: 'งานเก่า', file_name: 'old.mp4', updated_at: '2026-11-18T03:00:00Z', size_bytes: 1, is_upload: false, is_processing: false, mode: 'generate', status: 'READY', duration_ms: 60000, spot_count: 1, owner_email: null },
+    { job_id: 'job_long', title: longTitle, file_name: 'river_ep08.mp4', updated_at: '2026-11-17T03:00:00Z', size_bytes: 1, is_upload: false, is_processing: false, mode: 'generate', status: 'READY', duration_ms: 60000, spot_count: 1, owner_email: 'c@example.com' },
   ];
   await page.route('**/api/**', async route => {
     const url = route.request().url();
@@ -13,14 +15,18 @@ async page => {
     if (url.endsWith('/api/jobs')) return route.fulfill({ json: { jobs: allJobs ? jobs : jobs.slice(0, 1) } });
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
-  await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.goto('http://127.0.0.1:4173/');
   const table = page.getByRole('table', { name: 'งานที่บันทึกไว้' });
-  await table.getByRole('link', { name: 'งานของเอ', exact: true }).waitFor();
-  assert(await table.getByRole('columnheader', { name: 'เจ้าของ' }).isVisible(), 'All-Jobs Access shows the owner column');
-  assert(await table.getByRole('row', { name: /งานของบี/ }).getByText('b@example.com').filter({ visible: true }).count() === 1, 'Each row names its Job Owner');
-  assert(await table.getByRole('row', { name: /งานเก่า/ }).getByText('ไม่มีเจ้าของ').filter({ visible: true }).count() === 1, 'A Job with no Job Owner says so');
+  const longLink = table.getByRole('link', { name: longTitle, exact: true });
+  await longLink.waitFor();
+  for (const [width, height, expectOwnerColumn] of [[920, 800, false], [1100, 800, false], [1120, 800, false], [1280, 900, true]]) {
+    await page.setViewportSize({ width, height });
+    assert(await longLink.evaluate(el => el.getBoundingClientRect().width >= 120 && el.scrollWidth <= el.clientWidth + 1), `Title remains readable without overflow at ${width}x${height}`);
+    assert(await table.getByRole('columnheader', { name: 'เจ้าของ' }).isVisible() === expectOwnerColumn, `Owner column visibility matches width budget at ${width}x${height}`);
+    assert(await table.getByRole('row', { name: /งานของบี/ }).getByText('b@example.com').filter({ visible: true }).count() === 1, `Each row names its Job Owner at ${width}x${height}`);
+    assert(await table.getByRole('row', { name: /งานเก่า/ }).getByText('ไม่มีเจ้าของ').filter({ visible: true }).count() === 1, `A Job with no Job Owner says so at ${width}x${height}`);
+  }
 
   const search = page.getByRole('searchbox');
   await search.fill('b@example');

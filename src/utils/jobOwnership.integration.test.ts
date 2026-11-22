@@ -75,11 +75,12 @@ test('an Author sees and acts on only their own Jobs; others answer like a missi
     assert.deepEqual(await ids(await lead('/jobs')), [job.job_id, 'job_b', 'job_legacy'].sort(), 'All-Jobs Access lists every Job');
 
     const routes: [string, string, unknown?][] = [
-      ['', 'GET'], ['/video', 'GET'], ['', 'PATCH', { title: 'ชื่อใหม่' }], ['/spots', 'PATCH', { spots: [spot] }],
-      ['/start', 'POST'], ['/analyze-batch', 'POST', {}], ['/files', 'DELETE'],
+      ['', 'GET'], ['/video', 'GET'], ['', 'PATCH', { title: 'ชื่อใหม่' }], ['', 'PATCH', { title: '' }],
+      ['/spots', 'PATCH', { spots: [spot] }], ['/start', 'POST'], ['/analyze-batch', 'POST', {}], ['/files', 'DELETE'],
     ];
     for (const [suffix, method, body] of routes) {
       const missing = await a(`/jobs/job_missing${suffix}`, method, body);
+      assert.equal(missing.status, 404, `${method} job_missing${suffix}`);
       const missingBody = await missing.json();
       for (const hidden of ['job_b', 'job_legacy']) {
         const response = await a(`/jobs/${hidden}${suffix}`, method, body);
@@ -98,6 +99,98 @@ test('an Author sees and acts on only their own Jobs; others answer like a missi
     assert.equal((await renamed.json() as { job: PersistedJobState }).job.owner_sub, 'sub-a', 'renaming keeps the Job Owner');
     assert.equal((await a(`/jobs/${job.job_id}/files`, 'DELETE')).status, 200);
   } finally {
+    child.kill('SIGTERM');
+    await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('missing Jobs answer 404 before activeProcessingLock 409 on start and analyze-batch', { timeout: 20000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-ownership-lock-test-'));
+  const socket = net.createServer();
+  await new Promise<void>(resolve => socket.listen(0, '127.0.0.1', resolve));
+  const port = (socket.address() as net.AddressInfo).port;
+  await new Promise<void>(resolve => socket.close(() => resolve()));
+
+  fs.writeFileSync(path.join(dir, 'fake.ts'), `import fs from 'node:fs';
+const real = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url = String(input instanceof Request ? input.url : input);
+  if (url.startsWith('http://127.0.0.1:')) return real(input, init);
+  if (!url.startsWith('https://generativelanguage.googleapis.com/')) throw new Error('Unexpected network request');
+  if (init?.method === 'DELETE') return Response.json({});
+  if (url.includes(':generateContent')) {
+    fs.writeFileSync('entered', '1');
+    while (!fs.existsSync('release')) await new Promise(r => setTimeout(r, 20));
+    const spots = [{ spot_id: 'cue_1', decision: 'generate', text: 'บท' }];
+    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ spots }) }] }, finishReason: 'STOP' }] });
+  }
+  const id = new URL(url).pathname.split('/').at(-1);
+  return Response.json({ name: 'files/' + id, state: 'ACTIVE', uri: 'https://fake.invalid/' + id, mimeType: 'video/mp4' });
+};`);
+
+  const source = path.join(dir, '.data/jobs/job_running/source_video.mp4');
+  const seed = createJobStore(path.join(dir, '.data'));
+  seed.save({
+    ...seededJob('job_running', authorB),
+    mode: 'generate',
+    status: 'VAD_READY',
+    video_source: { kind: 'server_copy', local_file_path: source },
+    gemini_file_name: 'files/example',
+    gemini_file_uri: 'https://fake.invalid/example',
+    gemini_file_expires_at: '2099-01-01T00:00:00Z',
+    gemini_file_mime_type: 'video/mp4',
+    batches: [{
+      batch_id: 'batch_1', batch_index: 1, batch_start_ms: 0, batch_end_ms: 10000,
+      window_start_ms: 0, window_end_ms: 10000, candidate_spots: [spot], status: 'pending', retry_count: 0,
+    }],
+  });
+  seed.save(seededJob('job_b', authorB));
+  seed.close();
+  fs.writeFileSync(source, '1');
+
+  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(process.cwd(), 'server.ts')], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port), GEMINI_API_KEY: 'test-only-key' },
+    stdio: 'ignore',
+  });
+  const base = `http://127.0.0.1:${port}/api`;
+  const as = (author: typeof authorA) => {
+    const send = signedInFetch(author);
+    return (route: string, method = 'GET', body?: unknown) => send(base + route, {
+      method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  };
+  const a = as(authorA), b = as(authorB), lead = as(supervisor);
+
+  try {
+    let ready = false;
+    for (let i = 0; i < 100 && !ready; i++) {
+      try { ready = (await fetch(`${base}/config`)).ok; } catch { await new Promise(resolve => setTimeout(resolve, 50)); }
+    }
+    assert.ok(ready);
+
+    assert.equal((await b('/jobs/job_running/start', 'POST')).status, 200);
+    for (let i = 0; i < 200 && !fs.existsSync(path.join(dir, 'entered')); i++) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.ok(fs.existsSync(path.join(dir, 'entered')), 'activeProcessingLock is held');
+
+    // Existing other Job hits 409, proving the lock is active.
+    assert.equal((await lead('/jobs/job_b/start', 'POST')).status, 409);
+
+    for (const [suffix, body] of [['/start', undefined], ['/analyze-batch', {}]] as const) {
+      const missingForA = await a(`/jobs/job_missing${suffix}`, 'POST', body);
+      assert.equal(missingForA.status, 404, `missing${suffix} for A`);
+      const hiddenForA = await a(`/jobs/job_running${suffix}`, 'POST', body);
+      assert.equal(hiddenForA.status, 404, `job_running${suffix} for A`);
+      assert.deepEqual(await hiddenForA.json(), await missingForA.json());
+
+      const missingForLead = await lead(`/jobs/job_missing${suffix}`, 'POST', body);
+      assert.equal(missingForLead.status, 404, `missing${suffix} for lead`);
+    }
+  } finally {
+    fs.writeFileSync(path.join(dir, 'release'), '1');
     child.kill('SIGTERM');
     await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);
     fs.rmSync(dir, { recursive: true, force: true });

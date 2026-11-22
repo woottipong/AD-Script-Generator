@@ -50,7 +50,7 @@ async page => {
   await page.setViewportSize({ width: 390, height: 844 });
   const generate = page.getByRole('button', { name: 'สร้างบทบรรยาย', exact: true });
   const review = page.getByRole('button', { name: 'ตรวจแก้ไฟล์ SRT', exact: true });
-  const continueGenerate = page.getByRole('button', { name: 'ตรวจเสียงและเตรียมงาน', exact: true });
+  const continueGenerate = page.getByRole('button', { name: 'เริ่มเตรียมงาน', exact: true });
   const continueReview = page.getByRole('button', { name: 'เริ่มตรวจแก้', exact: true });
   const title = page.getByRole('textbox', { name: 'ชื่องาน' });
   const video = page.locator('input[type=file][aria-label="เลือกวิดีโอ MP4"]');
