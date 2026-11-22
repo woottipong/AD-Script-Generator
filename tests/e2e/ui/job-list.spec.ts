@@ -284,10 +284,22 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
   expect(await openJob.getAttribute('href'), 'Opening a Job is a native link to its workspace').toBe('/jobs/job_old');
   await openJob.focus();
   await page.keyboard.press('Enter');
+  await page.waitForFunction(() => {
+    const fade = document.querySelector('.saved-job-reveal')?.getAnimations()[0];
+    if (!fade) return false;
+    fade.pause();
+    fade.currentTime = 100;
+    return true;
+  });
   const line = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
   await line.waitFor();
   expect(new URL(page.url()).pathname, 'Opening a Job moves to its URL').toBe('/jobs/job_old');
   expect(await page.locator('main').evaluate((el) => document.activeElement === el), 'Keyboard focus moves to the opened workspace').toBe(true);
+  await line.click();
+  await expect(line, 'The editor accepts clicks during the reveal').toBeFocused();
+  const reveal = page.locator('.saved-job-reveal');
+  await reveal.evaluate((element) => element.getAnimations()[0]?.play());
+  await expect(reveal).toHaveCount(0);
   await page.reload();
   await line.waitFor();
   expect(await line.inputValue(), 'Reload stays on the same Job').toBe('บทเดิม');

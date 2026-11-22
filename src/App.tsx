@@ -114,6 +114,8 @@ const CHECK_PASSED_HOLD_MS = 400;
 const ENTRANCE_MIN_MS = 1200;
 /** The mark and words clear off the scene first, so the reveal starts from a plain stage. */
 const ENTRANCE_CLEAR_MS = 240;
+const SAVED_JOB_SCENE_MS = 600;
+const SAVED_JOB_CLEAR_MS = 100;
 const ENTRANCE_STATUS = { generate: 'กำลังเปิดหน้าตัดต่อ…', review: 'กำลังเปิดหน้าตรวจแก้…', job: 'กำลังเปิดงาน…' } as const;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
@@ -297,7 +299,7 @@ export default function App() {
   const [entrance, setEntrance] = useState<{ title: string | null; status: string; clearing?: boolean } | null>(null);
   /** The running 'scene' transition; a Job's reveal waits for it so the scene is seen settled. */
   const editorSceneRef = useRef<Promise<void>>(Promise.resolve());
-  /** When the current entrance scene appeared (page load counts, for a /jobs/... reload). */
+  /** When the checked intake scene appeared. */
   const entranceStartedAt = useRef(0);
   const [generateDraft, setGenerateDraft] = useState(EMPTY_GENERATE_DRAFT);
   const [reviewDraft, setReviewDraft] = useState(EMPTY_REVIEW_DRAFT);
@@ -641,6 +643,8 @@ export default function App() {
 
   // Opens the Job named by the URL, picking up its analysis if the server is still running it.
   const restoreJob = useCallback((restoreJobId: string) => {
+    const sceneStartedAt = performance.now();
+    const editorLoaded = preloadEditor();
     pendingLocalSpotsRef.current = null;
     const token = { aborted: false };
     pollAbortRef.current = token;
@@ -665,18 +669,17 @@ export default function App() {
           title: loadedJob.title || defaultJobTitle(loadedJob.video_metadata.fileName),
           status: loadedJob.mode === 'review' ? ENTRANCE_STATUS.review : ENTRANCE_STATUS.generate,
         });
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         await Promise.all([
           editorSceneRef.current,
-          preloadEditor(),
-          sleep(ENTRANCE_MIN_MS - (performance.now() - entranceStartedAt.current)),
+          editorLoaded,
+          reduceMotion ? undefined : sleep(SAVED_JOB_SCENE_MS - SAVED_JOB_CLEAR_MS - (performance.now() - sceneStartedAt)),
         ]);
         if (token.aborted) return;
         setEntrance((current) => current && { ...current, clearing: true });
-        await sleep(ENTRANCE_CLEAR_MS);
+        if (!reduceMotion) await sleep(SAVED_JOB_CLEAR_MS);
         if (token.aborted) return;
-        // Awaited so an exception while committing the Job reaches the catch below as a failed load.
-        await runEditorTransition('reveal', () => {
-          setEntrance(null);
+        flushSync(() => {
           setJobLoad(null);
           const savedJob = loadedJob;
           setJobId(savedJob.job_id);
@@ -1334,11 +1337,9 @@ export default function App() {
   const openJob = (openJobId: string) => {
     const target = jobPath(openJobId);
     focusOpenedJob.current = target;
-    void preloadEditor();
     editorSceneRef.current = runEditorTransition('scene', () => {
       navigate(target);
       setEntrance({ title: null, status: ENTRANCE_STATUS.job });
-      entranceStartedAt.current = performance.now();
       restoreJob(openJobId);
     });
   };
@@ -1771,7 +1772,7 @@ export default function App() {
         )
       }>
       {showEntranceScene ? (
-        <EditorEntranceScene title={entrance?.title} status={entrance?.status ?? ENTRANCE_STATUS.job} clearing={entrance?.clearing} />
+        <EditorEntranceScene title={entrance?.title} status={entrance?.status ?? ENTRANCE_STATUS.job} clearing={entrance?.clearing} restoring={jobLoad === 'loading'} />
       ) : jobLoad && !hasProject ? (
         <Empty ref={focusWhenJobReady} role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
           <EmptyHeader>
@@ -1876,6 +1877,9 @@ export default function App() {
       </section>}
       </Suspense>
       </WorkspaceLoadBoundary>
+      {hasProject && entrance?.clearing && (
+        <div aria-hidden="true" className="saved-job-reveal pointer-events-none fixed inset-0 z-50 bg-stage" onAnimationEnd={() => setEntrance(null)} />
+      )}
       </main>
       {confirmDialog}
     </div>
