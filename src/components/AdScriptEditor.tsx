@@ -12,6 +12,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  X,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
@@ -34,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -280,7 +281,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               onClick={(e) => e.stopPropagation()}
               className={`flex flex-wrap items-center gap-1.5 text-xs transition-opacity ${isSkipped ? 'opacity-50' : ''}`}
             >
-              <div className="inline-flex items-center rounded-md border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
+              <div className="inline-flex items-center rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
                 <Button
                   type="button"
                   variant="ghost"
@@ -289,7 +290,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   disabled={isUnchanged(nudgeTargets.startEarlier)}
                   title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
-                  className="rounded-none first:rounded-l-md last:rounded-r-md"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
                   <Minus className="size-3" aria-hidden="true" />
                 </Button>
@@ -312,13 +313,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   disabled={isUnchanged(nudgeTargets.startLater)}
                   title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
-                  className="rounded-none first:rounded-l-md last:rounded-r-md"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
                   <Plus className="size-3" aria-hidden="true" />
                 </Button>
               </div>
-              <span aria-hidden="true" className="text-muted-foreground">–</span>
-              <div className="inline-flex items-center rounded-md border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
+              <span aria-hidden="true" className="hidden text-muted-foreground sm:inline">–</span>
+              <div className="inline-flex items-center rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
                 <Button
                   type="button"
                   variant="ghost"
@@ -327,7 +328,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   disabled={isUnchanged(nudgeTargets.endEarlier)}
                   title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
-                  className="rounded-none first:rounded-l-md last:rounded-r-md"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
                   <Minus className="size-3" aria-hidden="true" />
                 </Button>
@@ -350,7 +351,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   disabled={isUnchanged(nudgeTargets.endLater)}
                   title="ขยายเวลาจบออกไป 0.2 วินาที"
                   aria-label="ขยายเวลาจบออกไป 0.2 วินาที"
-                  className="rounded-none first:rounded-l-md last:rounded-r-md"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
                   <Plus className="size-3" aria-hidden="true" />
                 </Button>
@@ -408,9 +409,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   ? 'info'
                   : 'secondary'
               }
+              className={spot.decision === 'skip' ? 'text-muted-foreground' : undefined}
             >
               {isBatchProcessing ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
+                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               ) : spot.decision === 'pending' ? (
                 <Clock aria-hidden="true" />
               ) : spot.decision === 'generate' ? (
@@ -607,6 +609,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 }) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingClickAnchorRef = useRef<{ spotId: string; topBefore: number } | null>(null);
@@ -778,13 +781,28 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               <Search className="size-3.5" aria-hidden="true" />
             </InputGroupAddon>
             <InputGroupInput
+              ref={searchInputRef}
               type="search"
               aria-label="ค้นหาบทบรรยายหรือเวลา"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="ค้นหาบทหรือเวลา…"
-              className="text-xs md:text-xs"
+              className="text-xs md:text-xs [&::-webkit-search-cancel-button]:hidden"
             />
+            {searchQuery && (
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  size="icon-xs"
+                  aria-label="ล้างคำค้นหา"
+                  onClick={() => {
+                    setSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                >
+                  <X aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            )}
           </InputGroup>
           <Select
             value={filterMode}
@@ -861,7 +879,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           emptyState === 'preparing' ? (
             <div role="status" className="divide-y divide-border border-b border-border bg-card">
               <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-600" aria-hidden="true" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
                 <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
               </div>
               {[74, 58, 82, 52].map((secondLineWidth, idx) => (
@@ -945,13 +963,16 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       </div>
 
       {/* 3. Compact Editor Shortcut Footer */}
-      {spots.length > 0 && <div className="px-4 py-3 border-t border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground shrink-0">
-        <span>
-          <strong className="font-mono text-secondary-foreground">Alt + ↑/↓</strong> เลือกช่วง ·{' '}
-          <strong className="font-mono text-secondary-foreground">Alt + P</strong> เล่น/หยุด
+      {spots.length > 0 && <div className="px-4 py-2.5 border-t border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground shrink-0">
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs leading-none font-medium text-secondary-foreground">Alt + ↑/↓</kbd>
+          <span>เลือกช่วง</span>
+          <span aria-hidden="true" className="text-border">·</span>
+          <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs leading-none font-medium text-secondary-foreground">Alt + P</kbd>
+          <span>เล่น/หยุด</span>
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
-          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-700" aria-hidden="true" />
+          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
             : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
             : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
