@@ -54,9 +54,9 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     assert.equal(savedVadData.job.status, 'VAD_READY');
     assert.equal(savedVadData.job.title, 'งานที่สแกนเสร็จแล้ว');
     assert.equal((await json(`/jobs/${uploadId}/spots`, 'PATCH', {
-      spots: [{ ...savedVadData.job.spots[0], decision: 'generate', text: 'เขียนเองก่อนรัน AI', is_edited: true }],
+      spots: [{ ...savedVadData.job.spots[0], decision: 'generate', text: 'เขียนเองก่อนรัน AI' }],
     })).status, 200, 'a VAD_READY job saved after upload can be edited immediately');
-    const spot = { spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'text', is_edited: false };
+    const spot = { spot_id: 'a', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'text' };
     const jobDir = path.join(dir, '.data/jobs/job_fixture');
     const seed = createJobStore(path.join(dir, '.data'));
     seed.save({
@@ -81,8 +81,8 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     assert.equal(video.status, 200, 'a Generate Mode job streams its server copy');
     assert.equal(await video.text(), 'abc');
 
-    const next = { spot_id: 'cue_002', start_ms: 8000, end_ms: 9000, duration_ms: 1000, original_start_ms: 8000, original_end_ms: 9000, decision: 'generate', text: 'บรรทัดถัดไป', is_edited: false };
-    const cue = { spot_id: 'cue_001', start_ms: 5500, end_ms: 6500, duration_ms: 1000, original_start_ms: 5500, original_end_ms: 6500, decision: 'generate', text: 'ทับเสียงพูด', is_edited: false };
+    const next = { spot_id: 'cue_002', start_ms: 8000, end_ms: 9000, duration_ms: 1000, original_start_ms: 8000, original_end_ms: 9000, decision: 'generate', text: 'บรรทัดถัดไป' };
+    const cue = { spot_id: 'cue_001', start_ms: 5500, end_ms: 6500, duration_ms: 1000, original_start_ms: 5500, original_end_ms: 6500, decision: 'generate', text: 'ทับเสียงพูด' };
     const reviewBody = {
       video_metadata: { fileName: 'lesson.mp4', fileSize: 71225137, mimeType: 'video/mp4', width: 1920, height: 1080, durationMs: 10000, videoCodec: 'avc1.640028', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
       vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
@@ -103,7 +103,7 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
     assert.deepEqual(fs.readdirSync(reviewDir), ['vad_output.json'], 'Review Mode keeps no video on the server');
     assert.ok(fs.existsSync(path.join(dir, '.data/envisio.db')), 'Jobs are stored in the database');
     assert.equal((await fetch(`${base}/jobs/${reviewJob.job_id}`).then(r => r.json()) as { job: { job_id: string } }).job.job_id, reviewJob.job_id);
-    assert.equal((await json(`/jobs/${reviewJob.job_id}/spots`, 'PATCH', { spots: [{ ...cue, text: 'แก้คำผิด', is_edited: true }, next] })).status, 200, 'text edit on a line overlapping speech saves');
+    assert.equal((await json(`/jobs/${reviewJob.job_id}/spots`, 'PATCH', { spots: [{ ...cue, text: 'แก้คำผิด' }, next] })).status, 200, 'text edit on a line overlapping speech saves');
     assert.equal((await json(`/jobs/${reviewJob.job_id}/spots`, 'PATCH', { spots: [{ ...cue, end_ms: 8500, duration_ms: 3000 }, next] })).status, 400, 'retiming into a neighbour is rejected');
     assert.equal((await json(`/jobs/${reviewJob.job_id}/spots`, 'PATCH', { spots: [{ ...cue, end_ms: 7900, duration_ms: 2400 }, next] })).status, 200, 'retiming over speech up to the neighbour saves');
     assert.equal((await json(`/jobs/${reviewJob.job_id}/start`, 'POST', {})).status, 409);

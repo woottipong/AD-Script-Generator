@@ -99,7 +99,6 @@ export interface ADSpot {
   decision: 'generate' | 'skip' | 'pending';
   text: string;
   reason?: string;
-  is_edited: boolean;
   // Original non-speech gap boundaries for strict timestamp editing validation
   original_start_ms: number;
   original_end_ms: number;

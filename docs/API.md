@@ -40,7 +40,7 @@ A job response contains a `job` object. The fields below describe the current Ty
 
 An analysis batch contains `batch_index`, `batch_id`, `batch_start_ms`, `batch_end_ms`, `window_start_ms`, `window_end_ms`, `candidate_spots`, `status`, and `retry_count`. Its status is `pending`, `processing`, `completed`, or `failed`. A failed batch can include `error`.
 
-An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `is_edited`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
+An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
 
 The server reuses the Gemini file across batches. After the last batch or a processing failure, it attempts to delete the job's Gemini file before releasing the processing lock. A successful deletion or HTTP 404 clears the Gemini file metadata. Other deletion errors leave the analysis result and file reference intact. If deletion fails before a replacement upload, the job fails and can be retried. The server keeps the local MP4 for playback and re-upload.
 
@@ -295,7 +295,7 @@ JSON body when starting a batch, with optional `batch_id`:
 }
 ```
 
-If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch. The existing `is_edited` flag is retained.
+If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch.
 
 If no batch matches, the route returns HTTP 200 with `{ job }`. An explicitly stopped Job keeps its `STOPPED` status. Other Jobs are set to `READY`.
 
@@ -322,7 +322,6 @@ The following request represents the complete array for a job with one spot:
       "decision": "generate",
       "text": "หญิงสาวเปิดประตูห้องสมุดแล้วก้าวเข้ามา",
       "reason": "",
-      "is_edited": true,
       "original_start_ms": 4700,
       "original_end_ms": 12500
     }

@@ -14,7 +14,6 @@ function spot(id: string, start: number): ADSpot {
     original_end_ms: start + 4000,
     decision: 'generate',
     text: 'original narration',
-    is_edited: true,
   };
 }
 

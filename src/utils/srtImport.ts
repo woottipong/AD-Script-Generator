@@ -55,7 +55,6 @@ export function cuesToSpots(cues: SrtCue[], durationMs: number): { spots: ADSpot
       duration_ms: cue.end_ms - cue.start_ms,
       decision: 'generate',
       text: cue.text,
-      is_edited: false,
       original_start_ms: cue.start_ms,
       original_end_ms: cue.end_ms,
     })),

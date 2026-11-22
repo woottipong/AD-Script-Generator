@@ -63,7 +63,7 @@ interface AdScriptEditorProps {
   onRetrySave: () => void;
 }
 
-type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'needs_check';
+type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'needs_check';
 
 /** Timing problems to fix, plus narration longer than its gap, which is fine for Extended AD that pauses the picture. */
 type SpotCheck = SpotIssue | 'over_duration';
@@ -177,7 +177,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       start_ms: newStartMs,
       end_ms: newEndMs,
       duration_ms: newEndMs - newStartMs,
-      is_edited: true,
     });
     return true;
   };
@@ -386,7 +385,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                 const chosen = next[0];
                 if (!chosen || chosen === spot.decision) return;
                 if (chosen === 'generate') onUpdate(enableSpotNarration(spot));
-                else if (chosen === 'skip') onUpdate({ ...spot, decision: 'skip', is_edited: true });
+                else if (chosen === 'skip') onUpdate({ ...spot, decision: 'skip' });
               }}
               onClick={(e) => e.stopPropagation()}
               className="min-w-0"
@@ -439,7 +438,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               {SPOT_CHECK_LABELS.over_duration}
             </Badge>
           )}
-          {!isExpanded && spot.is_edited && <span className="text-muted-foreground">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
             <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
               <span className="size-1.5 rounded-full bg-brand-600" aria-hidden="true" />
@@ -472,7 +470,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   onUpdate({
                     ...spot,
                     text: e.target.value,
-                    is_edited: true,
                   })
                 }
                 placeholder="เขียนบทบรรยายภาพ"
@@ -494,10 +491,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   </span>
                   <span aria-hidden="true" className="text-muted-foreground/60">·</span>
                   <span>{spot.text.trim().length} อักษร</span>
-                  {spot.is_edited && <>
-                    <span aria-hidden="true" className="text-muted-foreground/60">·</span>
-                    <span>แก้ไขแล้ว</span>
-                  </>}
                 </div>
 
                 {isTimestampsModified && (
@@ -527,7 +520,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               />
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
-                {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
             </div>
           ) : (
@@ -535,7 +527,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               <span>
                 {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
               </span>
-              {spot.is_edited && <span>แก้ไขแล้ว</span>}
             </div>
           )}
         </fieldset>}
@@ -674,20 +665,18 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return map;
   }, [batches]);
 
-  const { generatedCount, pendingCount, skippedCount, editedCount, spotOrder } = React.useMemo(() => {
+  const { generatedCount, pendingCount, skippedCount, spotOrder } = React.useMemo(() => {
     let generatedCount = 0;
     let pendingCount = 0;
     let skippedCount = 0;
-    let editedCount = 0;
     const spotOrder = new Map<string, number>();
     spots.forEach((spot, index) => {
       if (!spotOrder.has(spot.spot_id)) spotOrder.set(spot.spot_id, index + 1);
       if (spot.decision === 'generate' && spot.text.trim().length > 0) generatedCount++;
       if (spot.decision === 'pending') pendingCount++;
       if (spot.decision === 'skip') skippedCount++;
-      if (spot.is_edited) editedCount++;
     });
-    return { generatedCount, pendingCount, skippedCount, editedCount, spotOrder };
+    return { generatedCount, pendingCount, skippedCount, spotOrder };
   }, [spots]);
 
   const spotIssues = React.useMemo(
@@ -718,7 +707,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     generate: `มีบทบรรยาย (${generatedCount})`,
     pending: `รอสร้าง (${pendingCount})`,
     skip: `ข้ามการบรรยาย (${skippedCount})`,
-    edited: `แก้ไขแล้ว (${editedCount})`,
     needs_check: `ต้องตรวจ (${spotChecks.size})`,
   };
 
@@ -740,7 +728,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       if (filterMode === 'generate' && spot.decision !== 'generate') return false;
       if (filterMode === 'pending' && spot.decision !== 'pending') return false;
       if (filterMode === 'skip' && spot.decision !== 'skip') return false;
-      if (filterMode === 'edited' && !spot.is_edited) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();

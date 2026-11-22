@@ -1054,7 +1054,6 @@ async function startServer() {
         duration_ms: spot.duration_ms,
         decision: 'pending',
         text: '',
-        is_edited: false,
         original_start_ms: spot.start_ms,
         original_end_ms: spot.end_ms,
       }));
@@ -1440,7 +1439,7 @@ async function startServer() {
         return before && !completeSpotIds.has(spot.spot_id) && (
           spot.start_ms !== before.start_ms || spot.end_ms !== before.end_ms ||
           spot.text !== before.text || spot.decision !== before.decision ||
-          spot.reason !== before.reason || spot.is_edited !== before.is_edited
+          spot.reason !== before.reason
         );
       });
       if (changedIncompleteSpot) {

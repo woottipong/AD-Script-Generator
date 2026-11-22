@@ -12,7 +12,7 @@ function deferred<T>() {
 function spot(text: string): ADSpot {
   return {
     spot_id: 'spot', start_ms: 1000, end_ms: 5000, duration_ms: 4000,
-    original_start_ms: 1000, original_end_ms: 5000, decision: 'generate', text, is_edited: true,
+    original_start_ms: 1000, original_end_ms: 5000, decision: 'generate', text,
   };
 }
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_AD_ANALYSIS_SETTINGS, DEFAULT_VAD_CONFIG, type PersistedJobState } from '../types/ad';
 import { validateEditedSpots, validateJobInitialization, validateReviewJobCreation, resolveJobTitle } from './jobValidation';
 
-const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'บท', is_edited: false };
+const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'บท' };
 const input = () => ({
   video_metadata: { fileName: 'video.mp4', fileSize: 100, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
   vad_config: DEFAULT_VAD_CONFIG, ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
@@ -28,7 +28,7 @@ test('retains source gap and rejects forged, missing, duplicate, or inconsistent
   }
 });
 
-const reviewSpot = { spot_id: 'cue_001', start_ms: 5500, end_ms: 6500, duration_ms: 1000, original_start_ms: 5500, original_end_ms: 6500, decision: 'generate' as const, text: 'ทับเสียงพูด', is_edited: false };
+const reviewSpot = { spot_id: 'cue_001', start_ms: 5500, end_ms: 6500, duration_ms: 1000, original_start_ms: 5500, original_end_ms: 6500, decision: 'generate' as const, text: 'ทับเสียงพูด' };
 const reviewInput = () => ({
   video_metadata: { fileName: 'lesson.mp4', fileSize: 71225137, mimeType: 'video/mp4', width: 1920, height: 1080, durationMs: 2_400_000, videoCodec: 'hvc1.1.6.L120', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
   vad_config: DEFAULT_VAD_CONFIG,
@@ -66,7 +66,7 @@ test('the waveform cap fits a 60 minute video at 20 ms buckets', () => {
 
 test('Review Mode saves text edits on imported lines as they are, and checks retimed lines against Review Mode rules', () => {
   const reviewJob = { mode: 'review', spots: [reviewSpot], vad_output: reviewInput().vad_output } as unknown as PersistedJobState;
-  assert.equal(validateEditedSpots([{ ...reviewSpot, text: 'แก้คำผิด', is_edited: true }], reviewJob).success, true);
+  assert.equal(validateEditedSpots([{ ...reviewSpot, text: 'แก้คำผิด' }], reviewJob).success, true);
   assert.equal(validateEditedSpots([{ ...reviewSpot, start_ms: 5600, duration_ms: 900 }], reviewJob).success, true, 'retimed line may sit over speech');
   const neighbour = { ...reviewSpot, spot_id: 'cue_002', start_ms: 8000, end_ms: 9000, duration_ms: 1000, original_start_ms: 8000, original_end_ms: 9000 };
   const twoLines = { ...reviewJob, spots: [reviewSpot, neighbour] } as PersistedJobState;

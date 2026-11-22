@@ -75,7 +75,6 @@ const MIGRATIONS = [
     decision TEXT NOT NULL,
     text TEXT NOT NULL,
     reason TEXT,
-    is_edited INTEGER NOT NULL DEFAULT 0,
     original_start_ms INTEGER NOT NULL,
     original_end_ms INTEGER NOT NULL,
     PRIMARY KEY (job_id, spot_id),
@@ -161,7 +160,6 @@ function spotFromRow(row: JobRow): ADSpot {
     duration_ms: row.duration_ms as number,
     decision: row.decision as ADSpot['decision'],
     text: row.text as string,
-    is_edited: row.is_edited === 1,
     original_start_ms: row.original_start_ms as number,
     original_end_ms: row.original_end_ms as number,
   };
@@ -213,7 +211,7 @@ export function createJobStore(dataDir: string) {
   // The Job Owner is written only when the row is first inserted; the upsert above never changes it.
   const deleteSpots = db.prepare('DELETE FROM job_spots WHERE job_id = ?');
   const insertSpot = db.prepare(`INSERT INTO job_spots (job_id, spot_id, position, start_ms, end_ms, duration_ms, decision, text, reason,
-      is_edited, original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const selectJob = db.prepare('SELECT * FROM jobs WHERE job_id = ?');
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
   const summaryQuery = (where: string) => db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
@@ -322,7 +320,7 @@ export function createJobStore(dataDir: string) {
       deleteSpots.run(job.job_id);
       job.spots.forEach((spot, position) => {
         insertSpot.run(job.job_id, spot.spot_id, position, spot.start_ms, spot.end_ms, spot.duration_ms, spot.decision, spot.text,
-          spot.reason ?? null, spot.is_edited ? 1 : 0, spot.original_start_ms, spot.original_end_ms);
+          spot.reason ?? null, spot.original_start_ms, spot.original_end_ms);
       });
       db.exec('COMMIT');
     } catch (err) {

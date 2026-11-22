@@ -13,7 +13,7 @@ const authorA = { sub: 'sub-a', email: 'a@example.com', allJobs: false };
 const authorB = { sub: 'sub-b', email: 'b@example.com', allJobs: false };
 const supervisor = { sub: 'sub-s', email: 'lead@example.com', allJobs: true };
 
-const spot = { spot_id: 'cue_1', start_ms: 1000, end_ms: 4000, duration_ms: 3000, original_start_ms: 1000, original_end_ms: 4000, decision: 'generate' as const, text: 'บท', is_edited: false };
+const spot = { spot_id: 'cue_1', start_ms: 1000, end_ms: 4000, duration_ms: 3000, original_start_ms: 1000, original_end_ms: 4000, decision: 'generate' as const, text: 'บท' };
 const reviewBody = {
   video_metadata: { fileName: 'lesson.mp4', fileSize: 1, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
   vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },

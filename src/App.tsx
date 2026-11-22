@@ -566,7 +566,6 @@ export default function App() {
           duration_ms: cand.duration_ms,
           decision: 'pending',
           text: '',
-          is_edited: false,
           original_start_ms: cand.start_ms,
           original_end_ms: cand.end_ms,
         }));
@@ -1043,7 +1042,7 @@ export default function App() {
   const handleRunVad = async () => {
     const input: ByteSourceInput | undefined = videoFile ? { kind: 'file', file: videoFile } : reviewImportRef.current?.vadInput;
     if (!input || !videoMetadata) return;
-    if (spots.some((spot) => spot.is_edited || spot.text.trim()) && !(await confirm({ title: 'สแกนเสียงใหม่?', description: 'บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สแกนเสียงใหม่', destructive: true }))) return;
+    if (spots.length > 0 && !(await confirm({ title: 'สแกนเสียงใหม่?', description: 'บทบรรยายและเวลาที่แก้ไว้จะถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สแกนเสียงใหม่', destructive: true }))) return;
     if (mode !== 'review' && videoFile) {
       generateIntakeRef.current = { file: videoFile, metadata: videoMetadata };
     }
@@ -1177,7 +1176,7 @@ export default function App() {
 
     const tokenBeforeConfirm = pollAbortRef.current;
     const batchCount = buildAnalysisBatches(vadOutput.candidate_spots, vadOutput.duration_ms).length;
-    if (!(await confirmAiGeneration(batchCount, false, spots.some((spot) => spot.is_edited || spot.text.trim()))) || tokenBeforeConfirm.aborted) return;
+    if (!(await confirmAiGeneration(batchCount, false, spots.length > 0)) || tokenBeforeConfirm.aborted) return;
 
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };

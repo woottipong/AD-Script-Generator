@@ -321,7 +321,6 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         start_ms: drag.previewStartMs,
         end_ms: drag.previewEndMs,
         duration_ms: drag.previewEndMs - drag.previewStartMs,
-        is_edited: true,
       });
       seekToMs(drag.mode === 'trim-end' ? drag.previewEndMs : drag.previewStartMs);
     }

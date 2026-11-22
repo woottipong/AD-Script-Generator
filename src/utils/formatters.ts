@@ -136,7 +136,6 @@ export function enableSpotNarration(spot: ADSpot): ADSpot {
     text: spot.decision === 'skip' && !spot.text.trim()
       ? spot.reason?.trim() || ''
       : spot.text,
-    is_edited: true,
   };
 }
 

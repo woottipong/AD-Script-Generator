@@ -11,7 +11,6 @@ test('spot list filtering, searching, editing, transport toggles, and tooltips',
     decision,
     text,
     reason,
-    is_edited: false,
   });
   const spots = [
     spot('one', 1000, 'generate', 'ช้างเดิน', ''),

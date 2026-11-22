@@ -36,7 +36,7 @@ async function availablePort(): Promise<number> {
 
 function spot(id: string, start: number) {
   return { spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000,
-    original_start_ms: start, original_end_ms: start + 4000, decision: 'generate', text: 'before', is_edited: true };
+    original_start_ms: start, original_end_ms: start + 4000, decision: 'generate', text: 'before' };
 }
 
 function makeJob(twoBatches = false) {

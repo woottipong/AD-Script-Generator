@@ -18,7 +18,6 @@ test('review restore for URL and local sources, responsive header layout, and re
     original_end_ms: 3000,
     decision: 'generate',
     text: 'บทที่บันทึกไว้',
-    is_edited: true,
   };
   const jobTitle = 'ละครโทรทัศน์ชุดการเดินทางของชุมชนริมแม่น้ำ ฉบับตรวจแก้บทบรรยายภาพ ตอน 08';
   const reviewJob = (video_source: Record<string, unknown>) => ({

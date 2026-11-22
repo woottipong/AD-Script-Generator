@@ -35,7 +35,7 @@ test('storage lists every persisted job and deletes any that is not analysing or
   });
   const processing = {
     status: 'VAD_READY' as const, batches: [batch],
-    spots: [{ ...candidate, original_start_ms: 1000, original_end_ms: 5000, decision: 'pending' as const, text: '', is_edited: false }],
+    spots: [{ ...candidate, original_start_ms: 1000, original_end_ms: 5000, decision: 'pending' as const, text: '' }],
     gemini_file_name: 'files/example', gemini_file_uri: 'https://fake.invalid/file', gemini_file_expires_at: '2099-01-01T00:00:00Z',
   };
   const seed = createJobStore(path.join(dir, '.data'));

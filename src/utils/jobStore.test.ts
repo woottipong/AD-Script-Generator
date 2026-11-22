@@ -21,7 +21,7 @@ function withStore(run: (store: ReturnType<typeof createJobStore>, dataDir: stri
 }
 
 const spot = (id: string, start: number, text = ''): ADSpot => ({
-  spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000, decision: 'pending', text, is_edited: false,
+  spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000, decision: 'pending', text,
   original_start_ms: start, original_end_ms: start + 4000,
 });
 
@@ -49,7 +49,7 @@ function reviewJob(jobId: string): PersistedJobState {
     vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
     vad_output: { duration_ms: 20000, speech_segments: [], candidate_spots: [] },
     batches: [],
-    spots: [{ ...spot('cue_001', 500, 'ข้อความ'), decision: 'generate', reason: 'นำเข้า', is_edited: true }],
+    spots: [{ ...spot('cue_001', 500, 'ข้อความ'), decision: 'generate', reason: 'นำเข้า' }],
   };
 }
 

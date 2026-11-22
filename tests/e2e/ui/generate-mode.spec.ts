@@ -57,7 +57,6 @@ test('generate intake validation, draft preservation, single VAD scan, and save 
         original_end_ms: spot.end_ms,
         decision: 'pending',
         text: '',
-        is_edited: false,
       }));
       return route.fulfill({
         json: { job: { job_id: payload.uploadId, title: payload.title, status: 'VAD_READY', spots, batches: [] }, isRunning: false },

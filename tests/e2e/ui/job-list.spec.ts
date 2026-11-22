@@ -14,7 +14,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
     original_end_ms: 5000,
     decision: 'generate',
     text: 'บทเดิม',
-    is_edited: false,
   };
   const job = {
     schema_version: 3,

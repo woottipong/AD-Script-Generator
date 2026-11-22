@@ -11,7 +11,6 @@ test('failed save retention, leave warning, retry save, and reload persistence',
     original_end_ms: 5000,
     decision: 'generate',
     text: 'บทเดิม',
-    is_edited: false,
   };
   const job = {
     schema_version: 3,

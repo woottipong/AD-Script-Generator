@@ -10,7 +10,6 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
     original_end_ms: 5000,
     decision: 'pending',
     text: '',
-    is_edited: false,
   };
   const completed = {
     ...spot,

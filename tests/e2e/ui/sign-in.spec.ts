@@ -16,7 +16,6 @@ test('sign-in, account menu, 401 session redirect, and sign-out guard', async ({
     original_end_ms: 5000,
     decision: 'generate',
     text: 'บทเดิม',
-    is_edited: false,
   };
   const job = {
     schema_version: 3,
