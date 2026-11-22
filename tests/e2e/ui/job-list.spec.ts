@@ -176,7 +176,10 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
   expect(await page.getByRole('button', { name: 'ลบงาน busy.mp4' }).isDisabled(), 'A Job being analysed cannot be deleted').toBe(true);
   const uploadRow = rows.filter({ hasText: '#upload' });
   expect(await uploadRow.getByRole('link').count(), 'An Unfinished Upload can only be deleted').toBe(0);
-  expect((await uploadRow.innerText()).includes('0.1 KB'), 'An upload shows its size before deletion').toBe(true);
+  expect(
+    (await uploadRow.locator('time').filter({ visible: true }).count()) === 1 && !(await uploadRow.innerText()).includes('KB'),
+    'An upload shows when it was last updated, not a size, before deletion'
+  ).toBe(true);
 
   const search = page.getByRole('searchbox', { name: 'ค้นหาชื่องานหรือชื่อไฟล์' });
   const modeFilter = page.getByRole('combobox', { name: 'กรองตามโหมด' });
@@ -447,14 +450,11 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
   await page.keyboard.press('Escape');
   await failureMessage.waitFor({ state: 'hidden' });
   expect(await failure.evaluate((el) => el === document.activeElement), 'Closing failure details restores focus').toBe(true);
-  for (const [id, size] of [
-    ['upload1', '1.0 KB'],
-    ['upload2', '2.0 KB'],
-  ] as const) {
+  for (const id of ['upload1', 'upload2']) {
     const row = rows.filter({ hasText: `#${id}` });
     expect(
-      (await row.getByRole('button', { name: `ลบไฟล์อัปโหลด #${id}` }).isVisible()) && (await row.innerText()).includes(size),
-      'Uploads are distinguishable before deletion on a narrow screen'
+      await row.getByRole('button', { name: new RegExp(`^ลบไฟล์อัปโหลด #${id}`) }).isVisible(),
+      'Uploads are distinguishable by their ID before deletion on a narrow screen'
     ).toBe(true);
     expect(await row.locator('time').filter({ visible: true }).count(), 'Upload time is visible on a narrow screen').toBe(1);
   }

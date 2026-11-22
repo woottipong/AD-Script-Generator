@@ -1,4 +1,5 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, useTransition, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
+import { flushSync } from 'react-dom';
 import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -40,8 +41,8 @@ import { AccountMenu } from './components/AccountMenu';
 import {
   EditorHeaderActionsSkeleton,
   EditorHeaderTitleSkeleton,
-  EditorWorkspaceSkeleton,
 } from './components/EditorSkeleton';
+import { EditorEntranceScene } from './components/EditorEntranceScene';
 import { IntakeSkeleton, type GenerateDraft, type IntakeControls, type ReviewDraft } from './components/IntakeShell';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
@@ -55,9 +56,31 @@ import { jobIdFromPath, jobPath } from './utils/jobPath';
 
 const loadReviewIntake = () => import('./components/ReviewIntake').then((module) => ({ default: module.ReviewIntake }));
 const ReviewIntake = lazy(loadReviewIntake);
-const UploadAndVadPanel = lazy(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
-const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
-const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
+/**
+ * `lazy` that can fetch its chunk ahead of render. Once fetched, the factory hands React a thenable that
+ * resolves synchronously, so the first render does not suspend and the intake -> editor view transition
+ * captures the editor rather than the Suspense fallback.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithPreload<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
+  let loaded: { default: T } | undefined;
+  const preload = () => load().then((module) => (loaded = module));
+  const Component = lazy(() =>
+    loaded ? ({ then: (resolve: (module: { default: T }) => void) => resolve(loaded!) } as Promise<{ default: T }>) : preload()
+  );
+  return Object.assign(Component, { preload });
+}
+
+const UploadAndVadPanel = lazyWithPreload(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
+const VideoPreviewTimeline = lazyWithPreload(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
+const AdScriptEditor = lazyWithPreload(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
+
+/** Fetches the editor chunks during the file check. A failed fetch is left for the lazy render and its error boundary to report. */
+const preloadEditor = () =>
+  Promise.all([UploadAndVadPanel.preload(), VideoPreviewTimeline.preload(), AdScriptEditor.preload()]).then(
+    () => undefined,
+    () => undefined
+  );
 
 class WorkspaceLoadBoundary extends Component<PropsWithChildren<{ onReady: (element: HTMLElement | null) => void }>, { failed: boolean }> {
   state = { failed: false };
@@ -81,6 +104,47 @@ class WorkspaceLoadBoundary extends Component<PropsWithChildren<{ onReady: (elem
       </Empty>
     );
   }
+}
+
+// Header-only checks often finish in a few ms; keeping the intake status up briefly and
+// showing its passed step turns that into one readable hand-off instead of a flash.
+const CHECK_MIN_VISIBLE_MS = 600;
+const CHECK_PASSED_HOLD_MS = 400;
+/** The entrance scene's brand mark needs this long to frame, rise and settle into its first meter beat. */
+const ENTRANCE_MIN_MS = 1200;
+/** The mark and words clear off the scene first, so the reveal starts from a plain stage. */
+const ENTRANCE_CLEAR_MS = 240;
+const ENTRANCE_STATUS = { generate: 'กำลังเปิดหน้าตัดต่อ…', review: 'กำลังเปิดหน้าตรวจแก้…', job: 'กำลังเปิดงาน…' } as const;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
+
+/** Shows the checking step for its minimum time, then the passed step. Resolves false if cancelled meanwhile. */
+async function playPassedBeat(checkStartedAt: number, token: { aborted: boolean }, markPassed: () => void): Promise<boolean> {
+  await sleep(CHECK_MIN_VISIBLE_MS - (performance.now() - checkStartedAt));
+  if (token.aborted) return false;
+  markPassed();
+  await sleep(CHECK_PASSED_HOLD_MS);
+  return !token.aborted;
+}
+
+/**
+ * Editor entrance shared by the checked intake, the Job List and a /jobs/... reload, in two view
+ * transitions (styled in index.css): 'scene' dissolves the current page into EditorEntranceScene, then
+ * 'reveal' dissolves the whole scene off the fully drawn editor, which settles in place beneath it.
+ * The heavy editor render happens only inside 'reveal', whose snapshot holds the scene still meanwhile.
+ * A skipped transition still resolves; only an exception thrown by `update` rejects the returned promise.
+ */
+function runEditorTransition(kind: 'scene' | 'reveal', update: () => void): Promise<void> {
+  if (typeof document.startViewTransition !== 'function') {
+    update();
+    return Promise.resolve();
+  }
+  const root = document.documentElement;
+  root.dataset.editorTransition = kind;
+  return document.startViewTransition(() => flushSync(update)).finished
+    .finally(() => {
+      if (root.dataset.editorTransition === kind) delete root.dataset.editorTransition;
+    });
 }
 
 const FIXED_MAX_VIDEO_DURATION_SECONDS = 1800; // 30 minutes
@@ -228,6 +292,13 @@ export default function App() {
   const titleTypedRef = useRef(false);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
   const [checkingFileName, setCheckingFileName] = useState<string | null>(null);
+  const [checkPassed, setCheckPassed] = useState(false);
+  /** The editor entrance scene for a checked intake or an opened Job, until its editor is revealed. */
+  const [entrance, setEntrance] = useState<{ title: string | null; status: string; clearing?: boolean } | null>(null);
+  /** The running 'scene' transition; a Job's reveal waits for it so the scene is seen settled. */
+  const editorSceneRef = useRef<Promise<void>>(Promise.resolve());
+  /** When the current entrance scene appeared (page load counts, for a /jobs/... reload). */
+  const entranceStartedAt = useRef(0);
   const [generateDraft, setGenerateDraft] = useState(EMPTY_GENERATE_DRAFT);
   const [reviewDraft, setReviewDraft] = useState(EMPTY_REVIEW_DRAFT);
   const [generateSaveFailure, setGenerateSaveFailure] = useState<{ input: GenerateIntake; output: VADOutput } | null>(null);
@@ -580,51 +651,80 @@ export default function App() {
         if (!r.ok || !r.headers.get('content-type')?.includes('application/json')) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((data) => {
+      .then(async (data) => {
         if (token.aborted) return;
-        if (data === 'missing') { setJobLoad('missing'); return; }
+        if (data === 'missing') {
+          await editorSceneRef.current;
+          if (token.aborted) return;
+          await runEditorTransition('reveal', () => { setEntrance(null); setJobLoad('missing'); });
+          return;
+        }
         if (!data?.job) throw new Error('Invalid job response');
-        setJobLoad(null);
-        const savedJob: PersistedJobState = data.job;
-        setJobId(savedJob.job_id);
-        setVideoMetadata(savedJob.video_metadata);
-        setJobTitle(savedJob.title);
-        setVadOutput(savedJob.vad_output);
-        setBatches(savedJob.batches);
-        setSpots(savedJob.spots);
-        setMode(savedJob.mode ?? 'generate');
-        setSrtFileName(savedJob.srt_source?.file_name ?? null);
-        const source = savedJob.video_source;
-        setVideoUrl(source?.kind === 'url' ? source.url : source?.kind === 'local_file' ? null : `/api/jobs/${savedJob.job_id}/video`);
-        if (source?.kind === 'local_file') setMissingLocalVideo({ file_name: source.file_name, file_size: source.file_size });
-        if (savedJob.spots.length > 0) {
-          setSelectedSpotId(savedJob.spots[0].spot_id);
-        }
+        const loadedJob: PersistedJobState = data.job;
+        setEntrance({
+          title: loadedJob.title || defaultJobTitle(loadedJob.video_metadata.fileName),
+          status: loadedJob.mode === 'review' ? ENTRANCE_STATUS.review : ENTRANCE_STATUS.generate,
+        });
+        await Promise.all([
+          editorSceneRef.current,
+          preloadEditor(),
+          sleep(ENTRANCE_MIN_MS - (performance.now() - entranceStartedAt.current)),
+        ]);
+        if (token.aborted) return;
+        setEntrance((current) => current && { ...current, clearing: true });
+        await sleep(ENTRANCE_CLEAR_MS);
+        if (token.aborted) return;
+        // Awaited so an exception while committing the Job reaches the catch below as a failed load.
+        await runEditorTransition('reveal', () => {
+          setEntrance(null);
+          setJobLoad(null);
+          const savedJob = loadedJob;
+          setJobId(savedJob.job_id);
+          setVideoMetadata(savedJob.video_metadata);
+          setJobTitle(savedJob.title);
+          setVadOutput(savedJob.vad_output);
+          setBatches(savedJob.batches);
+          setSpots(savedJob.spots);
+          setMode(savedJob.mode ?? 'generate');
+          setSrtFileName(savedJob.srt_source?.file_name ?? null);
+          const source = savedJob.video_source;
+          setVideoUrl(source?.kind === 'url' ? source.url : source?.kind === 'local_file' ? null : `/api/jobs/${savedJob.job_id}/video`);
+          if (source?.kind === 'local_file') setMissingLocalVideo({ file_name: source.file_name, file_size: source.file_size });
+          if (savedJob.spots.length > 0) {
+            setSelectedSpotId(savedJob.spots[0].spot_id);
+          }
 
-        const hasIncompleteBatches = savedJob.batches.some((b) => b.status !== 'completed');
-        if (data.isRunning) {
-          setStatus('ANALYZING');
-          if (savedJob.progress_stage) {
-            setVadProgress({
-              stage: savedJob.progress_stage,
-              percent: savedJob.progress_percent ?? 15,
-            });
+          const hasIncompleteBatches = savedJob.batches.some((b) => b.status !== 'completed');
+          if (data.isRunning) {
+            setStatus('ANALYZING');
+            if (savedJob.progress_stage) {
+              setVadProgress({
+                stage: savedJob.progress_stage,
+                percent: savedJob.progress_percent ?? 15,
+              });
+            }
+            void pollJobUntilComplete(savedJob.job_id);
+          } else if (hasIncompleteBatches) {
+            setStatus(savedJob.status === 'FAILED' ? 'FAILED' : 'VAD_READY');
+            // A Job saved before its analysis was ever started has no progress and nothing unfinished to warn about;
+            // one cut off by a restart keeps its progress even when every batch is back to pending.
+            setRestoredIncompleteJob(savedJob.status === 'FAILED' || savedJob.progress_percent !== undefined ||
+              savedJob.batches.some((b) => b.status !== 'pending'));
+            if (savedJob.error_message) {
+              setErrorMessage(savedJob.error_message);
+            }
+          } else {
+            setStatus('READY');
           }
-          void pollJobUntilComplete(savedJob.job_id);
-        } else if (hasIncompleteBatches) {
-          setStatus(savedJob.status === 'FAILED' ? 'FAILED' : 'VAD_READY');
-          // A Job saved before its analysis was ever started has no progress and nothing unfinished to warn about;
-          // one cut off by a restart keeps its progress even when every batch is back to pending.
-          setRestoredIncompleteJob(savedJob.status === 'FAILED' || savedJob.progress_percent !== undefined ||
-            savedJob.batches.some((b) => b.status !== 'pending'));
-          if (savedJob.error_message) {
-            setErrorMessage(savedJob.error_message);
-          }
-        } else {
-          setStatus('READY');
-        }
+        });
       })
-      .catch(() => { if (!token.aborted) setJobLoad('failed'); });
+      .catch(async (err) => {
+        if (token.aborted) return;
+        console.error(`Could not open job ${restoreJobId}:`, err);
+        await editorSceneRef.current;
+        if (token.aborted) return;
+        await runEditorTransition('reveal', () => { setEntrance(null); setJobLoad('failed'); });
+      });
   }, [pollJobUntilComplete, setJobTitle]);
 
   // 1. Check Browser Compatibility & the Job named by the URL on Mount
@@ -742,7 +842,10 @@ export default function App() {
     setErrorMessage(null);
     setVadProgress(null);
     setCheckingFileName(title.trim() || (typeof video === 'string' ? fileNameFromUrl(video) : video.name));
+    setCheckPassed(false);
     setStatus('IDLE');
+    const checkStartedAt = performance.now();
+    const editorLoaded = preloadEditor();
 
     let source: ByteSource;
     try {
@@ -784,28 +887,46 @@ export default function App() {
     }
     if (token.aborted) return;
 
-    setCheckingFileName(null);
-    setSrtFileName(srtFile.name);
-    setImportSkipped(skippedCues);
-    reviewImportRef.current = {
-      spots: spotsFromSrt,
-      srtFileName: srtFile.name,
-      videoSource: typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'local_file', file_name: video.name, file_size: video.size },
-      vadInput,
-      metadata: validation.metadata,
-    };
-    setJobTitle(title.trim());
-    setVideoMetadata(validation.metadata);
-    if (typeof video === 'string') {
-      setVideoUrl(video);
-    } else {
-      setVideoFile(video);
-      const blobUrl = URL.createObjectURL(video);
-      objectUrlRef.current = blobUrl;
-      setVideoUrl(blobUrl);
+    if (!(await playPassedBeat(checkStartedAt, token, () => setCheckPassed(true)))) return;
+    await editorLoaded;
+    if (token.aborted) return;
+    const metadata = validation.metadata;
+    await runEditorTransition('scene', () => {
+      setCheckingFileName(null);
+      setEntrance({ title: title.trim() || defaultJobTitle(metadata.fileName), status: ENTRANCE_STATUS.review });
+      entranceStartedAt.current = performance.now();
+    });
+    await sleep(ENTRANCE_MIN_MS - (performance.now() - entranceStartedAt.current));
+    setEntrance((current) => current && { ...current, clearing: true });
+    await sleep(ENTRANCE_CLEAR_MS);
+    if (token.aborted) {
+      setEntrance(null);
+      return;
     }
-    setStatus('VIDEO_READY');
-    startVad(vadInput);
+    void runEditorTransition('reveal', () => {
+      setEntrance(null);
+      setSrtFileName(srtFile.name);
+      setImportSkipped(skippedCues);
+      reviewImportRef.current = {
+        spots: spotsFromSrt,
+        srtFileName: srtFile.name,
+        videoSource: typeof video === 'string' ? { kind: 'url', url: video } : { kind: 'local_file', file_name: video.name, file_size: video.size },
+        vadInput,
+        metadata,
+      };
+      setJobTitle(title.trim());
+      setVideoMetadata(metadata);
+      if (typeof video === 'string') {
+        setVideoUrl(video);
+      } else {
+        setVideoFile(video);
+        const blobUrl = URL.createObjectURL(video);
+        objectUrlRef.current = blobUrl;
+        setVideoUrl(blobUrl);
+      }
+      setStatus('VIDEO_READY');
+      startVad(vadInput);
+    });
   }, [browserCompat, checkingFileName, leaveCurrentJob, clearVideo, setJobTitle, startVad]);
 
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
@@ -830,7 +951,10 @@ export default function App() {
         titleTypedRef.current = Boolean(trimmed);
       }
       setCheckingFileName(file.name);
+      setCheckPassed(false);
       setStatus('IDLE');
+      const checkStartedAt = performance.now();
+      const editorLoaded = preloadEditor();
 
       const validation = await validateAndInspectMp4File(fileByteSource(file), {
         maxDurationSeconds: FIXED_MAX_VIDEO_DURATION_SECONDS,
@@ -838,21 +962,41 @@ export default function App() {
       });
       if (selectionToken.aborted) return;
 
-      setCheckingFileName(null);
-      setValidationIssues(validation.issues);
-
       if (validation.valid && validation.metadata) {
-        generateIntakeRef.current = { file, metadata: validation.metadata };
-        setVideoFile(file);
-        setVideoMetadata(validation.metadata);
-        setJobTitle(customTitle?.trim() || (titleTypedRef.current ? jobTitleRef.current : defaultJobTitle(file.name)));
-        const blobUrl = URL.createObjectURL(file);
-        objectUrlRef.current = blobUrl;
-        setVideoUrl(blobUrl);
-        setCurrentTimeMs(0);
-        setStatus('VIDEO_READY');
-        startVad({ kind: 'file', file });
+        const metadata = validation.metadata;
+        if (!(await playPassedBeat(checkStartedAt, selectionToken, () => setCheckPassed(true)))) return;
+        await editorLoaded;
+        if (selectionToken.aborted) return;
+        const enteredTitle = customTitle?.trim() || (titleTypedRef.current ? jobTitleRef.current : defaultJobTitle(file.name));
+        await runEditorTransition('scene', () => {
+          setCheckingFileName(null);
+          setEntrance({ title: enteredTitle, status: ENTRANCE_STATUS.generate });
+          entranceStartedAt.current = performance.now();
+        });
+        await sleep(ENTRANCE_MIN_MS - (performance.now() - entranceStartedAt.current));
+        setEntrance((current) => current && { ...current, clearing: true });
+        await sleep(ENTRANCE_CLEAR_MS);
+        if (selectionToken.aborted) {
+          setEntrance(null);
+          return;
+        }
+        void runEditorTransition('reveal', () => {
+          setEntrance(null);
+          setValidationIssues(validation.issues);
+          generateIntakeRef.current = { file, metadata };
+          setVideoFile(file);
+          setVideoMetadata(metadata);
+          setJobTitle(enteredTitle);
+          const blobUrl = URL.createObjectURL(file);
+          objectUrlRef.current = blobUrl;
+          setVideoUrl(blobUrl);
+          setCurrentTimeMs(0);
+          setStatus('VIDEO_READY');
+          startVad({ kind: 'file', file });
+        });
       } else {
+        setCheckingFileName(null);
+        setValidationIssues(validation.issues);
         generateIntakeRef.current = null;
         setVideoUrl(null);
         setStatus('FAILED');
@@ -1144,6 +1288,7 @@ export default function App() {
     setErrorMessage(null);
     setStatus('IDLE');
     setCheckingFileName(null);
+    setEntrance(null);
     setMode(null);
     setGenerateDraft(EMPTY_GENERATE_DRAFT);
     setReviewDraft(EMPTY_REVIEW_DRAFT);
@@ -1189,8 +1334,13 @@ export default function App() {
   const openJob = (openJobId: string) => {
     const target = jobPath(openJobId);
     focusOpenedJob.current = target;
-    navigate(target);
-    restoreJob(openJobId);
+    void preloadEditor();
+    editorSceneRef.current = runEditorTransition('scene', () => {
+      navigate(target);
+      setEntrance({ title: null, status: ENTRANCE_STATUS.job });
+      entranceStartedAt.current = performance.now();
+      restoreJob(openJobId);
+    });
   };
 
   const focusTitleButton = useCallback((button: HTMLButtonElement | null) => {
@@ -1335,6 +1485,7 @@ export default function App() {
   const currentMode = mode ?? 'generate';
   const intake: IntakeControls = {
     canProcess: browserCompat?.supported === true,
+    checkPassed: checkPassed && Boolean(checkingFileName),
     onInputChange: clearIntakeFeedback,
     onCancelCheck: () => {
       pollAbortRef.current.aborted = true;
@@ -1364,6 +1515,7 @@ export default function App() {
   const videoSize = videoMetadata?.fileSize ? formatFileSize(videoMetadata.fileSize) : null;
   const isCompactHeader = hasProject || path.startsWith('/jobs/');
   const showEditorHeaderSkeleton = isCompactHeader && !videoMetadata && jobLoad === 'loading';
+  const showEntranceScene = !hasProject && (entrance !== null || jobLoad === 'loading');
   const titleFeedback = titleEditor.kind === 'saving' ? 'กำลังบันทึกชื่อ…'
     : titleEditor.kind !== 'display' && registeringJob ? 'กำลังบันทึกงานบนเซิร์ฟเวอร์…'
     : titleEditor.kind === 'display' && titleAcknowledgement === 'server' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
@@ -1607,8 +1759,8 @@ export default function App() {
       {/* Top Studio Project & Queue Command Bar */}
       <WorkspaceLoadBoundary key={path === '/' ? 'list' : 'workspace'} onReady={focusWhenJobReady}>
       <Suspense fallback={
-        path.startsWith('/jobs/') ? (
-          <EditorWorkspaceSkeleton label="กำลังโหลดพื้นที่ทำงาน…" />
+        path.startsWith('/jobs/') || entrance ? (
+          <EditorEntranceScene title={entrance?.title} status={entrance?.status ?? ENTRANCE_STATUS.job} clearing={entrance?.clearing} />
         ) : path === '/new' ? (
           <IntakeSkeleton />
         ) : (
@@ -1618,8 +1770,8 @@ export default function App() {
           </p>
         )
       }>
-      {jobLoad === 'loading' && !hasProject ? (
-        <EditorWorkspaceSkeleton label="กำลังเปิดงาน…" />
+      {showEntranceScene ? (
+        <EditorEntranceScene title={entrance?.title} status={entrance?.status ?? ENTRANCE_STATUS.job} clearing={entrance?.clearing} />
       ) : jobLoad && !hasProject ? (
         <Empty ref={focusWhenJobReady} role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
           <EmptyHeader>
@@ -1709,7 +1861,6 @@ export default function App() {
             errorMessage={errorMessage}
             onRetryVad={handleRunVad}
             onRetryJobSave={generateSaveFailure ? retryGenerateSave : undefined}
-            preparationTitle={processingFeedback?.title}
             mode={mode ?? 'generate'}
             emptyState={status === 'DETECTING' || status === 'VIDEO_READY' ? 'preparing' : status === 'FAILED' && !vadOutput ? 'failed' : 'no-gaps'}
             speechSegments={vadOutput?.speech_segments || []}

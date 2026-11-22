@@ -274,10 +274,13 @@ test('review mode accepts a public Google Drive SRT link with inline error, retr
 
   await page.goto('/new');
   await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
+  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
+  // The mode switch is a transition: until Review Mode renders, the Generate form (with its own
+  // "เลือกวิดีโอ MP4" input) is still on screen and would receive the file.
+  await process.waitFor();
   await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles(REVIEW_1080P_PATH);
 
   const srtLinkInput = page.getByPlaceholder('https://drive.google.com/file/d/…/view');
-  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
 
   await srtLinkInput.fill('https://example.com/script.srt');
   await page.getByText('กรุณาวางลิงก์ไฟล์ Google Drive เช่น https://drive.google.com/file/d/…/view').waitFor();

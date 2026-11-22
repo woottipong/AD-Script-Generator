@@ -6,7 +6,7 @@ import { fileNameFromUrl, isMp4Url, probeMp4Url } from '../utils/byteSource';
 import { formatFileSize } from '../utils/formatters';
 import { isGoogleDriveUrl } from '../utils/googleDriveSrt';
 import { defaultJobTitle } from '../utils/jobValidation';
-import { useRevealSlowCheck, VideoProcessingStatus } from './VideoProcessingStatus';
+import { VideoProcessingStatus, type IntakeStep } from './VideoProcessingStatus';
 import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, IntakeTitleField, selectIntakeFile, type IntakeControls, type ReviewDraft } from './IntakeShell';
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -151,6 +151,11 @@ function VerifiedLinkCard({
   );
 }
 
+const REVIEW_INTAKE_STEPS: readonly IntakeStep[] = [
+  { label: 'ตรวจวิดีโอและไฟล์ SRT' },
+  { label: 'เปิดหน้าตรวจแก้' },
+];
+
 export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, draft, setDraft, intake, onBack }: {
   checkingFileName: string | null;
   errorMessage: string | null;
@@ -187,7 +192,6 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
   }, []);
 
   const [inputError, setInputError] = useState<string | null>(null);
-  const showCheckStatus = useRevealSlowCheck(Boolean(checkingFileName));
   const [editingVideoLink, setEditingVideoLink] = useState(false);
   const [editingSrtLink, setEditingSrtLink] = useState(false);
 
@@ -400,17 +404,21 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
         }}
       />
 
-      {checkingFileName && showCheckStatus ? (
+      {checkingFileName ? (
         <div className="w-full">
           <VideoProcessingStatus
             fileName={checkingFileName}
-            feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }}
+            feedback={intake.checkPassed
+              ? { title: 'ไฟล์ผ่านการตรวจแล้ว', description: 'กำลังเปิดหน้าตรวจแก้…' }
+              : { title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }}
+            steps={REVIEW_INTAKE_STEPS}
+            passed={intake.checkPassed}
             onCancel={intake.onCancelCheck}
           />
           {errorAlert && <div className="mt-4">{errorAlert}</div>}
         </div>
       ) : (
-        <FieldGroup className="gap-5" inert={Boolean(checkingFileName)} aria-busy={Boolean(checkingFileName) || undefined}>
+        <FieldGroup className="gap-5">
           <Field
             data-invalid={hasVideoLinkFeedback || undefined}
             aria-labelledby={video || showVerifiedVideoCard ? 'review-video-label' : undefined}

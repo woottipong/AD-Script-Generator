@@ -187,6 +187,118 @@
   animation: progress-shimmer-sweep 1.6s ease-in-out infinite;
 }
 
+/*
+ * Editor entrance (EditorEntranceScene + runEditorTransition in App.tsx), shared by the checked
+ * intake, the Job List and a /jobs/... reload. The brand mark frames the picture (corners close in),
+ * the sound bars rise, the narration bar lights last, then the bars idle like a quiet level meter.
+ */
+@keyframes entrance-frame-in {
+  from { opacity: 0; transform: scale(1.22); }
+}
+
+@keyframes entrance-bar-rise {
+  from { opacity: 0; transform: scaleY(0.15); }
+}
+
+@keyframes entrance-bar-meter {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.5); }
+}
+
+@keyframes entrance-narration-in {
+  from { opacity: 0; transform: scaleY(0.2); }
+}
+
+@keyframes entrance-copy-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Bars scale about their own centre; the frame closes in about the mark's centre. */
+.entrance-mark .entrance-bar,
+.entrance-mark .entrance-narration {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.entrance-mark .entrance-frame {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: entrance-frame-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.entrance-mark .entrance-bar {
+  animation:
+    entrance-bar-rise 360ms cubic-bezier(0.16, 1, 0.3, 1) calc(220ms + var(--bar) * 70ms) both,
+    entrance-bar-meter 1.2s ease-in-out calc(820ms + var(--bar) * 150ms) infinite;
+}
+
+.entrance-mark .entrance-narration {
+  animation: entrance-narration-in 420ms cubic-bezier(0.16, 1, 0.3, 1) 560ms both;
+}
+
+.entrance-copy {
+  animation: entrance-copy-in 360ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+}
+
+/*
+ * 'scene': the current page dissolves into the dark entrance scene.
+ * 'reveal': by now the scene has cleared its mark and words (EditorEntranceScene `clearing`), so only a
+ * plain stage dissolves off the finished editor: the video stage, already that dark, stays put and the
+ * light workspace forms around it while the editor settles in place from a hair closer.
+ */
+@keyframes editor-entrance-out {
+  to { opacity: 0; }
+}
+
+@keyframes editor-entrance-settle {
+  from { transform: scale(1.012); }
+}
+
+@keyframes editor-entrance-in {
+  from { opacity: 0; }
+}
+
+html[data-editor-transition="scene"]::view-transition-old(root) {
+  animation: editor-entrance-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+html[data-editor-transition="scene"]::view-transition-new(root) {
+  animation: editor-entrance-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The old snapshot (the scene) is lifted above the new one and blended normally, so it dissolves off a fully drawn editor. */
+html[data-editor-transition="reveal"]::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation: editor-entrance-settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+html[data-editor-transition="reveal"]::view-transition-old(root) {
+  z-index: 1;
+  mix-blend-mode: normal;
+  animation: editor-entrance-out 460ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entrance-mark .entrance-frame,
+  .entrance-mark .entrance-bar,
+  .entrance-mark .entrance-narration,
+  .entrance-copy {
+    animation: none;
+  }
+
+  html[data-editor-transition]::view-transition-old(root) {
+    animation: editor-entrance-out 160ms ease-out both;
+  }
+
+  html[data-editor-transition="scene"]::view-transition-new(root) {
+    animation-duration: 160ms;
+  }
+
+  html[data-editor-transition="reveal"]::view-transition-new(root) {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-spin,
   .progress-indeterminate-primary,

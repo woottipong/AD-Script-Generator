@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileVideo } from 'lucide-react';
+import { Check, CheckCircle2, FileVideo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
@@ -7,40 +7,35 @@ import { formatCompactTime } from '../utils/formatters';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import { focusIntakeFeedback } from './IntakeShell';
 
-/** Header-only MP4 checks usually finish well under this, so the status screen would only flash. */
-const REVEAL_DELAY_MS = 300;
+/** Overview of the hand-off: steps[0] is the file check, steps[1] opens the editor. */
+export type IntakeStep = { label: string };
 
-/** True once `checking` has stayed on for REVEAL_DELAY_MS; callers keep the form (inert) until then. */
-export function useRevealSlowCheck(checking: boolean): boolean {
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    setRevealed(false);
-    if (!checking) return;
-    const timer = setTimeout(() => setRevealed(true), REVEAL_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [checking]);
-  return checking && revealed;
-}
+const STEP_STATE_TEXT = { done: 'เสร็จแล้ว', active: 'กำลังทำ', pending: 'ถัดไป' } as const;
 
 export function VideoProcessingStatus({
   feedback,
   fileName,
+  steps,
+  passed,
   onCancel,
 }: {
   feedback: ProcessingFeedback;
   fileName?: string;
+  steps: readonly IntakeStep[];
+  passed: boolean;
   onCancel: () => void;
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
+    if (passed) return;
     const startedAt = Date.now();
-    setElapsedMs(0);
     const timer = setInterval(() => setElapsedMs(Date.now() - startedAt), 1000);
     return () => clearInterval(timer);
-  }, [feedback.title]);
+  }, [passed]);
 
-  const percent = feedback.percent !== undefined && feedback.percent > 0 ? Math.min(100, feedback.percent) : null;
+  const percent = passed ? 100 : feedback.percent !== undefined && feedback.percent > 0 ? Math.min(100, feedback.percent) : null;
+  const activeStep = passed ? 1 : 0;
 
   return (
     <div
@@ -49,7 +44,14 @@ export function VideoProcessingStatus({
       className="w-full text-left motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
     >
       <div className="flex flex-wrap items-center gap-2.5">
-        <Spinner aria-hidden="true" className="size-5 shrink-0 text-primary" />
+        {passed ? (
+          <CheckCircle2
+            aria-hidden="true"
+            className="size-5 shrink-0 text-success-accent motion-safe:animate-in motion-safe:zoom-in-75 motion-safe:fade-in-0 motion-safe:duration-200"
+          />
+        ) : (
+          <Spinner aria-hidden="true" className="size-5 shrink-0 text-primary" />
+        )}
         <h2 className="min-w-0 text-base sm:text-lg font-semibold leading-snug text-foreground">
           <span role="status">{feedback.title}</span>
         </h2>
@@ -83,8 +85,38 @@ export function VideoProcessingStatus({
         </div>
       )}
 
+      <ol aria-label="ขั้นตอน" className="mt-5 flex flex-col gap-3">
+        {steps.map((step, index) => {
+          const state = index < activeStep ? 'done' : index === activeStep ? 'active' : 'pending';
+          return (
+            <li key={step.label} aria-current={state === 'active' ? 'step' : undefined} className="relative flex items-start gap-3">
+              {index < steps.length - 1 && (
+                <span aria-hidden="true" className="absolute top-6 -bottom-2.5 left-2.5 w-px -translate-x-1/2 bg-border" />
+              )}
+              <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+                {state === 'done' ? (
+                  <Check className="size-4 text-success-accent motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:fade-in-0 motion-safe:duration-200" />
+                ) : state === 'active' ? (
+                  <span className="size-2 rounded-full bg-primary ring-4 ring-brand-100 motion-safe:animate-pulse" />
+                ) : (
+                  <span className="size-2 rounded-full border border-muted-foreground/50" />
+                )}
+              </span>
+              <p
+                className={`min-w-0 pt-px text-sm leading-snug transition-colors duration-200 ${
+                  state === 'active' ? 'font-medium text-foreground' : state === 'done' ? 'text-foreground/75' : 'text-muted-foreground'
+                }`}
+              >
+                {step.label}
+                <span className="sr-only"> ({STEP_STATE_TEXT[state]})</span>
+              </p>
+            </li>
+          );
+        })}
+      </ol>
+
       <div className="-mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-between gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:-mx-7 sm:-mb-7 sm:px-7">
-        <p className="text-xs text-muted-foreground">กำลังตรวจสอบบนเครื่องของคุณ</p>
+        <p className="text-xs text-muted-foreground">{passed ? 'ตรวจบนเครื่องของคุณเสร็จแล้ว' : 'กำลังตรวจสอบบนเครื่องของคุณ'}</p>
         <Button
           type="button"
           variant="outline"

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRevealSlowCheck, VideoProcessingStatus } from './VideoProcessingStatus';
+import { VideoProcessingStatus, type IntakeStep } from './VideoProcessingStatus';
 import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, IntakeTitleField, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -74,6 +74,11 @@ const batchColors = {
   },
 };
 
+const GENERATE_INTAKE_STEPS: readonly IntakeStep[] = [
+  { label: 'ตรวจสเปกวิดีโอ' },
+  { label: 'เปิดหน้าตัดต่อ' },
+];
+
 interface UploadAndVadPanelProps {
   mode: JobMode;
   intake: IntakeControls;
@@ -138,7 +143,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
-  const showCheckStatus = useRevealSlowCheck(Boolean(checkingFileName));
   const activityFeedback: ProcessingFeedback | null = checkingFileName
     ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
     : processingFeedback;
@@ -271,17 +275,21 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           aria-label="เลือกวิดีโอ MP4"
         />
 
-        {checkingFileName && showCheckStatus ? (
+        {checkingFileName ? (
           <div className="w-full">
             <VideoProcessingStatus
               fileName={checkingFileName}
-              feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              feedback={intake.checkPassed
+                ? { title: 'วิดีโอผ่านการตรวจแล้ว', description: 'กำลังเปิดหน้าตัดต่อ…' }
+                : { title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              steps={GENERATE_INTAKE_STEPS}
+              passed={intake.checkPassed}
               onCancel={intake.onCancelCheck}
             />
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
         ) : (
-          <FieldGroup className="gap-5" inert={Boolean(checkingFileName)} aria-busy={Boolean(checkingFileName) || undefined}>
+          <FieldGroup className="gap-5">
             <Field aria-labelledby="generate-video-label">
               <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
               <IntakeDropzone

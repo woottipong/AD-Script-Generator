@@ -50,7 +50,6 @@ interface AdScriptEditorProps {
   errorMessage: string | null;
   onRetryVad: () => void;
   onRetryJobSave?: () => void;
-  preparationTitle?: string;
   mode: JobMode;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
@@ -599,7 +598,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   errorMessage,
   onRetryVad,
   onRetryJobSave,
-  preparationTitle,
   mode,
   speechSegments,
   videoDurationMs,
@@ -884,11 +882,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                 <Skeleton variant="shimmer" className="h-9 flex-1 rounded-lg bg-muted/70" />
                 <Skeleton variant="shimmer" delay={120} className="h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40" />
               </div>
-              <div role="status" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
-                <div className="flex shrink-0 items-center gap-2 border-b border-border bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                  <Spinner className="size-3.5 shrink-0 text-brand-600" aria-hidden="true" />
-                  <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
-                </div>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
                 <div className="min-h-0 flex-1 divide-y divide-border overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)]">
                   {[74, 58, 82, 52, 68, 86, 60].map((secondLineWidth, idx) => (
                     <div

@@ -32,6 +32,8 @@ export type ReviewDraft = {
 
 export type IntakeControls = {
   canProcess: boolean;
+  /** The file check passed and the intake is about to hand over to the editor entrance scene. */
+  checkPassed: boolean;
   onInputChange: () => void;
   onCancelCheck: () => void;
   modeSwitch: {
