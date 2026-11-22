@@ -171,7 +171,7 @@ function jobVisualState(job: StoredJob): JobVisualState {
         ? ` ${Math.round(job.progress_percent)}%`
         : '';
       return {
-        label: job.is_upload ? 'กำลังอัปโหลด' : `กำลังวิเคราะห์${pct}`,
+        label: job.is_upload ? 'กำลังอัปโหลด' : job.status === 'STOPPING' ? 'กำลังหยุด' : `กำลังวิเคราะห์${pct}`,
         variant: 'info-strong',
         icon: Loader2,
         tileIcon: job.is_upload ? Upload : modeIcon,
@@ -212,7 +212,7 @@ function jobVisualState(job: StoredJob): JobVisualState {
       };
     case 'pending':
       return {
-        label: 'รอวิเคราะห์',
+        label: job.status === 'STOPPED' ? 'หยุดการวิเคราะห์แล้ว' : 'รอวิเคราะห์',
         variant: 'warning',
         icon: Clock,
         tileIcon: modeIcon,

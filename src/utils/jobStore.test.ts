@@ -245,6 +245,26 @@ test('a Job keeps its Job Owner, lists filter by owner, and the owner email can 
   assert.equal(store.loadMeta('job_theirs')?.owner_email, 'b@example.com');
 }));
 
+test('daily AI quota counts distinct jobs per author and day across connections', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'envisio-ai-quota-'));
+  const store = createJobStore(dataDir);
+  const second = createJobStore(dataDir);
+  try {
+    for (const jobId of ['job_one', 'job_two', 'job_three']) {
+      assert.equal(store.reserveAiUsage('author-a', '2026-11-23', jobId, 3), true);
+    }
+    assert.equal(second.reserveAiUsage('author-a', '2026-11-23', 'job_one', 3), true);
+    assert.equal(second.reserveAiUsage('author-a', '2026-11-23', 'job_four', 3), false);
+    assert.equal(second.reserveAiUsage('author-b', '2026-11-23', 'job_four', 3), true);
+    assert.equal(second.reserveAiUsage('author-a', '2026-11-24', 'job_four', 3), true);
+    assert.equal(store.aiUsage('author-a', '2026-11-23').length, 3);
+  } finally {
+    second.close();
+    store.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('a database from before Job Owners upgrades and keeps its Jobs without an owner', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
   try {
@@ -252,7 +272,7 @@ test('a database from before Job Owners upgrades and keeps its Jobs without an o
     first.save(reviewJob('job_before'));
     first.close();
     const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
-    db.exec('DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
+    db.exec('DROP TABLE ai_analysis_stops; DROP TABLE ai_daily_usage; DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
     db.close();
     const upgraded = createJobStore(dataDir);
     assert.equal(upgraded.load('job_before')?.title, 'บทเรียน');

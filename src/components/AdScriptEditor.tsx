@@ -11,6 +11,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Timer,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
@@ -46,6 +47,7 @@ interface AdScriptEditorProps {
   spots: ADSpot[];
   batches: AnalysisBatch[];
   isAnalyzing: boolean;
+  editableSpotIds?: ReadonlySet<string>;
   emptyState: 'preparing' | 'no-gaps' | 'failed';
   errorMessage: string | null;
   onRetryVad: () => void;
@@ -83,6 +85,7 @@ interface SpotBlockItemProps {
   spotOrder: number;
   batchInfo?: AnalysisBatch;
   isAnalyzing: boolean;
+  editingDisabled: boolean;
   isSelected: boolean;
   isPlayingNow: boolean;
   timingContext: SpotTimingContext;
@@ -100,6 +103,7 @@ const areSpotBlockPropsEqual = (prev: SpotBlockItemProps, next: SpotBlockItemPro
   prev.spotOrder === next.spotOrder &&
   prev.batchInfo === next.batchInfo &&
   prev.isAnalyzing === next.isAnalyzing &&
+  prev.editingDisabled === next.editingDisabled &&
   prev.isSelected === next.isSelected &&
   prev.isPlayingNow === next.isPlayingNow &&
   prev.timingContext === next.timingContext &&
@@ -108,11 +112,17 @@ const areSpotBlockPropsEqual = (prev: SpotBlockItemProps, next: SpotBlockItemPro
   prev.registerItemRef === next.registerItemRef &&
   checksEqual(prev.checks, next.checks);
 
+// Cerulean hairlines cover the dividers above and below the active row; the first row draws its top edge inside,
+// since the list clips anything above it.
+const ACTIVE_ROW_EDGES = 'relative z-10 border-b-transparent shadow-[0_-1px_0_var(--color-brand-600),0_1px_0_var(--color-brand-600)] '
+  + 'first:shadow-[inset_0_1px_0_var(--color-brand-600),0_1px_0_var(--color-brand-600)]';
+
 const SpotBlockItem = React.memo<SpotBlockItemProps>(({
   spot,
   spotOrder,
   batchInfo,
   isAnalyzing,
+  editingDisabled,
   isSelected,
   isPlayingNow,
   timingContext,
@@ -252,10 +262,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       className={`px-4 py-3.5 transition-colors ${isSelected ? 'cursor-default' : 'cursor-pointer'} ${
         isSkipped
           ? isSelected
-            ? 'relative z-10 bg-muted ring-1 ring-inset ring-input'
+            ? `${ACTIVE_ROW_EDGES} bg-muted`
             : 'bg-muted/60 hover:bg-muted'
           : isSelected
-          ? 'relative z-10 bg-brand-50/90 ring-1 ring-inset ring-brand-200'
+          ? `${ACTIVE_ROW_EDGES} bg-brand-50`
           : isPlayingNow
           ? 'bg-brand-50/35 hover:bg-brand-50/60'
           : 'bg-card hover:bg-muted/50'
@@ -276,7 +286,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
 
           {isExpanded && nudgeTargets && (
             <fieldset
-              disabled={isAnalyzing || isSkipped}
+              disabled={editingDisabled || isSkipped}
               aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
               onFocus={() => onSelect(spot.spot_id, false)}
               onClick={(e) => e.stopPropagation()}
@@ -369,7 +379,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
           {isExpanded && (
             <ToggleGroup
               appearance="segmented"
-              disabled={isAnalyzing}
+              disabled={editingDisabled}
               aria-label={`เลือกการบรรยายจุดที่ ${spotOrder}`}
               value={spot.decision === 'generate' || spot.decision === 'skip' ? [spot.decision] : []}
               onValueChange={(next) => {
@@ -399,31 +409,24 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               </ToggleGroupItem>
             </ToggleGroup>
           )}
-          {(!isExpanded || spot.decision === 'pending') && (
+          {/* Narration is the default decision, so only the exceptions take a visible badge. */}
+          {(!isExpanded || spot.decision === 'pending') && (spot.decision === 'generate' ? (
+            <span className="sr-only">{statusLabel}</span>
+          ) : (
             <Badge
-              variant={
-                isBatchProcessing
-                  ? 'info-strong'
-                  : spot.decision === 'pending'
-                  ? 'warning'
-                  : spot.decision === 'generate'
-                  ? 'info'
-                  : 'secondary'
-              }
+              variant={isBatchProcessing ? 'info-strong' : spot.decision === 'pending' ? 'warning' : 'secondary'}
               className={spot.decision === 'skip' ? 'text-muted-foreground' : undefined}
             >
               {isBatchProcessing ? (
                 <Spinner aria-hidden="true" />
               ) : spot.decision === 'pending' ? (
                 <Clock aria-hidden="true" />
-              ) : spot.decision === 'generate' ? (
-                <CheckCircle2 aria-hidden="true" />
               ) : (
                 <MinusCircle aria-hidden="true" />
               )}
               {statusLabel}
             </Badge>
-          )}
+          ))}
           {issues?.map((issue) => (
             <Badge key={issue} variant="warning-strong">
               <AlertTriangle aria-hidden="true" />
@@ -432,7 +435,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
           ))}
           {!isExpanded && isOverDurationWarning && (
             <Badge variant="secondary">
-              <Clock aria-hidden="true" />
+              <Timer aria-hidden="true" />
               {SPOT_CHECK_LABELS.over_duration}
             </Badge>
           )}
@@ -456,7 +459,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
         )}
 
         {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
-        {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
+        {spot.decision !== 'pending' && <fieldset disabled={editingDisabled} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
           {spot.decision === 'generate' ? (
             <div className="flex flex-col gap-2">
               <Textarea
@@ -475,59 +478,41 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                 placeholder="เขียนบทบรรยายภาพ"
               />
 
-              {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
-              <div className="flex flex-col gap-1.5">
-                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-150 ${
-                      isOverDurationWarning
-                        ? 'bg-warning-foreground'
-                        : speechRatio > 0.85
-                        ? 'bg-warning-strong-border'
-                        : 'bg-brand-600'
-                    }`}
-                    style={{
-                      width: `${Math.min(100, Math.max(0, Math.round(speechRatio * 100)))}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span
-                      className={
-                        isOverDurationWarning
-                          ? 'text-warning-foreground font-medium'
-                          : 'text-secondary-foreground font-medium'
-                      }
-                    >
-                      พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
-                      {isOverDurationWarning && (
-                        <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
-                      )}
-                    </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span
+                    className={
+                      isOverDurationWarning || speechRatio > 0.85
+                        ? 'text-warning-foreground font-medium'
+                        : 'text-secondary-foreground font-medium'
+                    }
+                  >
+                    พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
+                    {isOverDurationWarning && (
+                      <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
+                    )}
+                  </span>
+                  <span aria-hidden="true" className="text-muted-foreground/60">·</span>
+                  <span>{spot.text.trim().length} อักษร</span>
+                  {spot.is_edited && <>
                     <span aria-hidden="true" className="text-muted-foreground/60">·</span>
-                    <span>{spot.text.trim().length} อักษร</span>
-                    {spot.is_edited && <>
-                      <span aria-hidden="true" className="text-muted-foreground/60">·</span>
-                      <span>แก้ไขแล้ว</span>
-                    </>}
-                  </div>
-
-                  {isTimestampsModified && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleResetTimestamps}
-                      title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
-                      className="-mr-2"
-                    >
-                      <RotateCcw data-icon="inline-start" aria-hidden="true" />
-                      <span>คืนเวลาเดิม</span>
-                    </Button>
-                  )}
+                    <span>แก้ไขแล้ว</span>
+                  </>}
                 </div>
+
+                {isTimestampsModified && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetTimestamps}
+                    title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
+                    className="-mr-2"
+                  >
+                    <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                    <span>คืนเวลาเดิม</span>
+                  </Button>
+                )}
               </div>
             </div>
           ) : hasSavedText ? (
@@ -594,6 +579,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   spots,
   batches,
   isAnalyzing,
+  editableSpotIds,
   emptyState,
   errorMessage,
   onRetryVad,
@@ -976,6 +962,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   spotOrder={globalIdx}
                   batchInfo={spotBatchMap[spot.spot_id]}
                   isAnalyzing={isAnalyzing}
+                  editingDisabled={isAnalyzing || editableSpotIds?.has(spot.spot_id) === false}
                   isSelected={spot.spot_id === selectedSpotId}
                   isPlayingNow={isPlayingNow}
                   timingContext={timingContext}

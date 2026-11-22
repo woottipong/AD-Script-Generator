@@ -86,6 +86,17 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN owner_sub TEXT;
   ALTER TABLE jobs ADD COLUMN owner_email TEXT;
   CREATE INDEX idx_jobs_owner ON jobs(owner_sub);`,
+  `CREATE TABLE ai_daily_usage (
+    author_sub TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    PRIMARY KEY (author_sub, usage_day, job_id)
+  );
+  CREATE TABLE ai_analysis_stops (
+    job_id TEXT NOT NULL,
+    author_sub TEXT NOT NULL,
+    stopped_at TEXT NOT NULL
+  );`,
 ];
 
 /** Brings the database up to the latest schema; each migration commits together with its version number. */
@@ -221,6 +232,33 @@ export function createJobStore(dataDir: string) {
     'UPDATE jobs SET progress_stage = ?, progress_percent = ?, active_model = ?, updated_at = ? WHERE job_id = ?',
   );
   const deleteJobRow = db.prepare('DELETE FROM jobs WHERE job_id = ?');
+  const selectAiUsage = db.prepare('SELECT job_id FROM ai_daily_usage WHERE author_sub = ? AND usage_day = ?');
+  const reserveAiJob = db.prepare(`INSERT OR IGNORE INTO ai_daily_usage (author_sub, usage_day, job_id)
+    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ai_daily_usage WHERE author_sub = ? AND usage_day = ?) < ?`);
+  const setStopping = db.prepare("UPDATE jobs SET status = 'STOPPING', updated_at = ? WHERE job_id = ?");
+  const insertAiStop = db.prepare('INSERT INTO ai_analysis_stops (job_id, author_sub, stopped_at) VALUES (?, ?, ?)');
+
+  function aiUsage(authorSub: string, day: string): string[] {
+    return selectAiUsage.all(authorSub, day).map((row) => String(row.job_id));
+  }
+
+  function reserveAiUsage(authorSub: string, day: string, jobId: string, limit: number): boolean {
+    if (reserveAiJob.run(authorSub, day, jobId, authorSub, day, limit).changes) return true;
+    return aiUsage(authorSub, day).includes(jobId);
+  }
+
+  function recordAiStop(jobId: string, authorSub: string): void {
+    const now = new Date().toISOString();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      setStopping.run(now, jobId);
+      insertAiStop.run(jobId, authorSub, now);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
 
   function dirOf(jobId: string): string {
     if (!isJobId(jobId)) throw new Error('Invalid job ID');
@@ -383,5 +421,6 @@ export function createJobStore(dataDir: string) {
     db.close();
   }
 
-  return { dirOf, exists, loadMeta, loadSpots, load, save, saveProgress, rename, list, deleteJob, updateOwnerEmail, close };
+  return { dirOf, exists, loadMeta, loadSpots, load, save, saveProgress, rename, list, deleteJob, updateOwnerEmail,
+    aiUsage, reserveAiUsage, recordAiStop, close };
 }

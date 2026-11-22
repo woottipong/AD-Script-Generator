@@ -82,7 +82,9 @@ The fallback model is `gemini-3.5-flash-lite`. It is not returned by this endpoi
 
 ### GET /api/me
 
-Returns the signed-in Author as `{ email, name?, allJobs, accessGroups? }`; `name` comes from the token's `name` claim and is left out when Keycloak sends none, and `accessGroups` lists the `AUTH_ALL_JOBS_GROUPS` groups that grant All-Jobs Access (left out without it). `allJobs` is true when one of the Author's Keycloak groups is listed in `AUTH_ALL_JOBS_GROUPS`; it is read once at sign-in.
+Returns the signed-in Author as `{ email, name?, allJobs, accessGroups?, canGenerateAi, aiGeneration }`; `name` comes from the token's `name` claim and is left out when Keycloak sends none, and `accessGroups` lists the `AUTH_ALL_JOBS_GROUPS` groups that grant All-Jobs Access (left out without it). `allJobs` is true when one of the Author's Keycloak groups is listed in `AUTH_ALL_JOBS_GROUPS`; it is read once at sign-in.
+
+`canGenerateAi` is true for members of either Keycloak group `admin` or `supervisor`. `aiGeneration` contains `{ enabled, limit, remaining, usedJobIds }`. `enabled` reports whether a Gemini key is configured. Usage covers distinct Jobs started by this Author on the current calendar day in Thailand.
 
 ### GET /api/jobs
 
@@ -179,11 +181,12 @@ Returns HTTP 200 `{ "ok": true }`, or HTTP 400 `{ "error": "..." }` if `uploadId
 
 Registers a job from an uploaded file and VAD output. An optional `title` sets the Job Title; blank or missing uses the video file name without its extension, and more than 120 characters returns HTTP 400. Candidate spots become `pending` spots. The server groups them into 240-second timeline batches by spot start time and omits empty time buckets. Batch windows include 20 seconds before and 10 seconds after, extend to cover a spot crossing a batch boundary, and stay within the video duration.
 
-The browser uses a JSON request with `uploadId`:
+The browser uses a JSON request with `uploadId`. When saving a prepared Job, send `autoStart: false`. To start Gemini analysis on creation, send `confirmAiCost: true` after showing and confirming the cost disclosure.
 
 ```json
 {
   "uploadId": "job_demo",
+  "autoStart": false,
   "video_metadata": {
     "fileName": "scene.mp4",
     "fileSize": 52428800,
@@ -261,33 +264,40 @@ HTTP 200 returns `{ file_name, content, size_bytes, cue_count }`.
 
 ### POST /api/jobs/:jobId/start
 
-Starts or resumes background processing. Review Mode jobs return HTTP 409. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
+Starts or resumes background processing. Review Mode jobs return HTTP 409. Send `{ "confirmAiCost": true }` to start or resume Gemini analysis. The server resets failed or interrupted batches for another attempt and skips completed batches.
 
 - HTTP 200 returns `{ job, isRunning: true }` when background work starts.
 - If the same job already holds the lock, HTTP 200 returns its current state with `isRunning: true` without starting another runner.
 - If all batches are completed and the job still has a Gemini file name, HTTP 200 returns `{ job, isRunning: true }` and retries deletion in the background. The server skips analysis and keeps the job `READY`.
-- If all batches are completed and the job has no Gemini file name, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100. The API key check still runs first in both cases.
+- If all batches are completed and the job has no Gemini file name, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100.
 - HTTP 404 means that the job was not found.
 - HTTP 409 means that another job holds the lock. The error reads `มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ`.
 - Classified client errors return HTTP 401, 429, or 500 with `error`.
 
 On backend restart, recovery applies to every saved job. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
 
+All routes that start a Gemini analysis enforce AI Generation Access and the daily quota. A rejected request returns code `AI_ACCESS_REQUIRED` (401), `AI_NOT_CONFIGURED` (500), `AI_CONFIRMATION_REQUIRED` (400), or `AI_DAILY_QUOTA_EXHAUSTED` (429). A reservation is reused when the same Author resumes the same Job on the same day.
+
+### POST /api/jobs/:jobId/stop
+
+Requests a stop for a Job the caller can access. The caller must also have AI Generation Access. No body is required. Repeated calls during the same analysis are safe. HTTP 200 returns `{ isRunning }`. While running, the Job reports `STOPPING`. The runner keeps the current successful result, skips later requests and retries, attempts Gemini file deletion, and reports `STOPPED` if batches remain or `READY` if all are done. Stopped Jobs resume only through a confirmed analysis request.
+
 ### POST /api/jobs/:jobId/analyze-batch
 
 Analyzes one batch synchronously. This is a fallback route. The current browser uses background processing and polling.
 
-Optional JSON body:
+JSON body when starting a batch, with optional `batch_id`:
 
 ```json
 {
-  "batch_id": "batch_001"
+  "batch_id": "batch_001",
+  "confirmAiCost": true
 }
 ```
 
 If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch. The existing `is_edited` flag is retained.
 
-If no batch matches, including an unknown explicit `batch_id`, the route sets the job status to `READY` and returns HTTP 200 with `{ job }`.
+If no batch matches, the route returns HTTP 200 with `{ job }`. An explicitly stopped Job keeps its `STOPPED` status. Other Jobs are set to `READY`.
 
 HTTP 404 means that the job was not found. HTTP 409 means that another job holds an active lock or the job is in Review Mode. Analysis failures return HTTP 401, 429, or 500 with `error`, `isRateLimit`, `job`, and `batch` after persisting the failed state. If the failed state cannot be saved, the route returns HTTP 500 with `error` only.
 

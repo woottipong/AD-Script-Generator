@@ -56,6 +56,7 @@ interface VideoPreviewTimelineProps {
   spots: ADSpot[];
   selectedSpotId: string | null;
   isAnalyzing?: boolean;
+  editableSpotIds?: ReadonlySet<string>;
   processingSpotIds?: ReadonlySet<string>;
   detectProgress?: ProcessingProgress | null;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
@@ -74,6 +75,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   spots,
   selectedSpotId,
   isAnalyzing = false,
+  editableSpotIds,
   processingSpotIds,
   detectProgress = null,
   onSelectSpot,
@@ -246,6 +248,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     mode: SpotDragMode
   ) => {
     if (event.button !== 0 || isAnalyzing) return;
+    if (editableSpotIds?.has(spot.spot_id) === false) {
+      event.stopPropagation();
+      onSelectSpot(spot.spot_id, true);
+      return;
+    }
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     setActiveDrag({
@@ -778,7 +785,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 const isSelected = spot.spot_id === selectedSpotId;
                 const isProcessingSpot = spot.decision === 'pending' && Boolean(processingSpotIds?.has(spot.spot_id));
                 const hasIssue = issueSpotIds.has(spot.spot_id);
-                const showHandles = !isAnalyzing && width >= 18;
+                const editingDisabled = isAnalyzing || editableSpotIds?.has(spot.spot_id) === false;
+                const showHandles = !editingDisabled && width >= 18;
                 const colorClasses = spot.decision === 'generate'
                   ? 'bg-brand-700 group-hover:bg-brand-800 text-primary-foreground border-brand-800'
                   : spot.decision === 'skip'
@@ -806,8 +814,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     onPointerUp={(event) => finishSpotDrag(event, false)}
                     onPointerCancel={(event) => finishSpotDrag(event, true)}
                     style={{ left: hitLeft, width: Math.max(2, hitRight - hitLeft) }}
-                    title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)} (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)${spot.text ? `\n${spot.text}` : ''}`}
-                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${isAnalyzing ? 'cursor-pointer' : isDraggingThis ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
+                    title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)}${editingDisabled ? '' : ' (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)'}${spot.text ? `\n${spot.text}` : ''}`}
+                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${editingDisabled ? 'cursor-pointer' : isDraggingThis ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
                   >
                     <span
                       style={{ left: left - hitLeft, width }}

@@ -1,4 +1,9 @@
-import type { PersistedJobState } from '../types/ad';
+import type { AnalysisBatch, PersistedJobState } from '../types/ad';
+
+export function completedAnalysisSpotIds(batches: readonly AnalysisBatch[]): Set<string> {
+  return new Set(batches.filter((batch) => batch.status === 'completed')
+    .flatMap((batch) => batch.candidate_spots.map((spot) => spot.spot_id)));
+}
 
 type SpotResult = { decision: 'generate' | 'skip'; text: string; reason?: string };
 

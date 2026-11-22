@@ -50,6 +50,9 @@ export function getProcessingFeedback(
     }
     return { title: 'กำลังเตรียมตรวจเสียง', description: 'กำลังเตรียมเครื่องมือตรวจเสียงบนเครื่องของคุณ ครั้งแรกอาจใช้เวลานานขึ้น' };
   }
+  if (status === 'STOPPING') {
+    return { title: 'กำลังหยุดการวิเคราะห์', description: 'กำลังรอให้คำขอที่ส่งไปแล้วเสร็จ ระบบจะไม่เริ่มวิเคราะห์ชุดถัดไป' };
+  }
   if (status !== 'ANALYZING') return null;
   if (errorMessage) {
     return { title: 'กำลังตรวจการเชื่อมต่ออีกครั้ง', description: 'ยังตรวจสถานะงานไม่ได้ ระบบกำลังลองเชื่อมต่อใหม่ ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้' };

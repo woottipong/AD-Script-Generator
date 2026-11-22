@@ -75,3 +75,12 @@ _Avoid_: Job name, label
 **Analysis Batch**:
 A 240-second slice of the timeline whose Candidate Spots Gemini analyses in one request, read with 20 seconds of context before and 10 seconds after.
 _Avoid_: Chunk, window
+
+**AI Generation Access**:
+The permission granted to Authors in the admin and supervisor groups to start, stop, or resume Gemini analysis for a Job they can access.
+
+**Daily AI Quota**:
+The maximum number of Jobs an Author may submit for Gemini analysis in one calendar day in Thailand.
+
+**Stopped Analysis**:
+Gemini analysis deliberately stopped at an Author's request, with completed Analysis Batches kept and remaining batches available to resume.

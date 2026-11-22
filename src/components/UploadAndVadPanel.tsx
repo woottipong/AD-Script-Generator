@@ -46,6 +46,7 @@ import {
   formatFileSize,
 } from '../utils/formatters';
 import { defaultJobTitle } from '../utils/jobValidation';
+import { completedAnalysisSpotIds } from '../utils/jobProcessing';
 
 const batchColors = {
   pending: {
@@ -98,6 +99,8 @@ interface UploadAndVadPanelProps {
   onRunVad: () => void;
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
+  aiDisabledReason: string | null;
+  onStopAi?: () => void;
   onResetJob: () => void;
   onOpenJobList: () => void;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
@@ -124,6 +127,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onRunVad,
   onStartGeminiAnalysis,
   onRetryFailedBatches,
+  aiDisabledReason,
+  onStopAi,
   onResetJob,
   onOpenJobList,
   onSelectSpot,
@@ -141,7 +146,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
   const isDetecting = status === 'DETECTING';
-  const isAnalyzing = status === 'ANALYZING';
+  const isAnalyzing = status === 'ANALYZING' || status === 'STOPPING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
   const activityFeedback: ProcessingFeedback | null = checkingFileName
     ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
@@ -215,15 +220,20 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const canShowGenerate = !isReview && Boolean(vadOutput?.candidate_spots.length) &&
     Boolean(videoFile || completedBatchesCount < batches.length);
-  const needsResume = failedBatchesCount > 0 ||
+  const needsResume = status === 'STOPPED' || failedBatchesCount > 0 ||
     (completedBatchesCount > 0 && completedBatchesCount < batches.length) ||
     (!videoFile && batches.length > 0 && completedBatchesCount < batches.length);
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
   const showPrimaryGenerate = canShowGenerate && !isBusy && !isRegenerating;
-  const canExport = generatedSpotsCount > 0 && !isBusy;
+  const completeSpotIds = status === 'STOPPED' ? completedAnalysisSpotIds(batches) : null;
+  const canExport = !isBusy && (completeSpotIds
+    ? spots.some((spot) => completeSpotIds.has(spot.spot_id) && spot.decision === 'generate' && spot.text.trim())
+    : generatedSpotsCount > 0);
   const hasStatusError = Boolean(errorMessage) || failedBatchesCount > 0;
-  const idleStatus = hasStatusError
+  const idleStatus = status === 'STOPPED'
+    ? { full: 'หยุดการวิเคราะห์แล้ว', compact: 'หยุดแล้ว' }
+    : hasStatusError
     ? { full: 'ต้องตรวจสอบการทำงาน', compact: 'มีปัญหา' }
     : isReview
     ? { full: `ตรวจแก้ SRT · ${spots.length} บรรทัด`, compact: `${spots.length} บรรทัด` }
@@ -463,11 +473,18 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </PopoverContent>
       </Popover>
 
-      {showPrimaryGenerate ? (
-        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
-          <Sparkles data-icon="inline-start" aria-hidden="true" />
-          {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+      {onStopAi && isAnalyzing ? (
+        <Button variant="outline" size="lg" onClick={onStopAi} disabled={status === 'STOPPING'}>
+          {status === 'STOPPING' ? 'กำลังหยุด…' : 'หยุดการวิเคราะห์'}
         </Button>
+      ) : showPrimaryGenerate ? (
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          <Button size="lg" onClick={generateAd} disabled={Boolean(aiDisabledReason) || (!canGenerateAd && !needsResume)} aria-describedby={aiDisabledReason ? 'ai-generation-unavailable' : undefined} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
+            <Sparkles data-icon="inline-start" aria-hidden="true" />
+            {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+          </Button>
+          {aiDisabledReason && <p id="ai-generation-unavailable" className="max-w-44 text-xs leading-snug text-muted-foreground">{aiDisabledReason}</p>}
+        </div>
       ) : canExport && (
         <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
           <Download data-icon="inline-start" aria-hidden="true" />
@@ -483,7 +500,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             <>
               <DropdownMenuGroup>
                 {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><Download aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
-                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy || Boolean(aiDisabledReason)}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && aiDisabledReason && <p className="px-2 py-1 text-xs text-muted-foreground">{aiDisabledReason}</p>}
                 {videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>
               </DropdownMenuGroup>

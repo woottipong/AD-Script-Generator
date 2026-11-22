@@ -14,7 +14,8 @@ services:
       - DISABLE_HMR=false
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=300
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_DAILY_JOB_LIMIT=${AI_DAILY_JOB_LIMIT:-3}
       # Sign-in (ADR-0004). The browser reaches this container on host port 3003 (or DEV_PORT), so that is the
       # sign-in origin; register http://localhost:3003/auth/callback on the Keycloak client. SESSION_SECRET comes from .env only.
       - APP_URL=http://localhost:${DEV_PORT:-3003}

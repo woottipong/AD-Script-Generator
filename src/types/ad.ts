@@ -6,8 +6,17 @@ export type JobStatus =
   | 'DETECTING'
   | 'VAD_READY'
   | 'ANALYZING'
+  | 'STOPPING'
+  | 'STOPPED'
   | 'READY'
   | 'FAILED';
+
+export interface AiGenerationAvailability {
+  enabled: boolean;
+  limit: number;
+  remaining: number;
+  usedJobIds: string[];
+}
 
 export interface VADConfig {
   speechThreshold: number;

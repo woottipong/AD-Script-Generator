@@ -47,13 +47,13 @@ test('an Author sees and acts on only their own Jobs; others answer like a missi
   seed.close();
   const child = spawn(process.execPath, [path.join(process.cwd(), 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port) }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api`;
-  const as = (author: typeof authorA) => {
+  const as = (author: typeof authorA & { canGenerateAi?: boolean }) => {
     const send = signedInFetch(author);
     return (route: string, method = 'GET', body?: unknown) => send(base + route, {
       method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   };
-  const a = as(authorA), b = as(authorB), lead = as(supervisor);
+  const a = as(authorA), b = as({ ...authorB, canGenerateAi: true }), lead = as(supervisor);
   const ids = async (response: Response) => ((await response.json()) as { jobs: { job_id: string }[] }).jobs.map((job) => job.job_id).sort();
   try {
     let ready = false;
@@ -155,13 +155,13 @@ globalThis.fetch = async (input, init) => {
     stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}/api`;
-  const as = (author: typeof authorA) => {
+  const as = (author: typeof authorA & { canGenerateAi?: boolean }) => {
     const send = signedInFetch(author);
     return (route: string, method = 'GET', body?: unknown) => send(base + route, {
       method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   };
-  const a = as(authorA), b = as(authorB), lead = as(supervisor);
+  const a = as(authorA), b = as({ ...authorB, canGenerateAi: true }), lead = as(supervisor);
 
   try {
     let ready = false;
@@ -170,7 +170,7 @@ globalThis.fetch = async (input, init) => {
     }
     assert.ok(ready);
 
-    assert.equal((await b('/jobs/job_running/start', 'POST')).status, 200);
+    assert.equal((await b('/jobs/job_running/start', 'POST', { confirmAiCost: true })).status, 200);
     for (let i = 0; i < 200 && !fs.existsSync(path.join(dir, 'entered')); i++) {
       await new Promise(resolve => setTimeout(resolve, 25));
     }

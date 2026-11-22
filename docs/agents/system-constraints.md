@@ -61,6 +61,8 @@ Owned by `server.ts`:
 
 - **Status sanitization**: `sanitizeApiStatusCode` remaps HTTP `403 → 401` and `502/503/504 → 500` so Cloud Run / Nginx reverse proxies do not replace JSON error bodies with HTML pages. Apply it on all API error paths.
 - **Concurrency lock**: `activeProcessingLock` enforces one Gemini analysis Job at a time per server process; concurrent start requests return HTTP 409.
+- **AI Generation Access and Daily AI Quota**: Keycloak `admin` and `supervisor` receive the separate AI entitlement at sign-in. Every path that starts Gemini analysis requires this entitlement, a configured key, and explicit cost confirmation. SQLite admits at most `AI_DAILY_JOB_LIMIT` distinct Jobs per Author per Thailand day (default 3). The same Author and Job can resume that day with the existing reservation. The reservation survives Job deletion and server restart.
+- **Stopped Analysis**: Stop is recorded with the requesting Author and persisted before signalling the runner. Finish the in-flight request, keep its successful results, skip later requests and retries, and attempt to remove the Gemini file. The local MP4 stays available. Resume requires confirmation, reuploads the video, and processes unfinished batches only. See [ADR-0006](../adr/0006-control-gemini-analysis-and-daily-usage.md).
 
 ## Editing and validation rules
 

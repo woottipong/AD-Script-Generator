@@ -11,28 +11,34 @@ const job = (status: string, batches: string[] = ['pending']): PersistedJobState
 
 const parseResponse = (response: Response) => response.json();
 
-test('polls until ready, resumes an idle job once and keeps the start error until running', async () => {
+test('observes a stopped job without starting it again', async () => {
   const events: JobPollEvent[] = [];
   const calls: string[] = [];
-  const waits: number[] = [];
-  let polls = 0;
   await pollJob({
-    jobId: 'job 1', token: { aborted: false }, startError: 'start failed', parseResponse,
-    wait: async (ms) => { waits.push(ms); },
+    jobId: 'job 1', token: { aborted: false }, parseResponse,
+    wait: async () => {},
     fetch: async (input, init) => {
       calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
-      if (init?.method === 'POST') return Response.json({});
-      polls++;
-      return Response.json({ job: job(polls === 5 ? 'READY' : 'ANALYZING'), isRunning: polls === 4 });
+      return Response.json({ job: job('STOPPED'), isRunning: false });
     },
     onEvent: (event) => events.push(event),
   });
-  assert.equal(calls.filter((call) => call.startsWith('POST')).length, 1);
-  assert.ok(calls.every((call) => call.includes('job%201')));
-  assert.ok(calls.filter((call) => call.startsWith('GET')).every((call) => call.endsWith('?view=progress')));
-  assert.equal(events.filter((event) => event.type === 'start-unconfirmed').length, 3);
-  assert.equal(events.at(-1)?.type, 'ready');
-  assert.deepEqual(waits, [1400, 1400, 1400, 1400, 1400]);
+  assert.deepEqual(calls, ['GET /api/jobs/job%201?view=progress']);
+  assert.deepEqual(events.map((event) => event.type), ['snapshot', 'stopped']);
+});
+
+test('an idle job requires the Author to confirm a new start', async () => {
+  const events: JobPollEvent[] = [];
+  await pollJob({
+    jobId: 'job 1', token: { aborted: false }, startError: 'start failed', parseResponse,
+    wait: async () => {},
+    fetch: async (_input, init) => {
+      assert.equal(init?.method, undefined);
+      return Response.json({ job: job('VAD_READY'), isRunning: false });
+    },
+    onEvent: (event) => events.push(event),
+  });
+  assert.deepEqual(events.at(-1), { type: 'failed', message: 'start failed' });
 });
 
 test('reports disconnection after six consecutive errors and recovers on a valid job', async () => {

@@ -10,7 +10,7 @@ import { createJobStore } from '../../src/utils/jobStore';
 import { authTestEnv, signedInFetch } from './helpers/auth';
 
 // Every API call in this file is made by an Author with All-Jobs Access, so seeded Jobs with no Job Owner stay reachable.
-const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true });
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true, canGenerateAi: true });
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -87,7 +87,7 @@ globalThis.fetch = async (input, init) => {
     assert.ok(fs.existsSync(path.join(outside, 'source_video.mp4')), 'a symlink escape is never followed');
     assert.ok(fs.existsSync(recoveringPath));
     assert.ok(fs.existsSync(path.join(data, 'job_upload/source_video.mp4')));
-    assert.equal((await fetch(`${base}/job_processing/start`, { method: 'POST' })).status, 200);
+    assert.equal((await fetch(`${base}/job_processing/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmAiCost: true }) })).status, 200);
     for (let i = 0; i < 200 && !fs.existsSync(path.join(dir, 'entered')); i++) await sleep(25);
     assert.ok(fs.existsSync(path.join(dir, 'entered')), 'Gemini request is running');
     assert.equal((await fetch(`${base}/job_processing`, { method: 'DELETE' })).status, 404, 'there is no active pointer to clear');

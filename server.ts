@@ -28,7 +28,7 @@ import {
   buildAnalysisBatches,
   formatTimestampDisplay,
 } from './src/utils/formatters';
-import { mergeProcessingState } from './src/utils/jobProcessing';
+import { completedAnalysisSpotIds, mergeProcessingState } from './src/utils/jobProcessing';
 import { resolveJobTitle, validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
 import { createJobStore, isJobId, type JobMeta } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
@@ -185,6 +185,7 @@ function finishStoppedAnalysis(job: PersistedJobState): void {
     }
   }
   job.status = job.batches.every((batch) => batch.status === 'completed') ? 'READY' : 'STOPPED';
+  if (job.status === 'READY') job.progress_percent = 100;
   job.progress_stage = undefined;
   job.active_model = undefined;
   job.error_message = undefined;
@@ -247,6 +248,13 @@ async function deleteJobGeminiFile(ai: GoogleGenAI, job: PersistedJobState): Pro
   job.gemini_file_mime_type = undefined;
   job.gemini_file_expires_at = undefined;
   return true;
+}
+
+async function clearStoppedGeminiFile(ai: GoogleGenAI, job: PersistedJobState): Promise<void> {
+  if (!(await deleteJobGeminiFile(ai, job))) {
+    throw new GeminiFileDeletionError('ยังลบวิดีโอจากการวิเคราะห์ครั้งก่อนบน Gemini ไม่สำเร็จ กรุณาลองทำต่ออีกครั้ง');
+  }
+  saveProcessingState(job);
 }
 
 /**
@@ -420,6 +428,7 @@ async function analyzeBatchWithGemini(
           },
         ],
         config: {
+          automaticContinuation: false,
           httpOptions: {
             timeout: modelToUse === FALLBACK_GEMINI_MODEL ? 60_000 : 25_000,
             retryOptions: { attempts: 1 },
@@ -497,7 +506,7 @@ async function analyzeBatchWithGemini(
  * Executes Gemini Files upload + sequential batch analysis asynchronously in the background
  * so HTTP requests return immediately (<50ms) and never trigger proxy/gateway timeouts.
  */
-async function runJobInBackground(jobId: string): Promise<void> {
+async function runJobInBackground(jobId: string, isResumingStoppedJob = false): Promise<void> {
   if (activeProcessingLock) return;
 
   const job = store.load(jobId);
@@ -524,6 +533,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
     );
     saveProcessingState(job);
 
+    if (isResumingStoppedJob && job.gemini_file_name) await clearStoppedGeminiFile(uploadAi, job);
     // Step 1: Ensure video is uploaded & ACTIVE on Gemini Files API
     await ensureActiveGeminiFileUri(uploadAi, job, lock.stop.signal, (stage) => {
       job.progress_stage = stage;
@@ -593,7 +603,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
       stuckBatch.status = 'failed';
       stuckBatch.error = parsed.userMessage;
     }
-    job.status = 'FAILED';
+    job.status = isResumingStoppedJob && deletionFailed ? 'STOPPED' : 'FAILED';
     job.progress_stage = undefined;
     job.error_message = parsed.userMessage;
   } finally {
@@ -612,12 +622,13 @@ async function runJobInBackground(jobId: string): Promise<void> {
 }
 
 /** Analysis runs only in this process, so any Job still marked as analysing was cut off by a restart. */
-function recoverOrphanedJobsOnStartup(): void {
+async function recoverOrphanedJobsOnStartup(): Promise<void> {
   try {
     for (const { job_id, is_upload } of store.list()) {
       if (is_upload) continue;
       const job = store.load(job_id);
       if (!job) continue;
+      const wasStopping = job.status === 'STOPPING';
       let modified = false;
       for (const b of job.batches) {
         if (b.status === 'processing') {
@@ -627,11 +638,17 @@ function recoverOrphanedJobsOnStartup(): void {
         }
       }
       if (job.status === 'ANALYZING' || job.status === 'STOPPING') {
-        job.status = job.status === 'STOPPING' ? 'STOPPED' : 'VAD_READY';
-        job.progress_stage = undefined;
+        if (job.status === 'STOPPING') finishStoppedAnalysis(job);
+        else {
+          job.status = 'VAD_READY';
+          job.progress_stage = undefined;
+        }
         modified = true;
       }
       if (modified) store.save(job);
+      if (wasStopping && job.gemini_file_name && geminiApiKey()) {
+        if (await deleteJobGeminiFile(getGeminiClient({ fastFail: false }), job)) saveProcessingState(job);
+      }
     }
   } catch (err) {
     // Unreadable storage must not keep the server from starting; the Job List reports the storage error.
@@ -640,7 +657,7 @@ function recoverOrphanedJobsOnStartup(): void {
 }
 
 async function startServer() {
-  recoverOrphanedJobsOnStartup();
+  await recoverOrphanedJobsOnStartup();
 
   const app = express();
 
@@ -1185,6 +1202,7 @@ async function startServer() {
       return;
     }
 
+    const isResumingStoppedJob = job.status === 'STOPPED';
     if (job.batches.every((b) => b.status === 'completed')) {
       job.status = 'READY';
       job.progress_stage = undefined;
@@ -1206,7 +1224,7 @@ async function startServer() {
       store.save(job);
     }
 
-    void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
+    void runJobInBackground(jobId, isResumingStoppedJob).catch(() => console.error('Failed to run job processing'));
     res.json({ job, isRunning: true });
   });
 
@@ -1285,8 +1303,10 @@ async function startServer() {
         : job.batches.find((b) => b.status !== 'completed');
 
       if (!batch) {
-        job.status = 'READY';
-        store.save(job);
+        if (job.status !== 'STOPPED') {
+          job.status = 'READY';
+          store.save(job);
+        }
         res.json({ job });
         return;
       }
@@ -1297,6 +1317,7 @@ async function startServer() {
       }
 
       if (!allowAiGeneration(res, req.body?.confirmAiCost, jobId)) return;
+      const isResumingStoppedJob = job.status === 'STOPPED';
       const lock = createProcessingLock(jobId);
       activeProcessingLock = lock;
       batch.status = 'processing';
@@ -1308,6 +1329,7 @@ async function startServer() {
         store.save(job);
         uploadAi = getGeminiClient({ fastFail: false });
         const fastAi = getGeminiClient({ fastFail: true });
+        if (isResumingStoppedJob && job.gemini_file_name) await clearStoppedGeminiFile(uploadAi, job);
         const spotResults = await analyzeBatchWithGemini(
           fastAi,
           uploadAi,
@@ -1325,9 +1347,11 @@ async function startServer() {
           job.status = 'READY';
         }
 
-        saveProcessingState(job, spotResults);
         if (lock.stop.signal.aborted) finishStoppedAnalysis(job);
-        if ((allCompleted || lock.stop.signal.aborted) && await deleteJobGeminiFile(uploadAi, job)) {
+        saveProcessingState(job, spotResults);
+        if (allCompleted || lock.stop.signal.aborted) {
+          await deleteJobGeminiFile(uploadAi, job);
+          if (lock.stop.signal.aborted) finishStoppedAnalysis(job);
           try {
             saveProcessingState(job);
           } catch {
@@ -1346,10 +1370,11 @@ async function startServer() {
         const parsed = parseGeminiError(err);
         batch.status = 'failed';
         batch.error = parsed.userMessage;
-        job.status = 'FAILED';
+        job.status = isResumingStoppedJob && err instanceof GeminiFileDeletionError ? 'STOPPED' : 'FAILED';
         job.error_message = parsed.userMessage;
         try {
           if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
+          if (lock.stop.signal.aborted) finishStoppedAnalysis(job);
           saveProcessingState(job);
         } catch {
           res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
@@ -1407,6 +1432,22 @@ async function startServer() {
       return;
     }
 
+    if (job.status === 'STOPPED') {
+      const completeSpotIds = completedAnalysisSpotIds(job.batches);
+      const previous = new Map(job.spots.map((spot) => [spot.spot_id, spot]));
+      const changedIncompleteSpot = checked.spots.some((spot) => {
+        const before = previous.get(spot.spot_id);
+        return before && !completeSpotIds.has(spot.spot_id) && (
+          spot.start_ms !== before.start_ms || spot.end_ms !== before.end_ms ||
+          spot.text !== before.text || spot.decision !== before.decision ||
+          spot.reason !== before.reason || spot.is_edited !== before.is_edited
+        );
+      });
+      if (changedIncompleteSpot) {
+        res.status(409).json({ error: 'แก้ไขได้เฉพาะบทจากชุดที่วิเคราะห์เสร็จแล้ว' });
+        return;
+      }
+    }
     job.spots = checked.spots;
     store.save(job);
     res.json({ job });

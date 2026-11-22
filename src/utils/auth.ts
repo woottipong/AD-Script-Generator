@@ -190,11 +190,13 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       });
       const claims = tokens.claims()!;
       const name = trimmedString(claims.name);
+      const groups = groupsClaim(claims) ?? accessTokenGroups(tokens.access_token);
       const session: AuthorSession = {
         sub: claims.sub,
         email: authorEmailFromClaims(claims),
         ...(name ? { name } : {}),
-        ...accessFrom(allJobsGroupsOf(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups)),
+        ...accessFrom(allJobsGroupsOf(groups, config.allJobsGroups)),
+        canGenerateAi: allJobsGroupsOf(groups, ['admin', 'supervisor']).length > 0,
         ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       };
       onSignIn(session);

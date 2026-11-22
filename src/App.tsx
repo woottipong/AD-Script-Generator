@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, useTransition, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
 import { flushSync } from 'react-dom';
 import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -17,6 +17,7 @@ import {
   JobMode,
   JobStatus,
   PersistedJobState,
+  type AiGenerationAvailability,
   REVIEW_MAX_DURATION_MS,
   VADOutput,
   VideoMetadata,
@@ -52,6 +53,7 @@ import { parseApiResponse } from './utils/apiResponse';
 import { defaultJobTitle, resolveJobTitle } from './utils/jobValidation';
 import { createJobSaveQueue } from './utils/jobSaveQueue';
 import { pollJob } from './utils/jobPolling';
+import { completedAnalysisSpotIds } from './utils/jobProcessing';
 import { jobIdFromPath, jobPath } from './utils/jobPath';
 
 const loadReviewIntake = () => import('./components/ReviewIntake').then((module) => ({ default: module.ReviewIntake }));
@@ -257,7 +259,28 @@ const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', link
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
-  const [signedInAuthor, setSignedInAuthor] = useState<{ email: string; name?: string; allJobs: boolean; accessGroups?: string[] } | null>(null);
+  const [signedInAuthor, setSignedInAuthor] = useState<{
+    email: string; name?: string; allJobs: boolean; accessGroups?: string[];
+    canGenerateAi?: boolean; aiGeneration?: AiGenerationAvailability;
+  } | null>(null);
+  const refreshAuthor = useCallback(async () => {
+    const response = await fetch('/api/me').catch(() => null);
+    if (!response?.ok) return;
+    const author = await response.json().catch(() => null);
+    if (typeof author?.email === 'string') {
+      setSignedInAuthor((current) => JSON.stringify(current) === JSON.stringify(author) ? current : author);
+    }
+  }, []);
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) void refreshAuthor(); };
+    refresh();
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(timer);
+    };
+  }, [refreshAuthor]);
   const [status, setStatus] = useState<JobStatus>('IDLE');
   const [jobId, setJobId] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -314,6 +337,7 @@ export default function App() {
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [restoredIncompleteJob, setRestoredIncompleteJob] = useState<boolean>(false);
+  const [stoppableJob, setStoppableJob] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
   const [mode, setMode] = useState<JobMode | null>(null);
   const [srtFileName, setSrtFileName] = useState<string | null>(null);
@@ -601,7 +625,6 @@ export default function App() {
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
     pollAbortRef.current = token;
-    setStatus('ANALYZING');
     setErrorMessage(null);
 
     await pollJob({
@@ -615,22 +638,32 @@ export default function App() {
             setErrorMessage(null);
             setBatches(event.job.batches);
             setSpots(event.job.spots);
+            if (event.job.status === 'ANALYZING' || event.job.status === 'STOPPING') {
+              const nextStatus = event.job.status;
+              setStatus((current) => current === 'STOPPING' ? current : nextStatus);
+              setStoppableJob(activeJobId);
+            }
             if (event.job.progress_stage) {
               setVadProgress({ stage: event.job.progress_stage, percent: event.job.progress_percent ?? 20 });
             }
             break;
           case 'ready':
+            setStoppableJob(null);
             setVadProgress(null);
             setRestoredIncompleteJob(false);
             setStatus('READY');
             setErrorMessage(null);
             break;
+          case 'stopped':
+            setStoppableJob(null);
+            setVadProgress(null);
+            setRestoredIncompleteJob(false);
+            setStatus('STOPPED');
+            break;
           case 'failed':
+            setStoppableJob(null);
             setVadProgress(null);
             setStatus('FAILED');
-            setErrorMessage(event.message);
-            break;
-          case 'start-unconfirmed':
             setErrorMessage(event.message);
             break;
           case 'disconnected':
@@ -699,7 +732,8 @@ export default function App() {
 
           const hasIncompleteBatches = savedJob.batches.some((b) => b.status !== 'completed');
           if (data.isRunning) {
-            setStatus('ANALYZING');
+            setStatus(savedJob.status === 'STOPPING' ? 'STOPPING' : 'ANALYZING');
+            setStoppableJob(savedJob.job_id);
             if (savedJob.progress_stage) {
               setVadProgress({
                 stage: savedJob.progress_stage,
@@ -707,6 +741,8 @@ export default function App() {
               });
             }
             void pollJobUntilComplete(savedJob.job_id);
+          } else if (savedJob.status === 'STOPPED') {
+            setStatus('STOPPED');
           } else if (hasIncompleteBatches) {
             setStatus(savedJob.status === 'FAILED' ? 'FAILED' : 'VAD_READY');
             // A Job saved before its analysis was ever started has no progress and nothing unfinished to warn about;
@@ -746,12 +782,6 @@ export default function App() {
         setBrowserCompat(res);
       }
     });
-    // Only the header's account menu needs this, so a failure just leaves the menu out.
-    fetch('/api/me')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((author) => { if (mounted && typeof author?.email === 'string') setSignedInAuthor(author); })
-      .catch(() => {});
-
     const pathJobId = jobIdFromPath(window.location.pathname);
     if (pathJobId) restoreJob(pathJobId);
 
@@ -791,6 +821,7 @@ export default function App() {
     // Back navigation has already moved the URL; only leave the Job's URL when it still shows this Job.
     if (jobId && jobIdFromPath(window.location.pathname) === jobId) navigate('/new');
     setJobId(null);
+    setStoppableJob(null);
     setJobLoad(null);
     setVadOutput(null);
     setBatches([]);
@@ -1036,8 +1067,27 @@ export default function App() {
     void createGenerateJob(generateSaveFailure.input, generateSaveFailure.output);
   };
 
+  const aiAvailability = signedInAuthor?.aiGeneration;
+  const aiDisabledReason = !signedInAuthor ? 'กำลังตรวจสอบสิทธิ์สร้างบท AI'
+    : !signedInAuthor.canGenerateAi ? 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้'
+    : !aiAvailability?.enabled ? 'ระบบยังไม่ได้ตั้งค่า Gemini'
+    : aiAvailability.remaining === 0 && !(jobId && batches.some((batch) => batch.status !== 'completed') && aiAvailability.usedJobIds.includes(jobId))
+      ? 'ใช้โควตาสร้างบท AI ครบแล้ววันนี้'
+      : null;
+
+  const confirmAiGeneration = (remainingBatches: number, resuming: boolean, overwritesEdits = false) => {
+    if (aiDisabledReason || !aiAvailability) return Promise.resolve(false);
+    const confirmedAction = resuming ? 'ทำต่อ' : 'เริ่มสร้างบท AI';
+    return confirm({
+      title: `${confirmedAction}?`,
+      description: `งาน ${jobTitle.trim() || videoMetadata?.fileName || 'วิดีโอนี้'} · วิเคราะห์ ${remainingBatches} ชุด · วันนี้เหลือ ${aiAvailability.remaining} จาก ${aiAvailability.limit} เรื่อง ระบบจะส่งวิดีโอไปยัง Google Gemini และอาจมีค่าใช้จ่ายกับบัญชี Gemini ของระบบ คำขอที่ส่งไปแล้วอาจยังถูกคิดค่าบริการแม้กดหยุด${overwritesEdits ? ' การสร้างใหม่อาจแทนที่ข้อความและเวลาที่แก้ไว้' : ''}`,
+      confirmLabel: confirmedAction,
+    });
+  };
+
   const resumeExistingServerJob = async (existingJobId: string) => {
     const token = pollAbortRef.current;
+    if (!(await confirmAiGeneration(batches.filter((batch) => batch.status !== 'completed').length, status === 'STOPPED' || restoredIncompleteJob || batches.some((batch) => batch.status !== 'pending'))) || token.aborted) return;
     try {
       setStatus('ANALYZING');
       setErrorMessage(null);
@@ -1061,16 +1111,20 @@ export default function App() {
         percent: 15,
       });
       let startedJob: PersistedJobState;
-      let startError: string | undefined;
       try {
         const startRes = await fetch(`/api/jobs/${encodeURIComponent(existingJobId)}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmAiCost: true }),
         });
+        void refreshAuthor();
         const startData = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(startRes);
         if (!startRes.ok) {
-          startError = startData?.error || 'ไม่สามารถเริ่มงานประมวลผลต่อบนเซิร์ฟเวอร์ได้';
-          throw new Error('Start not confirmed');
+          if (token.aborted) return;
+          setVadProgress(null);
+          setStatus(status);
+          setErrorMessage(startData?.error || 'ไม่สามารถเริ่มงานประมวลผลต่อบนเซิร์ฟเวอร์ได้');
+          return;
         }
         if (startData?.job?.job_id !== existingJobId || !Array.isArray(startData.job.batches) || !Array.isArray(startData.job.spots)) {
           throw new Error('Invalid job response');
@@ -1078,7 +1132,7 @@ export default function App() {
         startedJob = startData.job;
       } catch {
         if (token.aborted) return;
-        const polling = pollJobUntilComplete(existingJobId, startError);
+        const polling = pollJobUntilComplete(existingJobId, 'ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กรุณากดทำต่ออีกครั้ง');
         setVadProgress(null);
         setErrorMessage('ยังยืนยันการเริ่มวิเคราะห์ไม่ได้ กำลังตรวจสถานะอีกครั้ง ระหว่างนี้ยังแก้ไขบทบรรยายไม่ได้');
         await polling;
@@ -1088,6 +1142,7 @@ export default function App() {
 
       setBatches(startedJob.batches);
       setSpots(startedJob.spots);
+      setStoppableJob(existingJobId);
       await pollJobUntilComplete(existingJobId);
     } catch (err) {
       if (token.aborted) return;
@@ -1120,7 +1175,9 @@ export default function App() {
       return;
     }
 
-    if (spots.some((spot) => spot.text.trim()) && !(await confirm({ title: 'สร้างบทบรรยายใหม่?', description: 'ข้อความและเวลาที่แก้ไว้อาจถูกแทนที่ กรุณาส่งออกงานที่ต้องการเก็บก่อน', confirmLabel: 'สร้างบทบรรยายใหม่', destructive: true }))) return;
+    const tokenBeforeConfirm = pollAbortRef.current;
+    const batchCount = buildAnalysisBatches(vadOutput.candidate_spots, vadOutput.duration_ms).length;
+    if (!(await confirmAiGeneration(batchCount, false, spots.some((spot) => spot.is_edited || spot.text.trim()))) || tokenBeforeConfirm.aborted) return;
 
     pollAbortRef.current.aborted = true;
     const token = { aborted: false };
@@ -1162,11 +1219,13 @@ export default function App() {
       if (token.aborted) return;
       const { response: initRes, data: initData } = await registerJob('/api/jobs/init', {
         uploadId,
+        confirmAiCost: true,
         video_metadata: videoMetadata,
         vad_config: effectiveVadConfig,
         ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
         vad_output: vadOutput,
       }, token);
+      void refreshAuthor();
       if (initRes.ok && initData?.job) createdJob = true;
       // A Job created here is already analysing on the server, so it stays and shows in the Job List.
       if (token.aborted) return;
@@ -1193,6 +1252,7 @@ export default function App() {
         return;
       }
 
+      setStoppableJob(initializedJob.job_id);
       await pollJobUntilComplete(initializedJob.job_id);
     } catch (err) {
       if (!createdJob && uploadId) {
@@ -1221,6 +1281,20 @@ export default function App() {
       return;
     }
     await resumeExistingServerJob(jobId);
+  };
+
+  const stopAiGeneration = async () => {
+    if (!jobId || !signedInAuthor?.canGenerateAi || stoppableJob !== jobId || status !== 'ANALYZING') return;
+    const token = pollAbortRef.current;
+    setStatus('STOPPING');
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/stop`, { method: 'POST' });
+      if (!response.ok) throw new Error('Stop request failed');
+    } catch {
+      if (token.aborted) return;
+      setStatus((current) => current === 'STOPPING' ? 'ANALYZING' : current);
+      setErrorMessage('ส่งคำสั่งหยุดไม่สำเร็จ กรุณาลองอีกครั้ง');
+    }
   };
 
   // 6. Select Spot & Seek Video Player
@@ -1262,8 +1336,10 @@ export default function App() {
   }, [spots, selectedSpotId, handleSelectSpot]);
 
   // 7. Update Spot & Persist to Server JSON
+  const editableSpotIds = useMemo(() => status === 'STOPPED' ? completedAnalysisSpotIds(batches) : undefined, [batches, status]);
   const handleUpdateSpot = useCallback(
     (updatedSpot: ADSpot) => {
+      if (status === 'STOPPING' || editableSpotIds?.has(updatedSpot.spot_id) === false) return;
       const nextSpots = spots.map((spot) =>
         spot.spot_id === updatedSpot.spot_id ? updatedSpot : spot
       );
@@ -1274,7 +1350,7 @@ export default function App() {
         pendingLocalSpotsRef.current = nextSpots;
       }
     },
-    [jobId, spots, saveQueue]
+    [editableSpotIds, jobId, spots, saveQueue, status]
   );
 
   const resetWorkspace = useCallback(() => {
@@ -1447,8 +1523,20 @@ export default function App() {
   };
 
   // 9. Export SRT
-  const handleExportSrt = () => {
-    const srtContent = generateSrtContent(spots);
+  const handleExportSrt = async () => {
+    let exportableSpots = spots;
+    if (status === 'STOPPED' && batches.some((batch) => batch.status !== 'completed')) {
+      const completeSpotIds = completedAnalysisSpotIds(batches);
+      exportableSpots = spots.filter((spot) => completeSpotIds.has(spot.spot_id));
+      if (!generateSrtContent(exportableSpots)) return;
+      const token = pollAbortRef.current;
+      if (!(await confirm({
+        title: 'ส่งออกเฉพาะบทที่เสร็จแล้ว?',
+        description: 'ยังมีชุดที่ไม่ได้วิเคราะห์ ไฟล์ SRT จะมีเฉพาะบทจากชุดที่เสร็จแล้ว',
+        confirmLabel: 'ส่งออก SRT',
+      })) || token.aborted) return;
+    }
+    const srtContent = generateSrtContent(exportableSpots);
     if (!srtContent) return;
     const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1714,7 +1802,7 @@ export default function App() {
 
       <main ref={workspaceRef} id="main-workspace" tabIndex={-1} className="flex flex-col flex-1 min-h-0">
       {/* Restored Incomplete Job Resume Banner */}
-      {restoredIncompleteJob && jobId && status !== 'ANALYZING' && (
+      {restoredIncompleteJob && jobId && status !== 'ANALYZING' && status !== 'STOPPING' && (
         <Alert variant="warning" placement="strip" role="status">
           <TriangleAlert />
           <AlertTitle>มีงานวิเคราะห์ที่ยังไม่เสร็จ</AlertTitle>
@@ -1816,6 +1904,8 @@ export default function App() {
         onRunVad={handleRunVad}
         onStartGeminiAnalysis={handleStartGeminiAnalysis}
         onRetryFailedBatches={handleRetryFailedBatches}
+        aiDisabledReason={aiDisabledReason}
+        onStopAi={signedInAuthor?.canGenerateAi && jobId && stoppableJob === jobId ? stopAiGeneration : undefined}
         onResetJob={handleResetJob}
         onOpenJobList={() => void openJobList()}
         onSelectSpot={handleSelectSpot}
@@ -1836,7 +1926,8 @@ export default function App() {
             waveform={vadOutput?.waveform}
             spots={spots}
             selectedSpotId={selectedSpotId}
-            isAnalyzing={status === 'ANALYZING'}
+            isAnalyzing={status === 'ANALYZING' || status === 'STOPPING'}
+            editableSpotIds={editableSpotIds}
             processingSpotIds={
               status === 'ANALYZING'
                 ? new Set(
@@ -1858,7 +1949,8 @@ export default function App() {
           <AdScriptEditor
             spots={spots}
             batches={batches}
-            isAnalyzing={status === 'ANALYZING'}
+            isAnalyzing={status === 'ANALYZING' || status === 'STOPPING'}
+            editableSpotIds={editableSpotIds}
             errorMessage={errorMessage}
             onRetryVad={handleRunVad}
             onRetryJobSave={generateSaveFailure ? retryGenerateSave : undefined}

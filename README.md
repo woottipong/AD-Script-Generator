@@ -141,6 +141,7 @@
 | ตัวแปร | การใช้งาน |
 |---|---|
 | `GEMINI_API_KEY` | จำเป็นเมื่อเรียก Gemini เซิร์ฟเวอร์อ่านจาก environment หรือ `.env` ผ่าน `dotenv` ค่าว่างและ `MY_GEMINI_API_KEY` ใช้งานไม่ได้ |
+| `AI_DAILY_JOB_LIMIT` | จำนวน Job ที่ผู้มีสิทธิ์แต่ละคนเริ่มวิเคราะห์ด้วย Gemini ได้ต่อวันตามเวลาไทย ค่าเริ่มต้น `3` ปรับได้ด้วยจำนวนเต็มบวก |
 | `NODE_ENV` | ค่า `production` ให้เซิร์ฟเวอร์ใช้ไฟล์ใน `dist` ค่าอื่นใช้ Vite middleware |
 | `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ โดย `docker-compose.yml` สำหรับพัฒนาตั้งเป็น `false` |
 | `CHOKIDAR_USEPOLLING`, `CHOKIDAR_INTERVAL` | Docker Compose ส่งค่า `true` และ `300` ให้ file watcher ของเครื่องมือพัฒนา |
@@ -233,7 +234,7 @@ docker compose up --build --renew-anon-volumes -d
 
 ### รันด้วย Docker สำหรับ production
 
-[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile) เป็น `envisio:${IMAGE_TAG:-latest}`, mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่ `${APP_BIND:+${APP_BIND}:}${APP_PORT:-3000}:3000` (เริ่มต้นพอร์ต `3000`, กำหนด `APP_PORT`, `APP_BIND`, `IMAGE_TAG` ใน `.env` ได้), รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ก่อน (ดู `.env.example`)
+[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile) เป็น `envisio:${IMAGE_TAG:-latest}`, mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่ `${APP_BIND:+${APP_BIND}:}${APP_PORT:-3000}:3000` (เริ่มต้นพอร์ต `3000`, กำหนด `APP_PORT`, `APP_BIND`, `IMAGE_TAG` ใน `.env` ได้), รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ตั้งค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ก่อน (ดู `.env.example`) เพิ่ม `GEMINI_API_KEY` เมื่อต้องการเปิดสร้างบท AI
 
 **ขึ้นระบบครั้งแรก และอัปเดตเป็นโค้ดล่าสุด** ใช้คำสั่งเดียวกัน:
 
