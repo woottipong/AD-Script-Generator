@@ -102,13 +102,12 @@ test('all relative markdown file links in repository docs resolve to existing fi
 });
 
 test('vite.config.ts retains Vite defaults and blocks .data in server.fs.deny', async () => {
-  const mod = await import('../../vite.config');
-  const exported = mod.default;
-  const config = typeof exported === 'function'
-    ? await exported({ mode: 'development', command: 'serve' })
-    : await exported;
-  const deny = config.server?.fs?.deny ?? [];
-  assert.ok(deny.includes('.env'), 'server.fs.deny should retain .env');
-  assert.ok(deny.includes('**/.git/**'), 'server.fs.deny should retain **/.git/**');
-  assert.ok(deny.some((entry) => entry.includes('.data')), 'server.fs.deny should block .data');
+  const { resolveConfig } = await import('vite');
+  const [defaults, configured] = await Promise.all([
+    resolveConfig({ root: REPO_ROOT, configFile: false }, 'serve'),
+    resolveConfig({ root: REPO_ROOT }, 'serve'),
+  ]);
+  const missingDefaults = defaults.server.fs.deny.filter((pattern) => !configured.server.fs.deny.includes(pattern));
+  assert.deepEqual(missingDefaults, [], 'server.fs.deny must retain every Vite default');
+  assert.ok(configured.server.fs.deny.includes('**/.data/**'), 'server.fs.deny must also block Job data');
 });

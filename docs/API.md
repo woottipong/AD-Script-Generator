@@ -169,7 +169,7 @@ Job initialization uses the accumulated file. An unfinished upload can be remove
 
 ### POST /api/upload/:uploadId/abandon
 
-Marks an upload session as no longer active without deleting its files (access follows the upload ownership rule in [Base configuration and conventions](#base-configuration-and-conventions)). The browser sends this after completion, failure, or cancellation when it knows the upload ID. Sessions exist in server memory and are cleared on restart. A lost initialization response or browser termination can leave a session marked active until the server restarts.
+Marks an upload session as no longer active without deleting its files (access follows the upload ownership rule in [Base configuration and conventions](#base-configuration-and-conventions)). A late chunk retry leaves an abandoned upload inactive and removable. The browser sends this after completion, failure, or cancellation when it knows the upload ID. Upload activity is tracked in memory and expires after five minutes of inactivity by default or when the server restarts.
 
 Returns HTTP 200 `{ "ok": true }`, or HTTP 400 `{ "error": "..." }` if `uploadId` is invalid.
 

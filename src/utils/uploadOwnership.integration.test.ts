@@ -45,7 +45,8 @@ test('an Unfinished Upload belongs to its uploader; others reach it only with Al
     assert.deepEqual(await a.list(), [], 'an Unfinished Upload is not in an Author\'s own Job List');
     assert.ok((await lead.list()).includes(abandoned), 'All-Jobs Access lists Unfinished Uploads');
     assert.equal((await b.json(`/jobs/${abandoned}/files`, 'DELETE')).status, 404, 'another Author cannot delete the upload');
-    assert.equal((await a.json(`/jobs/${abandoned}/files`, 'DELETE')).status, 200, 'the uploader deletes it after abandoning');
+    assert.equal((await a.chunk(abandoned, 0, 'abc')).status, 200, 'an identical chunk retry is still acknowledged');
+    assert.equal((await a.json(`/jobs/${abandoned}/files`, 'DELETE')).status, 200, 'a late chunk retry does not block deletion after abandoning');
     assert.equal(fs.existsSync(path.join(dir, '.data/jobs', abandoned)), false);
 
     const kept = await startUpload();

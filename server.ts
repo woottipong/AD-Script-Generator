@@ -117,14 +117,14 @@ type ProcessingLock = {
   release: () => void;
 };
 let activeProcessingLock: ProcessingLock | null = null;
-const activeUploads = new Map<string, number>();
+const uploadActivity = new Map<string, number | 'abandoned'>();
 const ACTIVE_UPLOAD_IDLE_MS = Number(process.env.ACTIVE_UPLOAD_IDLE_MS) || 5 * 60 * 1000;
 
 function isUploadActive(uploadId: string): boolean {
-  const lastActivityMs = activeUploads.get(uploadId);
-  if (lastActivityMs === undefined) return false;
+  const lastActivityMs = uploadActivity.get(uploadId);
+  if (typeof lastActivityMs !== 'number') return false;
   if (Date.now() - lastActivityMs <= ACTIVE_UPLOAD_IDLE_MS) return true;
-  activeUploads.delete(uploadId);
+  uploadActivity.delete(uploadId);
   return false;
 }
 /**
@@ -669,6 +669,7 @@ async function startServer() {
         res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
       if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: JOB_NOT_FOUND }); return; }
+      uploadActivity.delete(req.params.jobId);
       uploadOwners.delete(req.params.jobId);
       res.json({ ok: true });
     } catch {
@@ -743,7 +744,7 @@ async function startServer() {
 
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
       fs.writeFileSync(targetFilePath, Buffer.alloc(0));
-      activeUploads.set(uploadId, Date.now());
+      uploadActivity.set(uploadId, Date.now());
       uploadOwners.set(uploadId, (res.locals.author as AuthorSession).sub);
 
       res.json({
@@ -757,16 +758,18 @@ async function startServer() {
   });
 
   app.post('/api/upload/:uploadId/abandon', (req: Request, res: Response) => {
-    if (!isJobId(req.params.uploadId)) {
+    const { uploadId } = req.params;
+    if (!isJobId(uploadId)) {
       res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
       return;
     }
-    if (!canUseUpload(req.params.uploadId, res.locals.author as AuthorSession)) {
+    if (!canUseUpload(uploadId, res.locals.author as AuthorSession)) {
       res.status(404).json({ error: 'ไม่พบการอัปโหลดนี้' });
       return;
     }
-    // The uploader stays known after abandoning, so their client can still delete the upload.
-    activeUploads.delete(req.params.uploadId);
+    if (!store.exists(uploadId) && fs.existsSync(path.join(store.dirOf(uploadId), 'source_video.mp4'))) {
+      uploadActivity.set(uploadId, 'abandoned');
+    }
     res.json({ ok: true });
   });
 
@@ -841,7 +844,7 @@ async function startServer() {
         } finally {
           fs.closeSync(fd);
         }
-        activeUploads.set(uploadId, Date.now());
+        if (uploadActivity.get(uploadId) !== 'abandoned') uploadActivity.set(uploadId, Date.now());
         res.json({ ok: true, currentSize });
       } catch {
         res.status(500).json({ error: 'ไม่สามารถเขียนไฟล์ Chunk ได้' });
@@ -989,7 +992,7 @@ async function startServer() {
       }
 
       store.save(jobState);
-      activeUploads.delete(jobId);
+      uploadActivity.delete(jobId);
       uploadOwners.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
