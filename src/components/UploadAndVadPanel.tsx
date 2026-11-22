@@ -22,8 +22,8 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Download,
   Ellipsis,
-  FileText,
   FileVideo,
   Loader2,
   RefreshCw,
@@ -356,18 +356,24 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               variant="ghost"
               size="lg"
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
-              className={`h-11 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 lg:max-w-[27rem] ${
+              className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 lg:max-w-[27rem] pointer-coarse:h-11 ${
                 hasStatusError
-                  ? 'border-transparent bg-error-surface text-error-foreground hover:bg-destructive/15'
+                  ? 'border border-error-border bg-error-surface text-error-foreground not-disabled:hover:bg-destructive/15'
                   : activityFeedback
-                  ? 'border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
-                  : 'text-muted-foreground'
+                  ? 'border border-brand-200 bg-brand-50 text-brand-950 not-disabled:hover:bg-brand-100'
+                  : 'border border-border/80 bg-muted/40 text-foreground/85 not-disabled:hover:border-input not-disabled:hover:bg-muted/70'
               }`}
             />
           }
         >
-          {isBusy && (
-            <Loader2 data-icon="inline-start" className="animate-spin text-brand-700" aria-hidden="true" />
+          {isBusy ? (
+            <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
+          ) : hasStatusError ? (
+            <AlertCircle data-icon="inline-start" className="text-error-foreground" aria-hidden="true" />
+          ) : status === 'READY' || isReview ? (
+            <CheckCircle2 data-icon="inline-start" className="text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <Clock data-icon="inline-start" className="text-warning-foreground" aria-hidden="true" />
           )}
           {activityFeedback ? (
             <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
@@ -381,12 +387,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
             </span>
           ) : (
-            <span role="status" className="min-w-0 truncate text-left">
+            <span role="status" className="min-w-0 truncate text-left font-medium">
               <span className="hidden sm:inline">{idleStatus.full}</span>
               <span className="sm:hidden">{idleStatus.compact}</span>
             </span>
           )}
-          <ChevronDown data-icon="inline-end" className={`transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+          <ChevronDown data-icon="inline-end" className={`text-muted-foreground transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
         </PopoverTrigger>
         <PopoverContent align="end" aria-labelledby="analysis-details-title" className={`w-[calc(100vw-1.5rem)] gap-0 p-0 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}>
           <div className="max-h-[50vh] overflow-y-auto rounded-lg">
@@ -459,25 +465,25 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
       </Popover>
 
       {showPrimaryGenerate ? (
-        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-11 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs">
+        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs pointer-coarse:h-11">
           <Sparkles data-icon="inline-start" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
         </Button>
       ) : canExport && (
-        <Button size="lg" onClick={onExportSrt} className="h-11 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs">
-          <FileText data-icon="inline-start" aria-hidden="true" />
+        <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs pointer-coarse:h-11">
+          <Download data-icon="inline-start" aria-hidden="true" />
           ส่งออก SRT
         </Button>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="จัดการงาน" className="size-11" />}>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="จัดการงาน" className="size-10 text-muted-foreground not-disabled:hover:text-foreground pointer-coarse:size-11" />}>
           <Ellipsis aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           {!isReview && (
             <>
               <DropdownMenuGroup>
-                {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><FileText aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
+                {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><Download aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
                 {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
                 {videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>
@@ -485,7 +491,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

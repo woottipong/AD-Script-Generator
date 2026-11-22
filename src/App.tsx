@@ -1,5 +1,5 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
-import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, Pencil, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
+import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -198,6 +198,17 @@ export default function App() {
   }, []);
   const [titleEditor, setTitleEditor] = useState<TitleEditor>({ kind: 'display' });
   const [titleAcknowledgement, setTitleAcknowledgement] = useState<'server' | 'local' | null>(null);
+  const [showSavedCheck, setShowSavedCheck] = useState(false);
+
+  useEffect(() => {
+    if (titleAcknowledgement !== 'server') {
+      setShowSavedCheck(false);
+      return;
+    }
+    setShowSavedCheck(true);
+    const timer = window.setTimeout(() => setShowSavedCheck(false), 2_500);
+    return () => window.clearTimeout(timer);
+  }, [titleAcknowledgement, jobTitle]);
   const [showVideoSummary, setShowVideoSummary] = useState(false);
   const workspaceVersion = useRef(0);
   const [registeringJob, setRegisteringJob] = useState(false);
@@ -1300,7 +1311,9 @@ export default function App() {
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
   const videoDuration = videoMetadata ? formatCompactTime(vadOutput?.duration_ms || videoMetadata.durationMs) : '';
   const videoResolution = videoMetadata ? `${videoMetadata.width} × ${videoMetadata.height}` : '';
+  const videoHeightLabel = videoMetadata?.height ? `${videoMetadata.height}p` : '';
   const videoSize = videoMetadata?.fileSize ? formatFileSize(videoMetadata.fileSize) : null;
+  const isCompactHeader = hasProject || path.startsWith('/jobs/');
   const titleFeedback = titleEditor.kind === 'saving' ? 'กำลังบันทึกชื่อ…'
     : titleEditor.kind !== 'display' && registeringJob ? 'กำลังบันทึกงานบนเซิร์ฟเวอร์…'
     : titleEditor.kind === 'display' && titleAcknowledgement === 'server' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
@@ -1308,106 +1321,168 @@ export default function App() {
     : '';
   const showTitleNotice = titleEditor.kind === 'error' || (titleEditor.kind === 'editing' && registeringJob);
 
+  const logoLink = (
+    <a
+      href="/"
+      onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        void openJobList();
+      }}
+      aria-label="TCC Envisio รายการงาน"
+      className="inline-flex min-h-10 shrink-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-85 pointer-coarse:min-h-11"
+    >
+      <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
+      {!isCompactHeader && (
+        <span className="min-w-0">
+          <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-foreground">
+            <span className="text-brand-700">TCC</span> Envisio
+          </span>
+          <span className="hidden truncate text-xs font-medium leading-tight text-muted-foreground sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
+        </span>
+      )}
+    </a>
+  );
+
   return (
     <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
-      <header className={`relative flex min-h-16 shrink-0 items-center border-b border-brand-100 bg-card sm:px-6 ${hasProject ? 'px-3 py-2' : 'px-4 py-3'}`}>
+      <header className="relative flex min-h-16 shrink-0 items-center border-b border-brand-100 bg-card px-4 py-2 sm:px-6">
         <div className="grid w-full min-w-0 items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-            <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void openJobList(); }} aria-label="TCC Envisio รายการงาน" title={hasProject ? 'กลับรายการงาน' : undefined} className={`inline-flex shrink-0 items-center gap-2.5 rounded-md ${hasProject ? 'size-11 justify-center' : ''}`}>
-              <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
-              {!hasProject && <span className="min-w-0">
-                <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-foreground">
-                  <span className="text-brand-700">TCC</span> Envisio
-                </span>
-                <span className="hidden truncate text-xs font-medium leading-tight text-muted-foreground sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
-              </span>}
-            </a>
+          <div className="flex min-w-0 items-center gap-1">
+            {isCompactHeader ? (
+              <Tooltip>
+                <TooltipTrigger render={logoLink} />
+                <TooltipContent role="tooltip" side="bottom">กลับรายการงาน</TooltipContent>
+              </Tooltip>
+            ) : logoLink}
 
             {videoMetadata && (
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-1">
-                  {titleEditor.kind === 'display' ? (
-                    <Tooltip>
-                      <TooltipTrigger render={(
-                        <Button
-                          ref={focusTitleButton}
-                          variant="ghost"
-                          size="lg"
-                          aria-label={`เปลี่ยนชื่องาน: ${displayedTitle}`}
-                          aria-describedby={titleFeedback ? 'job-title-status' : undefined}
-                          className="h-11 min-w-18 shrink justify-start gap-1.5 px-2 text-left text-base leading-[1.35] font-bold not-disabled:hover:border-border not-disabled:hover:bg-transparent"
-                          onClick={() => setTitleEditor({ kind: 'editing', draft: displayedTitle })}
-                        />
-                      )}>
-                        <span className="min-w-0">
-                          <span className="block truncate">{displayedTitle}</span>
-                          {titleAcknowledgement === 'local' && (
-                            <span aria-hidden="true" className="block truncate text-xs font-normal text-muted-foreground">
-                              ชื่ออยู่เฉพาะในหน้านี้
-                            </span>
+                    {titleEditor.kind === 'display' ? (
+                      <Tooltip>
+                        <TooltipTrigger render={(
+                          <Button
+                            ref={focusTitleButton}
+                            variant="ghost"
+                            size="lg"
+                            aria-label={`เปลี่ยนชื่องาน: ${displayedTitle}`}
+                            aria-describedby={titleFeedback ? 'job-title-status' : undefined}
+                            className="h-9 min-w-12 max-w-full shrink justify-start gap-1.5 border border-transparent px-2 text-left text-base leading-[1.35] font-bold not-disabled:active:translate-y-0 not-disabled:hover:border-input not-disabled:hover:bg-muted/50 pointer-coarse:h-11"
+                            onClick={() => setTitleEditor({ kind: 'editing', draft: displayedTitle })}
+                          />
+                        )}>
+                          <span className="min-w-0">
+                            <span className="block truncate">{displayedTitle}</span>
+                            {titleAcknowledgement === 'local' && (
+                              <span aria-hidden="true" className="block truncate text-xs font-normal text-muted-foreground">
+                                ชื่ออยู่เฉพาะในหน้านี้
+                              </span>
+                            )}
+                          </span>
+                          {showSavedCheck && (
+                            <Check className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                           )}
+                        </TooltipTrigger>
+                        <TooltipContent role="tooltip" side="bottom">คลิกเพื่อเปลี่ยนชื่อ</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <div className="relative inline-grid min-w-20 max-w-full items-center">
+                        <span
+                          aria-hidden="true"
+                          className="invisible col-start-1 row-start-1 whitespace-pre pr-7 pl-2 text-base leading-[1.35] font-bold"
+                        >
+                          {titleEditor.draft || 'ชื่องาน'}
                         </span>
-                        {titleAcknowledgement === 'server' ? <Check className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                          : <Pencil className="invisible size-3.5 text-muted-foreground pointer-coarse:visible" aria-hidden="true" />}
-                      </TooltipTrigger>
-                      <TooltipContent role="tooltip" side="bottom">แก้ไขชื่อ</TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <div className="relative flex min-w-0 items-center">
-                      <Input
-                        ref={focusTitleInput}
-                        type="text"
-                        aria-label="ชื่องาน"
-                        aria-invalid={titleEditor.kind === 'error' || undefined}
-                        aria-describedby={titleEditor.kind === 'error' ? 'job-title-error' : undefined}
-                        value={titleEditor.draft}
-                        placeholder="ชื่องาน"
-                        maxLength={120}
-                        readOnly={titleEditor.kind === 'saving' || titleEditor.kind === 'queued'}
-                        onChange={(event) => setTitleEditor({ kind: 'editing', draft: event.target.value })}
-                        onBlur={() => { if (titleEditor.kind === 'editing') saveTitle(titleEditor.draft, false); }}
-                        onKeyDown={handleTitleKeyDown}
-                        className="h-11 w-auto min-w-18 field-sizing-content pr-7 pl-2 text-base leading-[1.35] font-bold md:text-base"
-                      />
-                      {(titleEditor.kind === 'saving' || titleEditor.kind === 'queued') && <Spinner className="pointer-events-none absolute inset-y-0 right-2 my-auto size-3.5 text-muted-foreground" aria-hidden="true" />}
-                    </div>
-                  )}
-                  <Popover>
-                    <Tooltip onOpenChange={setShowVideoSummary}>
-                      <TooltipTrigger aria-describedby={showVideoSummary ? 'job-video-summary' : undefined} render={<PopoverTrigger render={<Button variant="ghost" size="icon-lg" aria-label="ข้อมูลวิดีโอ" className="size-11 text-muted-foreground" />} />}>
-                        <Info aria-hidden="true" />
-                      </TooltipTrigger>
-                      <TooltipContent id="job-video-summary" role="tooltip" side="bottom" className="block max-w-[min(20rem,calc(100vw-1.5rem))]">
-                        <span className="block font-semibold [overflow-wrap:anywhere]">{videoMetadata.fileName}</span>
-                        <span className="block tabular-nums">{videoDuration} · {videoResolution}</span>
-                      </TooltipContent>
-                    </Tooltip>
-                    <PopoverContent aria-label="ข้อมูลวิดีโอ" align="start" className="w-80 max-w-[calc(100vw-1.5rem)] p-4">
-                      <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{videoMetadata.fileName}</p>
-                      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-muted-foreground">
-                        <dt>ความยาว</dt><dd className="text-right tabular-nums text-foreground">{videoDuration}</dd>
-                        <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-foreground">{videoResolution}</dd>
-                        <dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-foreground">{videoSize ?? 'ไม่ทราบ'}</dd>
-                      </dl>
-                    </PopoverContent>
-                  </Popover>
+                        <Input
+                          ref={focusTitleInput}
+                          type="text"
+                          aria-label="ชื่องาน"
+                          aria-invalid={titleEditor.kind === 'error' || undefined}
+                          aria-describedby={titleEditor.kind === 'error' ? 'job-title-error' : undefined}
+                          value={titleEditor.draft}
+                          placeholder="ชื่องาน"
+                          maxLength={120}
+                          readOnly={titleEditor.kind === 'saving' || titleEditor.kind === 'queued'}
+                          onChange={(event) => setTitleEditor({ kind: 'editing', draft: event.target.value })}
+                          onBlur={() => { if (titleEditor.kind === 'editing') saveTitle(titleEditor.draft, false); }}
+                          onKeyDown={handleTitleKeyDown}
+                          className="col-start-1 row-start-1 h-9 w-full min-w-0 bg-background pr-7 pl-2 text-base leading-[1.35] font-bold md:text-base pointer-coarse:h-11"
+                        />
+                        {(titleEditor.kind === 'saving' || titleEditor.kind === 'queued') && (
+                          <Spinner className="pointer-events-none absolute inset-y-0 right-2 my-auto size-3.5 text-muted-foreground" aria-hidden="true" />
+                        )}
+                      </div>
+                    )}
+                    <Popover>
+                      <Tooltip onOpenChange={setShowVideoSummary}>
+                        <TooltipTrigger
+                          aria-describedby={showVideoSummary ? 'job-video-summary' : undefined}
+                          render={
+                            <PopoverTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label="ข้อมูลวิดีโอ"
+                                  className="h-7 shrink-0 gap-1.5 rounded-md border border-border/70 bg-muted/40 px-2 text-xs font-medium text-muted-foreground tabular-nums not-disabled:hover:border-input not-disabled:hover:bg-muted/70 not-disabled:hover:text-foreground pointer-coarse:h-11"
+                                />
+                              }
+                            />
+                          }
+                        >
+                          <Info className="size-3.5 shrink-0" aria-hidden="true" />
+                          {videoDuration && <span className="hidden sm:inline">{videoDuration}</span>}
+                          {videoHeightLabel && <span className="hidden text-muted-foreground/80 md:inline">· {videoHeightLabel}</span>}
+                        </TooltipTrigger>
+                        <TooltipContent id="job-video-summary" role="tooltip" side="bottom" className="block max-w-[min(20rem,calc(100vw-1.5rem))]">
+                          <span className="block font-semibold [overflow-wrap:anywhere]">{videoMetadata.fileName}</span>
+                          <span className="block tabular-nums">{videoDuration} · {videoResolution}</span>
+                        </TooltipContent>
+                      </Tooltip>
+                      <PopoverContent aria-label="ข้อมูลวิดีโอ" align="start" className="w-80 max-w-[calc(100vw-1.5rem)] p-4">
+                        <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{videoMetadata.fileName}</p>
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-muted-foreground">
+                          <dt>ความยาว</dt><dd className="text-right tabular-nums text-foreground">{videoDuration}</dd>
+                          <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-foreground">{videoResolution}</dd>
+                          <dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-foreground">{videoSize ?? 'ไม่ทราบ'}</dd>
+                        </dl>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
-              </div>
             )}
           </div>
-          {hasProject && <div ref={setHeaderActionsElement} className="min-h-11 min-w-0" />}
+          {hasProject && <div ref={setHeaderActionsElement} className="min-h-10 min-w-0 pointer-coarse:min-h-11" />}
         </div>
         {hasProject && (
           <div className={showTitleNotice
-            ? 'pointer-events-none absolute top-full left-3 z-20 mt-1 max-w-[calc(100%-1.5rem)] rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md sm:left-6 sm:max-w-[calc(100%-3rem)]'
+            ? 'absolute top-full left-4 z-20 mt-1 max-w-[calc(100%-2rem)] rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-md sm:left-6 sm:max-w-[calc(100%-3rem)]'
             : 'sr-only'}>
             <p id="job-title-status" role="status" className="text-muted-foreground">{titleFeedback}</p>
             {titleEditor.kind === 'error' && (
-              <p id="job-title-error" role="alert" className="text-error-foreground [overflow-wrap:anywhere]">
-                <span>{titleEditor.message}</span>
-                <span className="mt-0.5 block">กด Enter ในช่องชื่อเพื่อลองอีกครั้ง</span>
-              </p>
+              <div id="job-title-error" role="alert" className="space-y-1.5 text-error-foreground [overflow-wrap:anywhere]">
+                <p>{titleEditor.message}</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => saveTitle(titleEditor.draft, true)}
+                  >
+                    ลองอีกครั้ง
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => closeTitleEditor(true)}
+                  >
+                    ยกเลิก
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         )}
