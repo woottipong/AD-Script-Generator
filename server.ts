@@ -1170,8 +1170,11 @@ async function startServer() {
     console.error('API Error handler caught:', err);
     const rawStatus = err.status || err.statusCode || 500;
     const status = sanitizeApiStatusCode(rawStatus);
+    // Only request errors meant for the client (body parsing, Multer limits) keep their message; storage and
+    // other internal errors could name server paths or database state.
+    const exposeMessage = err instanceof multer.MulterError || err.expose === true;
     res.status(status).json({
-      error: err.message || 'เกิดข้อผิดพลาดในการประมวลผลคำขอของเซิร์ฟเวอร์',
+      error: (exposeMessage && err.message) || 'เกิดข้อผิดพลาดในการประมวลผลคำขอของเซิร์ฟเวอร์',
       code: err.code || 'SERVER_ERROR',
     });
   });

@@ -1,6 +1,7 @@
 # Production: build and start (or update to the current code) with
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Jobs live in ./.data on the host; the database schema migrates itself on start.
+# Jobs saved as job.json (before schema version 3) are not carried over: clear ./.data/jobs when upgrading from them.
 name: envisio
 
 services:

@@ -611,7 +611,10 @@ export default function App() {
           void pollJobUntilComplete(savedJob.job_id);
         } else if (hasIncompleteBatches) {
           setStatus(savedJob.status === 'FAILED' ? 'FAILED' : 'VAD_READY');
-          setRestoredIncompleteJob(true);
+          // A Job saved before its analysis was ever started has no progress and nothing unfinished to warn about;
+          // one cut off by a restart keeps its progress even when every batch is back to pending.
+          setRestoredIncompleteJob(savedJob.status === 'FAILED' || savedJob.progress_percent !== undefined ||
+            savedJob.batches.some((b) => b.status !== 'pending'));
           if (savedJob.error_message) {
             setErrorMessage(savedJob.error_message);
           }
@@ -859,7 +862,13 @@ export default function App() {
     if (mode !== 'review' && videoFile) {
       generateIntakeRef.current = { file: videoFile, metadata: videoMetadata };
     }
+    // The rescanned Job is the same work, so it keeps the title the author gave it.
+    const keptTitle = jobTitleRef.current;
     leaveCurrentJob();
+    if (keptTitle) {
+      setJobTitle(keptTitle);
+      titleTypedRef.current = true;
+    }
     pollAbortRef.current = { aborted: false };
     startVad(input);
   };
