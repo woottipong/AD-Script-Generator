@@ -25,6 +25,7 @@ async page => {
     await route.abort().catch(() => {});
   });
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/upload/init') return route.fulfill({ json: { uploadId: 'job_generate_' + ++uploadRequests } });

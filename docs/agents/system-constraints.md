@@ -66,6 +66,15 @@ Each Job records `schema_version` (currently 3), its Job Title (`title`, 1 to 12
 
 Keep Job data inside `.data/`.
 
+## Sign-in and sessions
+
+`src/utils/auth.ts` owns sign-in: the required settings (`readAuthConfig`, which stops the server when one is missing), the Keycloak routes under `/auth`, and reading the session from a request. `src/utils/session.ts` owns the cookie: AES-256-GCM sealing with a key derived from `SESSION_SECRET` per purpose, a fixed 7-day lifetime, and no server-side session store. [ADR-0004](../adr/0004-keycloak-sign-in-with-server-session-cookie.md) records why sign-in runs on the server.
+
+- `server.ts` answers HTTP 401 `UNAUTHENTICATED` for every `/api` route except `/api/config`, and redirects page navigations without a session to `/auth/login`. Keep new routes behind that middleware.
+- All-Jobs Access is computed once at sign-in from the token's `groups` claim (a leading `/` is ignored) and stored in the session as `allJobs`.
+- The client signs in again only on `code: "UNAUTHENTICATED"`, from one `fetch` wrapper in `src/main.tsx`; other 401s reach their caller.
+- There is no sign-in bypass. Integration tests seal their own session with a test `SESSION_SECRET` (`src/utils/authTestHelpers.ts`).
+
 ## API contract
 
 For endpoint requests, responses, and behavior, see [API.md](../API.md).

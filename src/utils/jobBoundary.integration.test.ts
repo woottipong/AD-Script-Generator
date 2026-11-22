@@ -7,6 +7,10 @@ import * as path from 'node:path';
 import * as net from 'node:net';
 import type { PersistedJobState } from '../types/ad';
 import { createJobStore } from './jobStore';
+import { authTestEnv, signedInFetch } from './authTestHelpers';
+
+// Every API call in this file is made by a signed-in Author.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: false });
 
 test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', { timeout: 20000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-boundary-test-'));
@@ -15,7 +19,7 @@ test('HTTP boundaries reject invalid uploads and preserve stored spot bounds', {
   const port = (socket.address() as net.AddressInfo).port;
   await new Promise<void>(resolve => socket.close(() => resolve()));
   const root = process.cwd();
-  const child = spawn(process.execPath, [path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port) }, stdio: 'ignore' });
+  const child = spawn(process.execPath, [path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port) }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api`;
   const json = (route: string, method: string, body: unknown) => fetch(base + route, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   try {

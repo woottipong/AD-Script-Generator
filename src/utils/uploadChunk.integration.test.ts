@@ -5,6 +5,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
+import { authTestEnv, signedInFetch } from './authTestHelpers';
+
+// Every API call in this file is made by a signed-in Author.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: false });
 
 test('chunk retries preserve bytes and reject conflicting offsets', { timeout: 20000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-upload-test-'));
@@ -13,7 +17,7 @@ test('chunk retries preserve bytes and reject conflicting offsets', { timeout: 2
   const port = (socket.address() as net.AddressInfo).port;
   await new Promise<void>(resolve => socket.close(() => resolve()));
   const root = process.cwd();
-  const child = spawn(process.execPath, [path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port) }, stdio: 'ignore' });
+  const child = spawn(process.execPath, [path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port) }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
   try {
     let ready = false;

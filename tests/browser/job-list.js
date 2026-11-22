@@ -12,6 +12,7 @@ async page => {
   let deleted = [], listFails = false, listRequests = 0, nextListResponse;
   let renameRequests = 0, nextRenameResponse;
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs')) {
       listRequests++;

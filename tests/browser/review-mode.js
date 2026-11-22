@@ -6,6 +6,7 @@ async page => {
   let releaseCreation;
   const creationPending = new Promise(resolve => { releaseCreation = resolve; });
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       if (rejectCreation) return route.fulfill({ status: 500, json: { error: 'บันทึกงานตรวจแก้ไม่สำเร็จ' } });

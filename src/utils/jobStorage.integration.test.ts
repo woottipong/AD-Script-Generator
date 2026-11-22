@@ -7,6 +7,10 @@ import * as path from 'node:path';
 import * as net from 'node:net';
 import type { PersistedJobState } from '../types/ad';
 import { createJobStore } from './jobStore';
+import { authTestEnv, signedInFetch } from './authTestHelpers';
+
+// Every API call in this file is made by a signed-in Author.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: false });
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -59,7 +63,7 @@ globalThis.fetch = async (input, init) => {
   const outside = path.join(dir, 'outside'); fs.mkdirSync(outside);
   fs.writeFileSync(path.join(outside, 'source_video.mp4'), 'outside');
   fs.symlinkSync(outside, path.join(data, 'job_link'));
-  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api/jobs`;
   try {
     let ready = false;

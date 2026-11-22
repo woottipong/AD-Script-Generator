@@ -30,6 +30,17 @@ import { mergeProcessingState } from './src/utils/jobProcessing';
 import { resolveJobTitle, validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
 import { createJobStore, isJobId, type JobMeta } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
+import { mountAuth, readAuthConfig, type AuthConfig } from './src/utils/auth';
+import type { AuthorSession } from './src/utils/session';
+
+// Without its sign-in settings the server would serve every Job to anyone, so it refuses to start.
+let authConfig: AuthConfig;
+try {
+  authConfig = readAuthConfig(process.env);
+} catch (err) {
+  console.error(`Cannot start: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 const PORT = Number(process.env.PORT) || 3000;
 const store = createJobStore(path.resolve(process.cwd(), '.data'));
@@ -557,6 +568,39 @@ async function startServer() {
   app.use('/api', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     next();
+  });
+
+  const { sessionOf } = mountAuth(app, authConfig);
+
+  // `/api/config` stays public for the container healthcheck; every other API needs a signed-in Author.
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/config') {
+      next();
+      return;
+    }
+    const author = sessionOf(req);
+    if (!author) {
+      res.status(401).json({ error: 'กรุณาเข้าสู่ระบบอีกครั้ง', code: 'UNAUTHENTICATED' });
+      return;
+    }
+    res.locals.author = author;
+    next();
+  });
+
+  // A page opened without a session goes to sign-in first, so the SPA never renders signed out.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isPage = req.method === 'GET' && Boolean(req.headers.accept?.includes('text/html')) &&
+      !req.path.startsWith('/api/') && !req.path.startsWith('/auth/');
+    if (!isPage || sessionOf(req)) {
+      next();
+      return;
+    }
+    res.redirect(`/auth/login?returnTo=${encodeURIComponent(req.originalUrl)}`);
+  });
+
+  app.get('/api/me', (_req: Request, res: Response) => {
+    const { email, allJobs } = res.locals.author as AuthorSession;
+    res.json({ email, allJobs });
   });
 
   // 1. GET /api/config — Return server default configuration (no secrets)

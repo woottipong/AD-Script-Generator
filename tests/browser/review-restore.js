@@ -17,6 +17,7 @@ async page => {
   let current = reviewJob({ kind: 'url', url: 'https://media.invalid/lesson.mp4' });
   let scanStarted = false;
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const url = route.request().url();
     if (url.endsWith('/api/jobs/job_review_restore')) return route.fulfill({ json: { job: current, isRunning: false } });
     return route.fulfill({ status: 404, json: { error: 'fixture' } });

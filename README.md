@@ -12,7 +12,7 @@
 ## เริ่มต้นใช้งาน
 
 1. เตรียม Node.js 22.12 ขึ้นไปและ Bun 1.4 ขึ้นไป หรือใช้ Docker Compose
-2. คัดลอก `.env.example` เป็น `.env` แล้วตั้งค่า `GEMINI_API_KEY` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม
+2. คัดลอก `.env.example` เป็น `.env` แล้วตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบ ([การตั้งค่า `.env`](#การตั้งค่า-env)) หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม
 3. ติดตั้งและเริ่มแอปด้วย `bun install --frozen-lockfile` แล้ว `bun run dev`
 4. เปิด [แอปบนเครื่อง](http://localhost:3000) กด **งานใหม่** เลือกโหมด แล้วทำตามขั้นตอนบนหน้าจอ
 
@@ -144,10 +144,16 @@
 | `NODE_ENV` | ค่า `production` ให้เซิร์ฟเวอร์ใช้ไฟล์ใน `dist` ค่าอื่นใช้ Vite middleware |
 | `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ โดย `docker-compose.yml` สำหรับพัฒนาตั้งเป็น `false` |
 | `CHOKIDAR_USEPOLLING`, `CHOKIDAR_INTERVAL` | Docker Compose ส่งค่า `true` และ `300` ให้ file watcher ของเครื่องมือพัฒนา |
-| `APP_URL` | มีใน `.env.example` แต่โค้ดแอปปัจจุบันไม่อ่านค่านี้ |
+| `APP_URL` | จำเป็น origin ที่เบราว์เซอร์เปิด (`http://localhost:3003` เมื่อใช้ Docker Compose, `http://localhost:3000` เมื่อใช้ `bun run dev`) ใช้สร้าง redirect URI `<APP_URL>/auth/callback` และเปิด cookie แบบ `Secure` เมื่อเป็น https |
+| `KEYCLOAK_ISSUER_URL` | จำเป็น issuer ของ realm เช่น `https://accounts.rtt.in.th/auth/realms/rtt` |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | จำเป็น client แบบ confidential ใน Keycloak เช่น `envisio-dev` เก็บ secret ไว้ใน `.env` เท่านั้น |
+| `SESSION_SECRET` | จำเป็น อย่างน้อย 32 ตัวอักษร ใช้เข้ารหัส session cookie เปลี่ยนค่าแล้วรีสตาร์ตเพื่อให้ทุกคนออกจากระบบทันที |
+| `AUTH_ALL_JOBS_GROUPS` | ไม่บังคับ กลุ่ม Keycloak ที่ได้ All-Jobs Access คั่นด้วยจุลภาค ค่าเริ่มต้น `admin,supervisor` |
 | `PORT` | พอร์ตที่ `server.ts` ฟัง ค่าเริ่มต้นคือ `3000` และ Dockerfile กำหนดไว้ที่ `3000` |
 
-`GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น แอปไม่มีระบบล็อกอินหรือ middleware ตรวจสิทธิ์ผู้เรียก HTTP API ดู [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions)
+เซิร์ฟเวอร์ไม่ยอม start หากขาดค่าที่จำเป็นของการเข้าสู่ระบบ ทุกหน้าและทุก API ยกเว้น `/api/config` ต้องเข้าสู่ระบบผ่าน Keycloak ก่อน session อยู่ได้ 7 วันนับจากเข้าสู่ระบบ ดู [ADR-0004](docs/adr/0004-keycloak-sign-in-with-server-session-cookie.md) และ [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions) `GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น
+
+ตั้งค่า client ใน Keycloak ดังนี้: เปิด Client authentication (confidential), ลงทะเบียน Valid redirect URI `<APP_URL>/auth/callback` และ post-logout redirect `<APP_URL>/` (สำหรับพัฒนาคือ `http://localhost:3003/auth/callback` และ `http://localhost:3003/`) และเพิ่ม mapper แบบ Group Membership ที่ส่ง claim `groups` มากับ token
 
 ---
 
@@ -334,6 +340,7 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filena
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode-url.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-restore.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/sign-in.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check close
 ```
 

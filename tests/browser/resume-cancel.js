@@ -7,6 +7,7 @@ async page => {
   let started = false, release;
   const held = new Promise(resolve => { release = resolve; });
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs/job_fixture') && request.method() === 'GET') return route.fulfill({ json: { job, isRunning: false } });
     if (url.endsWith('/start')) { started = true; await held; return route.fulfill({ json: { job, isRunning: true } }); }

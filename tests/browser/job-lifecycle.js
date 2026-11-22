@@ -4,6 +4,7 @@ async page => {
   const spot = {spot_id:'test_1', start_ms:1000,end_ms:5000,duration_ms:4000,original_start_ms:1000,original_end_ms:5000,decision:'generate',text:'บทเดิม',is_edited:false};
   const job = {schema_version:3,job_id:'job_test',title:'fixture',mode:'generate',status:'READY',video_metadata:{fileName:'fixture.mp4',fileSize:123,mimeType:'video/mp4',width:854,height:480,durationMs:10000,videoCodec:'avc1',audioCodec:'mp4a.40.2',hasAudioTrack:true},vad_output:{duration_ms:10000,speech_segments:[],candidate_spots:[]},batches:[],spots:[spot]};
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const url = route.request().url();
     if (url.endsWith('/api/jobs/job_test')) return route.fulfill({json:{job,isRunning:false}});
     if (url.endsWith('/spots')) { patchCalls++; if (patchCalls===1) return route.fulfill({status:500,json:{error:'synthetic failure'}}); await new Promise(r=>setTimeout(r,400)); job.spots = route.request().postDataJSON().spots; return route.fulfill({json:{job}}); }

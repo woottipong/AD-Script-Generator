@@ -3,6 +3,7 @@ async page => {
   await page.unrouteAll({ behavior: 'wait' });
   let created = null;
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       created = request.postDataJSON();

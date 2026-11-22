@@ -8,6 +8,10 @@ import * as net from 'node:net';
 import { pollJob } from './jobPolling';
 import type { PersistedJobState } from '../types/ad';
 import { createJobStore } from './jobStore';
+import { authTestEnv, signedInFetch } from './authTestHelpers';
+
+// Every API call in this file is made by a signed-in Author.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: false });
 
 const root = process.cwd();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -106,7 +110,7 @@ globalThis.fetch = async (input, init) => {
   seed.close();
   fs.writeFileSync(source, '1');
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], {
-    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
+    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}/api/jobs/job_test`;
   const request = (suffix = '', method = 'GET', body?: unknown) => fetch(base + suffix, {

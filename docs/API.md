@@ -7,7 +7,7 @@ This reference describes the routes in [server.ts](../server.ts). Request and re
 - The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`, or on `PORT` when it is set.
 - JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
 - Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
-- The application has no HTTP authentication or per-user job isolation. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
+- Every route except `GET /api/config` needs a signed-in Author: the browser sends the `envisio_session` cookie that [sign-in](#sign-in-routes) sets. Without a valid session the route answers HTTP 401 with `code: "UNAUTHENTICATED"`. Jobs are not yet scoped to their owner. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
 - A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. The server holds it until the running operation finishes and releases it.
 - A lock belonging to another running job can produce HTTP 409. An accepted background request does not mean that Gemini analysis has succeeded. Poll the job for its result.
 - API handlers set `Cache-Control: no-store, no-cache, must-revalidate`.
@@ -44,6 +44,15 @@ The server reuses the Gemini file across batches. After the last batch or a proc
 
 `isRunning` indicates whether the process-local lock belongs to the job, including during Gemini file cleanup. The browser waits for `isRunning: false` before treating the processing run as finished. `progress_percent` is stage-based progress, not a prediction of remaining time.
 
+## Sign-in routes
+
+These routes live outside `/api` and answer with redirects, not JSON. See [ADR-0004](adr/0004-keycloak-sign-in-with-server-session-cookie.md).
+
+- `GET /auth/login?returnTo=<path>` redirects to Keycloak (authorization code with PKCE `S256`). `returnTo` must be a path on this site; anything else becomes `/`. When Keycloak cannot be reached it answers HTTP 503 with an HTML page.
+- `GET /auth/callback` finishes the sign-in, sets `envisio_session` (httpOnly, `SameSite=Lax`, `Secure` when `APP_URL` is https, 7 days, never extended), and redirects to `returnTo`. A sign-in older than ten minutes starts over; a failed one answers HTTP 400 with an HTML page.
+- `GET /auth/logout` clears the session and redirects to Keycloak's end-session endpoint, which returns to `APP_URL`.
+- Any other page requested without a session (a GET that accepts `text/html`) redirects to `/auth/login?returnTo=<that path>`.
+
 ## Endpoints
 
 ### GET /api/config
@@ -68,6 +77,10 @@ HTTP 200 example:
 ```
 
 The fallback model is `gemini-3.5-flash-lite`. It is not returned by this endpoint.
+
+### GET /api/me
+
+Returns the signed-in Author as `{ email, allJobs }`. `allJobs` is true when one of the Author's Keycloak groups is listed in `AUTH_ALL_JOBS_GROUPS`; it is read once at sign-in.
 
 ### GET /api/jobs
 
@@ -314,6 +327,8 @@ On the server, `POST /api/jobs/review` checks that the VAD duration matches the 
 Gemini output passes through `GeminiBatchResponseSchema`. Every expected spot must be present. A `generate` result must contain nonblank text. Results with unknown spot IDs are ignored. A `skip` result can contain a reason, and returned text is retained if present. The prompt currently requests empty text for skipped spots.
 
 ## Errors
+
+Without a valid session every route but `GET /api/config` answers HTTP 401 `{ "error": "กรุณาเข้าสู่ระบบอีกครั้ง", "code": "UNAUTHENTICATED" }`. Clients sign in again only on this `code`: other errors can also arrive as 401 because 403 is remapped (see above).
 
 Most errors return an object with `error`. Depending on the route, the object can also contain `isRateLimit`, `job`, or `batch`. The final Express error handler includes `code` when provided by the error, otherwise `SERVER_ERROR`. An unmatched API route returns HTTP 404 with `code: "NOT_FOUND"`.
 

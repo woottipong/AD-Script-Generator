@@ -4,6 +4,7 @@ async page => {
   const spots=[spot('one',1000,'generate','ช้างเดิน',''),spot('two',5000,'skip','','เหตุผลนก'),spot('three',9000,'generate','ปลาแหวกว่าย',''),spot('four',13000,'pending','','')];
   const job={schema_version:3,job_id:'fixture',title:'fixture',mode:'generate',status:'READY',video_metadata:{fileName:'fixture.mp4',fileSize:1,mimeType:'video/mp4',width:854,height:480,durationMs:18000,videoCodec:'avc1',audioCodec:'mp4a.40.2',hasAudioTrack:true},vad_output:{duration_ms:18000,speech_segments:[],candidate_spots:[]},batches:[],spots};
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const url=route.request().url();
     if(url.endsWith('/api/jobs/fixture')) return route.fulfill({json:{job,isRunning:false}});
     if(url.endsWith('/spots')) {job.spots=route.request().postDataJSON().spots; return route.fulfill({json:{job}})}
