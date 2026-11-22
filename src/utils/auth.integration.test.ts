@@ -57,6 +57,8 @@ test('every API but config needs a session, and pages send signed-out Authors to
     assert.equal((await fetch(`${base}/api/jobs`, { headers: { Cookie: sessionCookie(author) } })).status, 200);
     const named = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie({ ...author, name: 'ผู้เขียน ทดสอบ' }) } });
     assert.deepEqual(await named.json(), { email: 'author@example.com', name: 'ผู้เขียน ทดสอบ', allJobs: false });
+    const lead = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie({ ...author, allJobs: true, accessGroups: ['admin'] }) } });
+    assert.deepEqual(await lead.json(), { email: 'author@example.com', allJobs: true, accessGroups: ['admin'] });
 
     const expired = sealValue(TEST_SESSION_SECRET, 'session', { ...author, idToken: 'x' }, -1);
     assert.equal((await fetch(`${base}/api/me`, { headers: { Cookie: `${SESSION_COOKIE}=${expired}` } })).status, 401, 'an expired session counts as signed out');

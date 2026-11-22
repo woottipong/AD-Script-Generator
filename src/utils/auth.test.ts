@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasAllJobsAccess, readAuthConfig, safeReturnTo } from './auth';
+import { allJobsGroupsOf, readAuthConfig, safeReturnTo } from './auth';
 import { readCookie, sealValue, unsealValue } from './session';
 
 const SECRET = 'test-session-secret-at-least-32-chars';
@@ -30,11 +30,12 @@ test('returnTo stays on this site', () => {
 });
 
 test('All-Jobs Access comes from a configured group, with or without the group path slash', () => {
-  assert.equal(hasAllJobsAccess(['/admin'], ['admin', 'supervisor']), true);
-  assert.equal(hasAllJobsAccess(['supervisor'], ['admin', 'supervisor']), true);
-  assert.equal(hasAllJobsAccess(['/team/admin', 'author'], ['admin', 'supervisor']), false);
-  assert.equal(hasAllJobsAccess(undefined, ['admin']), false);
-  assert.equal(hasAllJobsAccess('/admin', ['admin', 'supervisor']), true, 'a single-valued mapper sends one group as a string');
+  assert.deepEqual(allJobsGroupsOf(['/admin'], ['admin', 'supervisor']), ['admin']);
+  assert.deepEqual(allJobsGroupsOf(['supervisor', 'author', '/admin'], ['admin', 'supervisor']), ['supervisor', 'admin']);
+  assert.deepEqual(allJobsGroupsOf(['/team/admin', 'author'], ['admin', 'supervisor']), []);
+  assert.deepEqual(allJobsGroupsOf(undefined, ['admin']), []);
+  assert.deepEqual(allJobsGroupsOf('/admin', ['admin', 'supervisor']), ['admin'], 'a single-valued mapper sends one group as a string');
+  assert.deepEqual(allJobsGroupsOf(['admin', '/admin'], ['admin']), ['admin'], 'a group listed twice counts once');
 });
 
 test('sign-in settings are required and the session secret must be long', () => {

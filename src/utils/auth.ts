@@ -53,9 +53,11 @@ export function safeReturnTo(value: unknown): string {
  * Keycloak sends groups as `/admin` with "Full group path" on and `admin` without; both match `admin`. A mapper
  * with "Multivalued" off sends one group as a string.
  */
-export function hasAllJobsAccess(groups: unknown, allJobsGroups: string[]): boolean {
+export function allJobsGroupsOf(groups: unknown, allJobsGroups: string[]): string[] {
   const list = typeof groups === 'string' ? [groups] : groups;
-  return Array.isArray(list) && list.some((group) => typeof group === 'string' && allJobsGroups.includes(group.replace(/^\//, '')));
+  if (!Array.isArray(list)) return [];
+  const names = list.filter((group): group is string => typeof group === 'string').map((group) => group.replace(/^\//, ''));
+  return [...new Set(names.filter((group) => allJobsGroups.includes(group)))];
 }
 
 /** The Group Membership mapper's claim name is whatever was typed in Keycloak; the `rtt` realm uses `group`. */
@@ -70,6 +72,11 @@ function accessTokenGroups(accessToken: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/** The groups that grant All-Jobs Access are kept so the account menu can say where the access comes from. */
+function accessFrom(accessGroups: string[]): Pick<AuthorSession, 'allJobs' | 'accessGroups'> {
+  return accessGroups.length > 0 ? { allJobs: true, accessGroups } : { allJobs: false };
 }
 
 function signInFailedPage(res: Response, status: number, message: string): void {
@@ -143,7 +150,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
         sub: claims.sub,
         email,
         ...(typeof claims.name === 'string' && claims.name.trim() ? { name: claims.name.trim() } : {}),
-        allJobs: hasAllJobsAccess(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups),
+        ...accessFrom(allJobsGroupsOf(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups)),
         idToken: tokens.id_token!,
       };
       onSignIn(session);

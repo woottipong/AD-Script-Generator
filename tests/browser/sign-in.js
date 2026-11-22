@@ -22,6 +22,7 @@ async page => {
   await page.getByRole('menuitem', { name: 'ออกจากระบบ' }).waitFor();
   assert(await page.getByRole('menu').getByText('author@example.com').isVisible(), 'The account menu names the signed-in Author');
   assert(await page.getByRole('menu').getByText('ผู้เขียน ทดสอบ').isVisible(), 'The account menu shows the Author\'s name');
+  assert(await page.getByRole('menu').getByText('เห็นเฉพาะงานของตัวเอง').isVisible(), 'The account menu shows the Author\'s access');
   await page.getByRole('menuitem', { name: 'ออกจากระบบ' }).click();
   await page.waitForURL('**/auth/logout');
 

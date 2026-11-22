@@ -80,7 +80,7 @@ The fallback model is `gemini-3.5-flash-lite`. It is not returned by this endpoi
 
 ### GET /api/me
 
-Returns the signed-in Author as `{ email, name?, allJobs }`; `name` comes from the token's `name` claim and is left out when Keycloak sends none. `allJobs` is true when one of the Author's Keycloak groups is listed in `AUTH_ALL_JOBS_GROUPS`; it is read once at sign-in.
+Returns the signed-in Author as `{ email, name?, allJobs, accessGroups? }`; `name` comes from the token's `name` claim and is left out when Keycloak sends none, and `accessGroups` lists the `AUTH_ALL_JOBS_GROUPS` groups that grant All-Jobs Access (left out without it). `allJobs` is true when one of the Author's Keycloak groups is listed in `AUTH_ALL_JOBS_GROUPS`; it is read once at sign-in.
 
 ### GET /api/jobs
 
