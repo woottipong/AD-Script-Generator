@@ -183,7 +183,6 @@ test('list shows jobs and unfinished uploads newest first, and deleteJob removes
       { job_id: 'job_upload', title: undefined, mode: undefined, status: undefined, is_upload: true, duration_ms: undefined, spot_count: undefined, progress_percent: undefined },
     ],
   );
-  assert.ok(store.list()[0].size_bytes > 0, 'size counts the job folder');
 
   assert.equal(store.deleteJob('job_link'), false);
   assert.ok(fs.existsSync(path.join(outside, 'source_video.mp4')), 'a symlink escape is never followed');

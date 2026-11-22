@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import type { JobMode } from '../types/ad';
-import { formatCompactTime, formatFileSize } from '../utils/formatters';
+import { formatCompactTime } from '../utils/formatters';
 import type { StoredJobSummary } from '../utils/jobStore';
 import { defaultJobTitle } from '../utils/jobValidation';
 import { jobPath } from '../utils/jobPath';
@@ -362,19 +362,18 @@ const jobName = (job: StoredJob) => job.is_upload ? `ไฟล์อัปโห
 
 function describeUpload(job: StoredJob): string {
   const updated = formatUpdatedAt(job.updated_at);
-  return `ขนาด ${formatFileSize(job.size_bytes)}${updated ? ` อัปเดตล่าสุด ${updated}` : ''}`;
+  return updated ? `อัปเดตล่าสุด ${updated}` : '';
 }
 
 function deleteConfirmationCopy(job: StoredJob): string {
   const name = jobName(job);
   if (job.is_upload) {
-    return `ลบ “${name}” ${describeUpload(job)} ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
+    return `ลบ “${name}”${describeUpload(job) && ` ${describeUpload(job)}`} ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
   }
   if (job.mode === 'review') {
     return `ลบ “${name}” และบทบรรยายที่บันทึกไว้ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
   }
-  const sizeNote = job.size_bytes > 0 ? ` (${formatFileSize(job.size_bytes)})` : '';
-  return `ลบ “${name}” และวิดีโอต้นทาง${sizeNote} ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
+  return `ลบ “${name}” และวิดีโอต้นทางออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
 }
 
 /**
@@ -979,7 +978,6 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                       const status = jobVisualState(job);
                       const TileIcon = status.tileIcon;
                       const updated = formatUpdatedAt(job.updated_at);
-                      const uploadSize = job.is_upload ? formatFileSize(job.size_bytes) : '';
                       const href = jobPath(job.job_id);
                       const statusNode = <JobStatusBadge status={status} name={name} />;
                       const ownerNode = job.is_upload
@@ -996,7 +994,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                             setDeleteMessage('');
                             setPendingDelete(job);
                           }}
-                          aria-label={job.is_upload ? `ลบ${name} ${describeUpload(job)}` : `ลบงาน ${name}`}
+                          aria-label={job.is_upload ? `ลบ${name}${describeUpload(job) && ` ${describeUpload(job)}`}` : `ลบงาน ${name}`}
                           className="text-muted-foreground/70 pointer-coarse:size-11"
                         >
                           <Trash2 aria-hidden="true" />
@@ -1047,9 +1045,8 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                                   </a>
                                 )}
                                 {job.is_upload ? (
-                                  <p className="text-xs text-muted-foreground tabular-nums">
-                                    {uploadSize}
-                                    {updated && <time dateTime={job.updated_at} className="before:mx-1.5 before:content-['·'] @min-[54rem]:hidden">{updated}</time>}
+                                  updated && <p className="text-xs text-muted-foreground tabular-nums @min-[54rem]:hidden">
+                                    <time dateTime={job.updated_at}>{updated}</time>
                                   </p>
                                 ) : job.title && job.title !== defaultJobTitle(job.file_name) && (
                                   <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{job.file_name}</p>

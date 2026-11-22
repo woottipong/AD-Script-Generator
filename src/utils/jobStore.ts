@@ -13,7 +13,6 @@ export type StoredJobSummary = {
   job_id: string;
   file_name: string;
   updated_at: string;
-  size_bytes: number;
   is_upload: boolean;
   title?: string;
   mode?: JobMode;
@@ -157,16 +156,6 @@ function spotFromRow(row: JobRow): ADSpot {
   };
   if (row.reason !== null) spot.reason = row.reason as string;
   return spot;
-}
-
-function sizeOf(dir: string): number {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += sizeOf(file);
-    else if (entry.isFile()) total += fs.lstatSync(file).size;
-  }
-  return total;
 }
 
 function isMissing(err: unknown): boolean {
@@ -337,16 +326,6 @@ export function createJobStore(dataDir: string) {
     }
   }
 
-  function folderSize(jobId: string): number {
-    const dir = path.join(jobsDir, jobId);
-    try {
-      return isInsideJobsDir(dir) ? sizeOf(dir) : 0;
-    } catch (err) {
-      if (isMissing(err)) return 0;
-      throw err;
-    }
-  }
-
   /**
    * Every stored Job and Unfinished Upload, most recently changed first; with `ownerSub`, only that Author's Jobs
    * (an Unfinished Upload has no Job Owner, so it is left out).
@@ -356,7 +335,7 @@ export function createJobStore(dataDir: string) {
     const jobs = rows.map((found): StoredJobRecord => {
       const summary: StoredJobRecord = {
         job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
-        size_bytes: folderSize(found.job_id as string), is_upload: false,
+        is_upload: false,
         title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
         duration_ms: Number(found.duration_ms),
         spot_count: Number(found.spot_count),
@@ -373,7 +352,7 @@ export function createJobStore(dataDir: string) {
     const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobRecord[] => {
       const upload = findUnfinishedUpload(name);
       if (!upload) return [];
-      return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, size_bytes: folderSize(name), is_upload: true }];
+      return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, is_upload: true }];
     });
     return [...jobs, ...uploads].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }

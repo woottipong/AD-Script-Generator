@@ -43,7 +43,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
     title?: string;
     file_name: string;
     updated_at: string;
-    size_bytes: number;
     is_upload: boolean;
     is_processing: boolean;
     mode?: string;
@@ -59,7 +58,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
       job_id: 'job_old',
       file_name: 'old.mp4',
       updated_at: '2026-11-20T03:00:00Z',
-      size_bytes: 1234,
       is_upload: false,
       is_processing: false,
       mode: 'generate',
@@ -71,7 +69,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
       job_id: 'job_busy',
       file_name: 'busy.mp4',
       updated_at: '2026-11-19T03:00:00Z',
-      size_bytes: 5678,
       is_upload: false,
       is_processing: true,
       mode: 'generate',
@@ -85,7 +82,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
       title: 'บทเรียนที่ 1',
       file_name: 'lesson.mp4',
       updated_at: '2026-11-18T03:00:00Z',
-      size_bytes: 0,
       is_upload: false,
       is_processing: false,
       mode: 'review',
@@ -97,7 +93,6 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
       job_id: 'job_upload',
       file_name: 'อัปโหลดไม่เสร็จ (job_upload)',
       updated_at: '2026-11-17T03:00:00Z',
-      size_bytes: 99,
       is_upload: true,
       is_processing: false,
     },
@@ -252,13 +247,13 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
     'Clear-search button empties and focuses the field and restores all rows'
   ).toBe(true);
 
-  const uploadDelete = page.getByRole('button', { name: /^ลบไฟล์อัปโหลด #upload ขนาด 0\.1 KB อัปเดตล่าสุด/ });
+  const uploadDelete = page.getByRole('button', { name: /^ลบไฟล์อัปโหลด #upload อัปเดตล่าสุด/ });
   const refresh = page.getByRole('button', { name: 'รีเฟรชรายการงาน' });
   const confirmDialog = page.getByRole('alertdialog', { name: 'ยืนยันการลบงาน' });
   await uploadDelete.click();
   await confirmDialog.waitFor();
   expect(
-    (await confirmDialog.innerText()).includes('#upload') && (await confirmDialog.innerText()).includes('0.1 KB'),
+    (await confirmDialog.innerText()).includes('#upload') && !(await confirmDialog.innerText()).includes('KB'),
     'The confirmation identifies the same file'
   ).toBe(true);
   await confirmDialog.getByRole('button', { name: 'ยกเลิก' }).click();
@@ -418,8 +413,8 @@ test('job list loading, filtering, sorting, deletion, inline rename, responsive 
   const baseRow = jobs[0];
   jobs = [
     { ...baseRow, title: longTitle, file_name: 'community_episode_08_mix_v4.mp4', status: 'FAILED', error_message: 'วิเคราะห์ช่วงที่ 2 ไม่สำเร็จ' },
-    { ...baseRow, job_id: 'job_upload1', file_name: 'อัปโหลดไม่เสร็จ (job_upload1)', size_bytes: 1024, is_upload: true },
-    { ...baseRow, job_id: 'job_upload2', file_name: 'อัปโหลดไม่เสร็จ (job_upload2)', size_bytes: 2048, is_upload: true },
+    { ...baseRow, job_id: 'job_upload1', file_name: 'อัปโหลดไม่เสร็จ (job_upload1)', is_upload: true },
+    { ...baseRow, job_id: 'job_upload2', file_name: 'อัปโหลดไม่เสร็จ (job_upload2)', is_upload: true },
   ];
   await page.reload();
   const title = list.getByRole('link', { name: longTitle, exact: true });
