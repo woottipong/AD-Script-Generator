@@ -22,19 +22,18 @@ TCC Envisio authors Thai Audio Description (AD) scripts in two modes. Both decod
 
 ## Development workflow
 
-For local setup, Docker hot reload, dependency or environment changes, production builds, and verification, follow [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์). Keep executable setup instructions there; consult `package.json` for available scripts.
+Keep executable setup, Docker, build, and verification commands in [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์); consult `package.json` for scripts.
 
-Maintain `bun.lock` (lockfileVersion 2) with Bun 1.4 or newer, and change `package.json` and `bun.lock` together; Docker installs with `--frozen-lockfile`. When the local Bun is older, run the dependency command inside the dev container (`docker exec -w /app <container> bun add …`), which ships Bun 1.4. With npm, use `npm install --legacy-peer-deps` because of the Vite/esbuild peer dependency conflict.
-
-`docker-compose.yml` uses `Dockerfile.Dev` for development; `docker-compose.prod.yml` builds the `production` stage of `Dockerfile` and is the supported way to deploy and update (see README). The project root is bind mounted to `/app`, and Jobs persist directly in `.data` (`envisio.db` plus `jobs/`) on both the host and the container. The Job store uses `node:sqlite`, which needs Bun 1.4 or newer for `bun test`; with an older local Bun, run the tests in the dev container (`docker exec -w /app <container> bun test`).
+- **Dependencies and tests:** Update `package.json` and `bun.lock` (`lockfileVersion 2`) together using Bun 1.4+ (Docker installs with `--frozen-lockfile`, and `node:sqlite` requires Bun 1.4+ for `bun test`). When local Bun is older, run `docker exec -w /app <container> bun …` inside the dev container. With npm, pass `--legacy-peer-deps`.
+- **Docker:** `docker-compose.yml` (`Dockerfile.Dev`) bind-mounts `.:/app` for development; `docker-compose.prod.yml` (`Dockerfile` `production` stage) mounts only `./.data:/app/.data` for deployment and updates. In both setups, Jobs persist in `.data` (`envisio.db` plus `jobs/`).
 
 ## Verification
 
-Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; the README shows how to run them). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes another author's Job too.
+Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; see [README.md](README.md#คำสั่งตรวจสอบโค้ด)). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes another author's Job too.
 
 ## UX conventions
 
-For interface changes, preserve the mode choice, guided intake, and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Build UI from the shadcn/ui components in `src/components/ui`, themed through the tokens in `src/index.css` as [DESIGN.md](DESIGN.md#components) describes; add a component with `bun x --bun shadcn@latest add <name>` inside the dev container (it updates `package.json` and `bun.lock`). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+Preserve the mode choice, guided intake, [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด), and product principles in [PRODUCT.md](PRODUCT.md) (desktop-first editing with basic mobile usability, on-demand processing details, and server-acknowledged save feedback). Build UI from the shadcn/ui components in `src/components/ui` themed via `src/index.css` tokens per [DESIGN.md](DESIGN.md#components); add components with `bun x --bun shadcn@latest add <name>` inside the dev container so `package.json` and `bun.lock` stay in sync.
 
 ## System contracts
 

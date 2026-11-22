@@ -33,11 +33,11 @@ A visual amplitude representation of the video's audio track aligned with the ti
 _Avoid_: Audio graph, sound bar, equalizer
 
 **Trim**:
-Adjusting an AD Spot's start or end edge independently to shorten or lengthen its duration within its Non-Speech Gap.
+Adjusting an AD Spot's start or end edge independently to shorten or lengthen its duration. In Generate Mode it is bounded by its Non-Speech Gap; in Review Mode it is bounded by video duration and neighboring spots, and any speech overlap is flagged.
 _Avoid_: Resize, stretch, crop
 
 **Move**:
-Shifting an entire AD Spot earlier or later along the timeline while preserving its duration, bounded by its Non-Speech Gap.
+Shifting an entire AD Spot earlier or later along the timeline while preserving its duration. In Generate Mode it is bounded by its Non-Speech Gap; in Review Mode it is bounded by video duration and neighboring spots, and any speech overlap is flagged.
 _Avoid_: Drag, slide, pan
 
 **Extended AD**:
@@ -49,7 +49,7 @@ One video's persisted authoring work: its Job Title, video metadata, VAD output,
 _Avoid_: Project, session, task
 
 **Job List**:
-The landing view listing every stored Job and Unfinished Upload, most recently changed first, from which an author reopens or deletes one or starts a new Job.
+The landing view listing every stored Job and Unfinished Upload (sorted most recently changed first by default, with search, mode filtering, and column sorting), from which an author reopens or deletes one or starts a new Job.
 _Avoid_: Dashboard, storage manager, history
 
 **Unfinished Upload**:
@@ -57,7 +57,7 @@ A Generate Mode video copy whose upload never became a Job. It appears in the Jo
 _Avoid_: Orphan, partial job
 
 **Job Title**:
-The name authors know a Job by. It defaults to the video's file name when the Job is created.
+The name authors know a Job by. It defaults to the video's file name without its extension (up to 120 characters) when the Job is created.
 _Avoid_: Job name, label
 
 **Analysis Batch**:

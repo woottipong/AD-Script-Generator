@@ -31,11 +31,11 @@ VAD runs in `src/workers/vad.worker.ts` and post-processes in `src/utils/vadPost
 
 Signal analysis can recommend different speech, silence, and padding values before the gaps are recalculated.
 
-The worker also builds the Waveform Envelope (`src/utils/waveform.ts`): one peak byte per 20 ms bucket, stored base64-encoded in `vad_output.waveform`. Job initialization accepts `sampleIntervalMs` from 10 to 1000 and at most 200,000 base64 characters. [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md) records why the timeline draws it on its own canvas.
+The worker also builds the Waveform Envelope (`src/utils/waveform.ts`): one peak byte per 20 ms bucket, stored base64-encoded in `vad_output.waveform`. Job initialization accepts `sampleIntervalMs` from 10 to 1000 and at most 250,000 base64 characters. [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md) records why the timeline draws it on its own canvas.
 
 ## Processing feedback
 
-`src/utils/processingFeedback.ts` turns job status, progress, and batches into the status shown to authors. It branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-edits`); `stage` text is display-only, so stage wording can change freely. The worker's PROGRESS message is typed against `ProcessingProgress`, so a misspelled phase fails `tsc`.
+`src/utils/processingFeedback.ts` turns job status, progress, and batches into the status shown to authors. It branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-job`, `saving-edits`); `stage` text is display-only, so stage wording can change freely. The worker's PROGRESS message is typed against `ProcessingProgress`, so a misspelled phase fails `tsc`.
 
 ## Gemini analysis pipeline
 
