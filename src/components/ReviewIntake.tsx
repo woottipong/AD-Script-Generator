@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 
 export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, draft, setDraft, intake, onBack }: {
   checkingFileName: string | null;
@@ -132,9 +133,12 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
       />
 
       {checkingFileName ? (
-        <div className="w-full mx-auto">
-          <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-foreground">{checkingFileName}</p>
-          <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }} onCancel={intake.onCancelCheck} />
+        <div className="w-full">
+          <VideoProcessingStatus
+            fileName={checkingFileName}
+            feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }}
+            onCancel={intake.onCancelCheck}
+          />
           {errorAlert && <div className="mt-4">{errorAlert}</div>}
         </div>
       ) : (
@@ -181,8 +185,8 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                   draggingTarget === 'video' ? 'bg-brand-50 p-1.5 -m-1.5 outline-1 outline-dashed outline-brand-500' : ''
                 }`}
               >
-                <div className="relative w-full min-w-0 flex-1">
-                  <Input
+                <InputGroup className="w-full min-w-0 flex-1">
+                  <InputGroupInput
                     ref={attachReviewLink}
                     id="review-link"
                     type="url"
@@ -192,21 +196,19 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
                     placeholder="https://…/video.mp4"
                     aria-invalid={linkInvalid}
                     aria-describedby={linkInvalid ? 'review-link-feedback review-video-requirements' : 'review-video-requirements'}
-                    className={videoLink ? 'pr-8 pointer-coarse:pr-13' : undefined}
                   />
                   {videoLink && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="ล้างลิงก์วิดีโอ"
-                      onClick={() => { updateLink(''); reviewLink.current?.focus(); }}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      <X aria-hidden="true" />
-                    </Button>
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        size="icon-xs"
+                        aria-label="ล้างลิงก์วิดีโอ"
+                        onClick={() => { updateLink(''); reviewLink.current?.focus(); }}
+                      >
+                        <X aria-hidden="true" />
+                      </InputGroupButton>
+                    </InputGroupAddon>
                   )}
-                </div>
+                </InputGroup>
                 <Button
                   type="button"
                   variant="outline"
@@ -271,8 +273,13 @@ export function ReviewIntake({ checkingFileName, errorMessage, validationIssues,
 
           {errorAlert}
 
+          <p className="text-sm text-muted-foreground">
+            วิดีโอจะเล่นบนเครื่องของคุณโดยไม่อัปโหลดขึ้นเซิร์ฟเวอร์ และบันทึกเฉพาะบทบรรยายที่ตรวจแก้
+          </p>
+
           <IntakeFooter
             actionLabel="เริ่มตรวจแก้"
+            hint={chosenVideo && srt ? 'พร้อมเริ่มตรวจแก้' : !chosenVideo && !srt ? 'เลือกวิดีโอ MP4 และไฟล์ SRT เพื่อเริ่ม' : !chosenVideo ? 'เลือกวิดีโอ MP4 หรือวางลิงก์เพื่อเริ่ม' : 'เลือกไฟล์ SRT เพื่อเริ่ม'}
             disabled={!chosenVideo || !srt || Boolean(inputError) || blockingIssues.length > 0 || !intake.canProcess}
             onCancel={onBack}
             onAction={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}

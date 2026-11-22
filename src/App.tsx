@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
 import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,7 @@ import {
   EditorHeaderTitleSkeleton,
   EditorWorkspaceSkeleton,
 } from './components/EditorSkeleton';
-import type { GenerateDraft, IntakeControls, ReviewDraft } from './components/IntakeShell';
+import { IntakeSkeleton, type GenerateDraft, type IntakeControls, type ReviewDraft } from './components/IntakeShell';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
 import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
@@ -52,7 +52,8 @@ import { createJobSaveQueue } from './utils/jobSaveQueue';
 import { pollJob } from './utils/jobPolling';
 import { jobIdFromPath, jobPath } from './utils/jobPath';
 
-const ReviewIntake = lazy(() => import('./components/ReviewIntake').then((m) => ({ default: m.ReviewIntake })));
+const loadReviewIntake = () => import('./components/ReviewIntake').then((module) => ({ default: module.ReviewIntake }));
+const ReviewIntake = lazy(loadReviewIntake);
 const UploadAndVadPanel = lazy(() => import('./components/UploadAndVadPanel').then((m) => ({ default: m.UploadAndVadPanel })));
 const VideoPreviewTimeline = lazy(() => import('./components/VideoPreviewTimeline').then((m) => ({ default: m.VideoPreviewTimeline })));
 const AdScriptEditor = lazy(() => import('./components/AdScriptEditor').then((m) => ({ default: m.AdScriptEditor })));
@@ -262,6 +263,7 @@ export default function App() {
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const [saveQueue] = useState(() => createJobSaveQueue(setSaveStatus));
   const [confirm, confirmDialog] = useConfirm();
+  const [isSwitchingMode, startModeTransition] = useTransition();
 
   const navigate = useCallback((to: string) => {
     if (window.location.pathname !== to) window.history.pushState(null, '', to);
@@ -1273,6 +1275,9 @@ export default function App() {
   };
 
   const hasProject = Boolean(videoMetadata);
+  useEffect(() => {
+    if (!hasProject && path === '/new') void loadReviewIntake();
+  }, [hasProject, path]);
   const focusWhenJobReady = useCallback((element: HTMLElement | null) => {
     if (!element || focusOpenedJob.current !== path) return;
     focusOpenedJob.current = null;
@@ -1304,11 +1309,12 @@ export default function App() {
     modeSwitch: {
       mode: currentMode,
       checking: Boolean(checkingFileName),
+      switching: isSwitchingMode,
       onModeChange: (next) => {
         if (checkingFileName || currentMode === next) return;
         restoreIntakeModeFocus.current = true;
         clearIntakeFeedback();
-        setMode(next);
+        startModeTransition(() => setMode(next));
       },
       activeButtonRef: attachIntakeModeButton,
     },
@@ -1563,6 +1569,8 @@ export default function App() {
       <Suspense fallback={
         path.startsWith('/jobs/') ? (
           <EditorWorkspaceSkeleton label="กำลังโหลดพื้นที่ทำงาน…" />
+        ) : path === '/new' ? (
+          <IntakeSkeleton />
         ) : (
           <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
             <Spinner aria-hidden="true" />

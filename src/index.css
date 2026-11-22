@@ -56,7 +56,7 @@
   }
 
   input::placeholder, textarea::placeholder {
-    color: var(--muted-foreground);
+    color: var(--placeholder);
   }
 
   @media (pointer: coarse) {
@@ -235,6 +235,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
+  --color-placeholder: var(--placeholder);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -279,6 +280,7 @@
   --secondary-foreground: var(--color-slate-700);
   --muted: var(--color-slate-100);
   --muted-foreground: var(--color-slate-600);
+  --placeholder: oklch(65% 0.036 257);
   --accent: var(--color-brand-50);
   --accent-foreground: var(--color-brand-950);
   --destructive: var(--color-red-700);

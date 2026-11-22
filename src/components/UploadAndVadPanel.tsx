@@ -271,9 +271,12 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         />
 
         {checkingFileName ? (
-          <div className="w-full mx-auto">
-            <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-foreground">{checkingFileName}</p>
-            <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }} onCancel={intake.onCancelCheck} />
+          <div className="w-full">
+            <VideoProcessingStatus
+              fileName={checkingFileName}
+              feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              onCancel={intake.onCancelCheck}
+            />
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
         ) : (
@@ -337,6 +340,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
             <IntakeFooter
               actionLabel="ตรวจเสียงและเตรียมงาน"
+              hint={stagedFile ? 'พร้อมตรวจเสียงและเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
               disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
