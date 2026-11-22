@@ -7,7 +7,8 @@ This reference describes the routes in [server.ts](../server.ts). Request and re
 - The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`, or on `PORT` when it is set.
 - JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
 - Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
-- Every route except `GET /api/config` needs a signed-in Author: the browser sends the `envisio_session` cookie that [sign-in](#sign-in-routes) sets. Without a valid session the route answers HTTP 401 with `code: "UNAUTHENTICATED"`. An Author reaches only Jobs they own (their Job Owner `sub`) unless they have All-Jobs Access; every `/api/jobs/:jobId` route answers another Author's Job, or a Job with no Job Owner, with HTTP 404 `{ "error": "ไม่พบงานนี้" }`, the same body as a missing Job. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
+- Every route except `GET /api/config` needs a signed-in Author: the browser sends the `envisio_session` cookie set by [sign-in](#sign-in-routes). Without a valid session, the route answers HTTP 401 with `code: "UNAUTHENTICATED"`.
+- Ownership and access control: an Author reaches only Jobs they own (`owner_sub`) unless they have All-Jobs Access; every `/api/jobs/:jobId` route answers unauthorized or ownerless Jobs with HTTP 404 `{ "error": "ไม่พบงานนี้" }` (identical to a missing Job). Unfinished Uploads follow the same rule in memory until server restart: only the uploader or All-Jobs Access can write chunks, abandon, initialize a Job from `uploadId`, or delete (others receive the missing-upload response: HTTP 404 on chunk/abandon/delete, HTTP 400 on `POST /api/jobs/init`). After a restart, only All-Jobs Access can reach an Unfinished Upload. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
 - A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. The server holds it until the running operation finishes and releases it.
 - A lock belonging to another running job can produce HTTP 409. An accepted background request does not mean that Gemini analysis has succeeded. Poll the job for its result.
 - API handlers set `Cache-Control: no-store, no-cache, must-revalidate`.
@@ -21,6 +22,7 @@ A job response contains a `job` object. The fields below describe the current Ty
 |---|---|
 | `schema_version` | `3` |
 | `job_id` | Opaque string ID |
+| `owner_sub`, `owner_email` | Optional Job Owner Keycloak `sub` and display email (absent on pre-auth Jobs) |
 | `title` | The Job Title, 1 to 120 characters. Defaults to the video file name without its extension |
 | `mode` | `generate` or `review` |
 | `video_source` | Where the video lives: `{ kind: "server_copy", local_file_path }`, `{ kind: "url", url }`, or `{ kind: "local_file", file_name, file_size }`. Generate Mode jobs use `server_copy` |
@@ -94,7 +96,7 @@ An unknown or unreadable job returns HTTP 404:
 
 ```json
 {
-  "error": "ไม่พบข้อมูลงานประมวลผลนี้บนเซิร์ฟเวอร์"
+  "error": "ไม่พบงานนี้"
 }
 ```
 
@@ -167,9 +169,7 @@ Job initialization uses the accumulated file. An unfinished upload can be remove
 
 ### POST /api/upload/:uploadId/abandon
 
-Only the Author who started the upload, or one with All-Jobs Access, can abandon it, write chunks to it, turn it into a Job through `POST /api/jobs/init`, or delete it; anyone else gets the same answer as for a missing upload (HTTP 404 here and for chunks and delete, HTTP 400 from `POST /api/jobs/init`). The server remembers the uploader only until it restarts.
-
-Marks an upload session as no longer active without deleting its files. The browser sends this after completion, failure, or cancellation when it knows the upload ID. Sessions exist in server memory and are cleared on restart. A lost initialization response or browser termination can leave a session marked active until the server restarts.
+Marks an upload session as no longer active without deleting its files (access follows the upload ownership rule in [Base configuration and conventions](#base-configuration-and-conventions)). The browser sends this after completion, failure, or cancellation when it knows the upload ID. Sessions exist in server memory and are cleared on restart. A lost initialization response or browser termination can leave a session marked active until the server restarts.
 
 Returns HTTP 200 `{ "ok": true }`, or HTTP 400 `{ "error": "..." }` if `uploadId` is invalid.
 
@@ -305,16 +305,9 @@ The following request represents the complete array for a job with one spot:
 }
 ```
 
-The route validates `spots` strictly with Zod via `validateEditedSpots` (requiring `z.number().int().finite().nonnegative()` for all timestamp fields) before calling `validateSpotTimestampEdit` for every entry. For Review Mode jobs it skips that timing check for spots whose `start_ms` and `end_ms` match the saved job, so text or decision edits on imported lines always save; a retimed Review Mode spot must stay inside the video, last at least 500 ms, and not overlap another spot that is not `skip`, and it may overlap speech. For Generate Mode the timestamp checks require:
+The route validates `spots` strictly with Zod via `validateEditedSpots` (requiring nonnegative finite integer timestamps, the same set of unique spot IDs as the saved job, original boundaries matching stored values, and `duration_ms === end_ms - start_ms`) before running `validateSpotTimestampEdit` per the mode-specific timing rules in [system constraints](agents/system-constraints.md#editing-and-validation-rules) (for Review Mode, timing is checked only for spots whose `start_ms` or `end_ms` changed). HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. Invalid spots or failed timestamp checks return HTTP 400 with `error`.
 
-- Nonnegative integer finite start and end values within the video duration, with end after start.
-- A duration of at least 500 ms, calculated as `end_ms - start_ms`.
-- Times within the submitted `original_start_ms` and `original_end_ms`, with 1 ms tolerance.
-- No overlap with speech segments in the persisted VAD output.
-
-The route validates each spot's fields, requires the same set of unique IDs as the saved job, checks original boundaries against stored values, and requires `duration_ms` to match the submitted times. HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. Invalid spots or failed timestamp checks return HTTP 400 with `error`.
-
-The browser serializes saves and shows success only after receiving an acknowledgement for the job. When a user changes `skip` to `generate`, the editor keeps existing text. If that text is blank, it uses `reason` as the starting text. Changing back to `skip` retains the text. This text selection happens in the browser, not in this endpoint.
+The browser serializes saves and shows success only after receiving an acknowledgement for the job.
 
 ### DELETE /api/jobs/:jobId/files
 
@@ -322,11 +315,9 @@ Permanently deletes a saved job directory and its video, or a recognizable unfin
 
 ## Validation boundaries
 
-Client-side media rules (MP4 codecs, 480p vs. Review Mode limits, WebCodecs AAC fallback) and shared timing rules live in [system constraints](agents/system-constraints.md).
+Client-side media rules, shared spot timing rules, and Gemini response schema validation (`GeminiBatchResponseSchema`) live in [system constraints](agents/system-constraints.md).
 
 On the server, `POST /api/jobs/review` checks that the VAD duration matches the video duration within one second, spot IDs are unique, and spot times are consistent and inside the video. `POST /api/jobs/init` validates the declared video metadata, file size against the uploaded byte count (up to 2,000 MiB), VAD settings, speech segments, and candidate spots (IDs, durations, ranges, and speech overlaps). The server does not inspect the uploaded MP4 to verify its declared codecs or dimensions; browser validation remains necessary.
-
-Gemini output passes through `GeminiBatchResponseSchema`. Every expected spot must be present. A `generate` result must contain nonblank text. Results with unknown spot IDs are ignored. A `skip` result can contain a reason, and returned text is retained if present. The prompt currently requests empty text for skipped spots.
 
 ## Errors
 

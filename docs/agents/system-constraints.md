@@ -1,103 +1,71 @@
 # System constraints and contracts
 
-## Video input specifications
+Each section names the module(s) that own its rules. Edit a rule in its owning module rather than duplicating checks elsewhere. For HTTP request/response shapes and status codes, see [API.md](../API.md).
 
-The client validator (`src/utils/videoValidator.ts`) rejects files that violate these bounds:
+## Video input and SRT import
 
-- Container: MP4 only.
-- Video codec: H.264 (`avc1` or `avc3`).
-- Audio codec: AAC with an `mp4a` prefix. WebCodecs checks `mp4a.40.*` using the track codec and other `mp4a` values using `mp4a.40.2`.
-- Resolution: 480p height (standard 854x480). Non-480p heights fail validation.
-- Duration: Maximum 1800 seconds (30 minutes).
-- File size: Maximum 2,000 MiB (`2000 × 1024 × 1024` bytes).
-- Track count: Must contain at least one video track and one audio track.
-
-## Review Mode
-
-Review Mode opens an existing video and SRT. `src/utils/videoValidator.ts` (with `mode: 'review'`) skips the upload size, H.264, and 480p checks and allows up to `REVIEW_MAX_DURATION_MS` (60 minutes); an AAC audio track is still required. `src/utils/srtImport.ts` decodes UTF-8 (BOM allowed) or falls back to Windows-874, keeps multi-line cue text, strips `<i>`, `<b>`, `<u>`, and `<font>` tags, and leaves out cues that start after the video ends. The video can also be an `http(s)` `.mp4` link: `src/utils/byteSource.ts` gives the validator and the VAD worker one reader with two adapters, a local `File` and a URL read with `HEAD` (size) plus `Range` requests sent `cache: 'no-store'`; a link without CORS or Range support fails with `UrlNotReadableError`, and playback uses the link as the `<video>` source. The worker allows one rewind so MP4s whose `moov` box follows `mdat` still decode audio. Restoring a Review Mode job on reload reuses its saved `vad_output` without rescanning; a `url` source plays at once, and a `local_file` source asks the author to pick the same file again, matched by name and size. `POST /api/jobs/review` stores the job with no video copy; Gemini routes return HTTP 409 for it. The spec and its resolved tickets live in `.scratch/review-mode/`.
+- **Validation (`src/utils/videoValidator.ts`)**:
+  - **Generate Mode (default)**: MP4 container, H.264 video (`avc1`/`avc3`), AAC audio (`mp4a` prefix; WebCodecs probes `mp4a.40.*` as-is and other `mp4a` values as `mp4a.40.2`), 480p height (standard `854×480`), duration ≤ 1,800 s (30 min), size ≤ 2,000 MiB (`2000 × 1024 × 1024` bytes), at least one video track and one audio track.
+  - **Review Mode (`mode: 'review'`)**: skips upload size, H.264, and 480p checks; allows duration up to `REVIEW_MAX_DURATION_MS` (60 min); still requires an AAC audio track.
+- **Byte reader (`src/utils/byteSource.ts`)**: unified reader for the validator and VAD worker with two adapters — local `File` and `http(s)` `.mp4` URL (`HEAD` for size + `Range` requests with `cache: 'no-store'`). URLs without CORS or Range support fail with `UrlNotReadableError`. Playback uses the URL directly as `<video src>`.
+- **SRT import (`src/utils/srtImport.ts`)**: decodes UTF-8 (BOM allowed) with Windows-874 fallback, preserves multi-line cue text, strips `<i>`, `<b>`, `<u>`, and `<font>` tags, and drops cues that start after the video ends or have zero/negative duration (unimported cues are listed to the Author).
 
 ## Voice activity detection pipeline
 
-VAD runs in `src/workers/vad.worker.ts` and post-processes in `src/utils/vadPostProcess.ts`:
+Owned by `src/workers/vad.worker.ts` (decode, inference, waveform) and `src/utils/vadPostProcess.ts` (post-processing and signal analysis):
 
-- Model: Silero VAD v6.2 at `public/models/silero_vad.onnx`, run with ONNX Runtime Web (WASM). Each call takes `input` (64 context samples + 512 new samples), `state` (`[2, 1, 128]`), and `sr`, and returns `output` and `stateN`. A replacement model must keep this interface.
-- Audio format: 16,000 Hz, 1 channel (mono), Float32 PCM.
-- Frame size: 512 samples (32 ms per frame).
-- Default speech threshold: 0.50 (adjusted automatically between 0.48 and 0.55 based on noise floor).
-- Default minimum speech duration: 250 ms.
-- Default minimum silence duration: 400 ms.
-- Default speech padding: 200 ms applied to the start and end of detected speech.
-- Candidate gap threshold: Non-speech intervals equal to or exceeding 3000 ms. Intervals shorter than 3000 ms are dropped from candidate spot generation.
-
-Signal analysis can recommend different speech, silence, and padding values before the gaps are recalculated.
-
-The worker also builds the Waveform Envelope (`src/utils/waveform.ts`): one peak byte per 20 ms bucket, stored base64-encoded in `vad_output.waveform`. Job initialization accepts `sampleIntervalMs` from 10 to 1000 and at most 250,000 base64 characters. [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md) records why the timeline draws it on its own canvas.
+- **Model**: Silero VAD v6.2 at `public/models/silero_vad.onnx` via ONNX Runtime Web (WASM). Interface: `input` (64 context + 512 new samples), `state` (`[2, 1, 128]`), `sr` → `output`, `stateN`. Any replacement model must keep this interface.
+- **Audio & framing**: 16,000 Hz mono Float32 PCM, 512 samples (32 ms) per frame. The worker allows one rewind so MP4s whose `moov` box follows `mdat` still decode audio.
+- **Default parameters**: speech threshold `0.50` (auto-adjusted to `0.48`–`0.55` from noise floor), min speech `250 ms`, min silence `400 ms`, speech padding `200 ms`, candidate gap threshold `3,000 ms` (shorter gaps are dropped). Signal analysis may recommend adjusted speech, silence, and padding values before recalculating gaps.
+- **Waveform Envelope (`src/utils/waveform.ts`)**: 1 peak byte per 20 ms bucket, base64-encoded in `vad_output.waveform`. Job init accepts `sampleIntervalMs` `10`–`1000` and ≤ 250,000 base64 characters. See [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md).
 
 ## Processing feedback
 
-`src/utils/processingFeedback.ts` turns job status, progress, and batches into the status shown to authors. It branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-job`, `saving-edits`); `stage` text is display-only, so stage wording can change freely. The worker's PROGRESS message is typed against `ProcessingProgress`, so a misspelled phase fails `tsc`.
+Owned by `src/utils/processingFeedback.ts`: maps job status, progress, and batches to author-facing status. Logic branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-job`, `saving-edits`); `stage` text is display-only and safe to reword. Worker `PROGRESS` messages are typed against `ProcessingProgress`.
 
 ## Gemini analysis pipeline
 
-Batching runs in `src/utils/formatters.ts`. Prompt building and response validation run in `src/utils/geminiBatch.ts`, the narration character budget in `src/utils/narrationBudget.ts`, and the Gemini calls with retry and fallback in `server.ts`:
+Owned by `src/utils/formatters.ts` (batching), `src/utils/geminiBatch.ts` (prompt & schema validation), `src/utils/narrationBudget.ts` (character budget), and `server.ts` (Gemini calls, retry, fallback):
 
-- Primary model: `gemini-4-hydrogen` with `thinkingLevel: LOW` and `mediaResolution: MEDIA_RESOLUTION_LOW`.
-- Fallback model: `gemini-3.5-flash-lite`. Triggered on HTTP 503, timeouts, or transient errors, setting a 10-minute cooldown on the primary model.
-- Batch interval: 240 seconds of video timeline per batch.
-- Batch context window: Includes 20 seconds before batch start and 10 seconds after batch end, clamped to [0, duration]. A window expands to cover a spot crossing the batch boundary before context is added.
-- Narration pace standard: 11.5 base Thai characters per second (`NARRATION_PACE_CHARS_PER_SEC`). The prompt's character budget and the editor's speech-duration estimate both use it, with a 350 ms onset margin.
-- Safety breathing margin: 250 ms subtracted from spot start and spot end before calculating maximum allowable Thai text length. The editor's over-duration warning compares against the full spot duration, without this margin.
-- Response format: JSON validated by Zod against `GeminiBatchResponseSchema`. Every candidate spot must receive `generate` with non-empty text or `skip`. The server supplies a default reason when a skipped spot has none, and ignores IDs outside the batch.
-- Error classification: an unusable answer throws `BatchResponseError`, which `parseGeminiError` treats as non-transient. It is retried on the same model with backoff, and only transient Gemini failures (rate limits, 503, timeouts, network errors) set the primary-model cooldown and switch to the fallback model.
+- **Models**: primary `gemini-4-hydrogen` (`thinkingLevel: LOW`, `mediaResolution: MEDIA_RESOLUTION_LOW`); fallback `gemini-3.5-flash-lite` on transient errors (rate limits, HTTP 503, timeouts, network errors), activating a 10-minute cooldown on the primary model.
+- **Batching**: 240 s timeline slices grouped by spot start time; empty slices are omitted. Context window adds 20 s before and 10 s after, clamped to `[0, duration]`, expanding first to cover any spot crossing the batch boundary.
+- **Narration pace & margin**: `11.5` base Thai chars/sec (`NARRATION_PACE_CHARS_PER_SEC`) + `350 ms` onset margin for both prompt budget and editor speech-duration estimate. Prompt budget subtracts `250 ms` safety margin from start and end; the editor's over-duration warning compares against full spot duration without that margin.
+- **Response & error handling**: JSON validated by Zod (`GeminiBatchResponseSchema`). Every candidate spot must return `generate` (non-empty text) or `skip` (server supplies a default reason if missing; ignores unknown IDs). Unusable answers throw `BatchResponseError`, which `parseGeminiError` treats as non-transient (retried on the same model with backoff, without triggering fallback cooldown).
 
 ## Data storage and persistence
 
-Job state persists in SQLite at `.data/envisio.db` (built-in `node:sqlite`, WAL mode), with per-Job files under `.data/jobs/<job_id>/`; [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md) records why. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, renames, storage listing, and deletion. Route code goes through the store and never opens the database or Job files itself.
+Owned by `src/utils/jobStore.ts` (DB & file layout) and `src/utils/jobValidation.ts` (`resolveJobTitle`). Route code always goes through `jobStore` and never opens SQLite or Job files directly. Keep all Job data inside `.data/`. See [ADR-0002](../adr/0002-job-mode-and-video-source.md) and [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md).
 
-Each Job records `schema_version` (currently 3), its Job Title (`title`, 1 to 120 characters, defaulting to the video file name without its extension; `resolveJobTitle` in `src/utils/jobValidation.ts` owns this rule), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). Job files from before schema version 3 are not supported: clear `.data` when upgrading (there is no migration). Only a `server_copy` source has a video file on the server.
+- **Layout**: SQLite at `.data/envisio.db` (`node:sqlite`, WAL mode) with tables `jobs` (one row per Job; Analysis Batches in `batches_json`) and `job_spots` (ordered by `position`, cascade-deleted with Job). Per-Job files live under `.data/jobs/<job_id>/` (`job_` + `[A-Za-z0-9_-]+`):
+  - `vad_output.json`: written once on Job creation (`.tmp` then rename), never rewritten.
+  - `source_video.mp4`: Generate Mode (`server_copy`) only; used for `/api/jobs/:jobId/video` range streaming and Gemini re-upload after file TTL expiry.
+- **Job schema & title**: `schema_version` is `3` (pre-v3 `.data` has no migration; wipe `.data` on upgrade). `title` is 1–120 chars, defaulting to the video filename without extension. `mode` is `generate` or `review`; `video_source` is `server_copy`, `url`, or `local_file`. Review Mode stores no video copy (`POST /api/jobs/review`); Gemini routes return HTTP 409 for Review Mode Jobs.
+- **Migrations**: `MIGRATIONS` in `jobStore.ts` is append-only, tracked by `PRAGMA user_version`. Each missing migration runs in its own transaction on startup; the store refuses a database newer than the code. Add a new entry rather than editing a released migration.
+- **Reads, writes & reload**: saves upsert the `jobs` row and replace `job_spots` in one transaction (last write wins across tabs). Renames update only `title`. `load` treats a missing row or unreadable `vad_output.json` as missing; `loadMeta` reads the row only. There is no active Job — `/jobs/:jobId` addresses the open Job. On startup, `ANALYZING` Jobs reset to `VAD_READY` and `processing` batches reset to `pending`. Reloading a Review Mode Job reuses saved `vad_output` without rescanning (`url` plays immediately; `local_file` prompts to re-pick the file matched by name and size).
 
-- Tables: `jobs` (one row per Job; Analysis Batches as `batches_json`) and `job_spots` (AD Spots in order by `position`, deleted with their Job).
-- Schema changes: `MIGRATIONS` in `jobStore.ts` is an append-only list and `PRAGMA user_version` counts how many have run. On open the store runs the missing ones, each in its own transaction, so a fresh database and an upgraded one end up identical; it refuses a database newer than the code. Never edit a released migration; add a new entry instead.
-- VAD output: `.data/jobs/<job_id>/vad_output.json`, written once when the Job is first saved (`.tmp` then rename) and never rewritten.
-- Local video copy: `.data/jobs/<job_id>/source_video.mp4` stored during upload for range streaming (`/api/jobs/:jobId/video`) and automatic re-upload if Gemini file TTL expires.
-- Writes: a save upserts the Job row and replaces its spots in one transaction, so a failed save keeps the previous state. Renaming updates only the title. Saving spots replaces the whole list, so two tabs editing one Job overwrite each other (last write wins; see [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md)).
-- Reads: `load` treats a Job without a row or without a readable VAD file as missing; `loadMeta` reads the row only (used to stream video).
-- There is no active Job. The browser opens the Job named in its `/jobs/:jobId` URL, so several tabs can work on different Jobs. On startup the server returns every Job left `ANALYZING` to `VAD_READY`.
+## Sign-in, sessions, and access control
 
-Keep Job data inside `.data/`.
+Owned by `src/utils/auth.ts` (required env config via `readAuthConfig`, `/auth/*` Keycloak OIDC PKCE routes, request session reading), `src/utils/session.ts` (AES-256-GCM `envisio_session` cookie, key derived from `SESSION_SECRET` per purpose, fixed 7-day TTL, stateless), and `server.ts` (middleware & ownership checks). See [ADR-0004](../adr/0004-keycloak-sign-in-with-server-session-cookie.md).
 
-## Sign-in and sessions
+- **Auth gate**: `server.ts` returns HTTP 401 `code: "UNAUTHENTICATED"` for every `/api/*` route except `GET /api/config`, and redirects unauthenticated HTML page requests to `/auth/login`. Mount all new routes behind this middleware.
+- **Client re-auth**: a single `fetch` wrapper in `src/main.tsx` triggers sign-in only on `code: "UNAUTHENTICATED"`; other 401s (including remapped 403s) pass through to callers.
+- **All-Jobs Access**: computed once at sign-in from the token's `groups` (or `group`) claim (ignoring leading `/`) against `AUTH_ALL_JOBS_GROUPS`, stored in session as `allJobs` and `accessGroups`.
+- **Job Owner & access rule**: Job-creation routes record `owner_sub` and `owner_email`; `jobStore.save` preserves them, and sign-in refreshes `owner_email` for the Author's Jobs (pre-auth Jobs have no owner). `app.param('jobId')` allows access only to the Job Owner or All-Jobs Access and answers unauthorized Jobs with the same HTTP 404 as missing Jobs. `GET /api/jobs` filters via `store.list(ownerSub)`. New routes addressing a Job without `:jobId` must enforce the same check.
+- **Unfinished Uploads**: `uploadOwners` in `server.ts` tracks uploaders in memory until deletion, Job creation, or server restart. Only the uploader or All-Jobs Access can access chunks, abandon, init a Job from `uploadId`, or delete (others receive the missing-upload response). After a restart, only All-Jobs Access can reach an Unfinished Upload.
+- **Testing**: there is no sign-in bypass; integration tests seal cookies with a test `SESSION_SECRET` via `src/utils/authTestHelpers.ts`.
 
-`src/utils/auth.ts` owns sign-in: the required settings (`readAuthConfig`, which stops the server when one is missing), the Keycloak routes under `/auth`, and reading the session from a request. `src/utils/session.ts` owns the cookie: AES-256-GCM sealing with a key derived from `SESSION_SECRET` per purpose, a fixed 7-day lifetime, and no server-side session store. [ADR-0004](../adr/0004-keycloak-sign-in-with-server-session-cookie.md) records why sign-in runs on the server.
+## API error sanitization and concurrency
 
-- `server.ts` answers HTTP 401 `UNAUTHENTICATED` for every `/api` route except `/api/config`, and redirects page navigations without a session to `/auth/login`. Keep new routes behind that middleware.
-- All-Jobs Access is computed once at sign-in from the token's `groups` claim, or `group` as the `rtt` realm's mapper names it (a leading `/` is ignored) and stored in the session as `allJobs`, with the matching groups as `accessGroups` for the account menu.
-- The client signs in again only on `code: "UNAUTHENTICATED"`, from one `fetch` wrapper in `src/main.tsx`; other 401s reach their caller.
-- Job Owner: the two Job-creation routes store the Author's `sub` and email as `owner_sub` and `owner_email`; `jobStore.save` never changes them afterwards, and each sign-in refreshes `owner_email` for the Author's Jobs. Jobs from before sign-in have none.
-- Access rule: `app.param('jobId')` in `server.ts` lets an Author reach a Job only when they own it or have All-Jobs Access, and otherwise answers the same 404 as a missing Job. `GET /api/jobs` lists through `store.list(ownerSub)`. A new `:jobId` route inherits the rule; a route that names a Job another way must check it itself.
-- Unfinished Uploads: `uploadOwners` in `server.ts` remembers who started each upload until it is deleted or becomes a Job, in memory only. Chunk, abandon, Job creation from an `uploadId`, and delete reach an upload only for its uploader or with All-Jobs Access, and otherwise answer like a missing upload. After a restart only All-Jobs Access reaches it.
-- There is no sign-in bypass. Integration tests seal their own session with a test `SESSION_SECRET` (`src/utils/authTestHelpers.ts`).
+Owned by `server.ts`:
 
-## API contract
-
-For endpoint requests, responses, and behavior, see [API.md](../API.md).
-
-### HTTP status code sanitization
-
-Cloud Run and container Nginx reverse proxies intercept status codes 403, 502, 503, and 504, replacing JSON bodies with HTML error pages. `server.ts` uses `sanitizeApiStatusCode` to remap 403 to 401, and 502/503/504 to 500. Keep this sanitization on all API error paths.
-
-### Concurrency model
-
-Processing uses a single-job concurrency lock (`activeProcessingLock` in `server.ts`). Only one Gemini analysis job runs at a time. Requests to start a new job while another is active return HTTP 409.
+- **Status sanitization**: `sanitizeApiStatusCode` remaps HTTP `403 → 401` and `502/503/504 → 500` so Cloud Run / Nginx reverse proxies do not replace JSON error bodies with HTML pages. Apply it on all API error paths.
+- **Concurrency lock**: `activeProcessingLock` enforces one Gemini analysis Job at a time per server process; concurrent start requests return HTTP 409.
 
 ## Editing and validation rules
 
-`src/utils/spotTiming.ts` is the single source for these rules. Typed timestamps, timeline Trim and Move, the ±0.2 s nudge buttons, and `PATCH /api/jobs/:jobId/spots` validation all use it:
+Owned by `src/utils/spotTiming.ts` (shared by typed timestamps, timeline Trim/Move, ±0.2 s nudges, and `PATCH /api/jobs/:jobId/spots`). Callers pass `SpotTimingContext` (`generate` or `review`):
 
-- Timestamps must remain within the spot's original non-speech gap boundaries (`original_start_ms` and `original_end_ms`).
-- Timestamps must never overlap any detected speech segment from `vad_output.speech_segments`.
-- Spot duration must be at least 500 ms (`MIN_SPOT_DURATION_MS`).
-
-Review Mode replaces the first two rules: a retimed spot stays inside the video, lasts at least 500 ms, and does not overlap another spot whose decision is not `skip`; it may overlap a Speech Segment. Callers pass a `SpotTimingContext` (`generate` or `review`) so one module decides which rules apply. `PATCH` checks only Review Mode spots whose `start_ms` or `end_ms` changed, and a drag or nudge on an imported spot that overlaps its neighbour pulls it out of the overlap. `findSpotIssues` flags Review Mode spots that overlap speech, overlap another non-skipped spot, last under 500 ms, or end after the video; these are warnings shown in the editor and timeline, never save errors. The editor counts them under one `ต้องตรวจ` menu together with over-duration (estimated speech longer than the spot), which stays informational because Extended AD may pause the picture. SRT cues that start after the video ends or have no duration are not imported and are listed to the author.
-
-SubRip (`.srt`) export includes only spots where `decision === 'generate'` with non-empty text.
+- **Generate Mode**: timestamps stay within `[original_start_ms, original_end_ms]`, never overlap any `vad_output.speech_segments`, and last ≥ `500 ms` (`MIN_SPOT_DURATION_MS`).
+- **Review Mode**: retimed spots stay within video duration, last ≥ `500 ms`, and never overlap another non-`skip` spot; speech overlap is allowed. `PATCH` checks timing only for Review Mode spots whose `start_ms` or `end_ms` changed; dragging or nudging an overlapping imported spot pulls it out of overlap.
+- **Warnings (`findSpotIssues`)**: flags Review Mode spots that overlap speech, overlap another non-`skip` spot, last < 500 ms, or end after video duration. Shown as non-blocking warnings in the editor/timeline and grouped in the `ต้องตรวจ` menu with over-duration estimates (informational in both modes because Extended AD may pause picture).
+- **Export (`src/utils/formatters.ts`)**: SubRip (`.srt`) includes only spots where `decision === 'generate'` and text is non-empty, sorted by start time.
