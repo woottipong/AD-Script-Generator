@@ -1010,7 +1010,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                                 aria-label={`เปิดงาน ${name}`}
                                 className={cn(
                                   buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                  'text-primary not-disabled:hover:bg-accent not-disabled:hover:text-primary pointer-coarse:size-11',
+                                  'text-primary not-disabled:hover:bg-brand-200/75 not-disabled:hover:text-brand-800 pointer-coarse:size-11',
                                 )}
                               >
                                 <ArrowRight strokeWidth={2.5} aria-hidden="true" />
