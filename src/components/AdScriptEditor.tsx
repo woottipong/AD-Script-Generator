@@ -877,32 +877,59 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       <div ref={listScrollRef} className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
           emptyState === 'preparing' ? (
-            <div role="status" className="divide-y divide-border border-b border-border bg-card">
-              <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
-                <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
-              </div>
-              {[74, 58, 82, 52].map((secondLineWidth, idx) => (
+            <div className="flex h-full min-h-full flex-col">
+              <div aria-hidden="true" className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
+                <div data-slot="skeleton" className="soft-shimmer h-9 flex-1 rounded-lg bg-muted/70" />
                 <div
-                  key={idx}
-                  aria-hidden="true"
-                  style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
-                  className="px-4 py-3.5"
-                >
-                  <div className="mb-2.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="soft-shimmer h-4 w-12 rounded bg-border/80" />
-                      <div className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
-                      <div className="soft-shimmer h-4 w-10 rounded bg-muted" />
-                    </div>
-                    <div className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
-                  </div>
-                  <div className="w-full space-y-2">
-                    <div className="soft-shimmer h-3.5 w-full rounded bg-muted" />
-                    <div className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
-                  </div>
+                  data-slot="skeleton"
+                  style={{ '--shimmer-delay': '120ms' } as React.CSSProperties}
+                  className="soft-shimmer h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40"
+                />
+              </div>
+              <div role="status" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
+                <div className="flex shrink-0 items-center gap-2 border-b border-border bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
+                  <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
                 </div>
-              ))}
+                <div className="min-h-0 flex-1 divide-y divide-border overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)]">
+                  {[74, 58, 82, 52, 68, 86, 60].map((secondLineWidth, idx) => (
+                    <div
+                      key={idx}
+                      aria-hidden="true"
+                      style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
+                      className="px-4 py-3.5"
+                    >
+                      <div className="mb-2.5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div data-slot="skeleton" className="soft-shimmer h-4 w-12 rounded bg-border/80" />
+                          <div data-slot="skeleton" className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
+                          <div data-slot="skeleton" className="soft-shimmer h-4 w-10 rounded bg-muted" />
+                        </div>
+                        <div data-slot="skeleton" className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
+                      </div>
+                      <div className="w-full space-y-2">
+                        <div data-slot="skeleton" className="soft-shimmer h-3.5 w-full rounded bg-muted" />
+                        <div data-slot="skeleton" className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div aria-hidden="true" className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <div data-slot="skeleton" className="soft-shimmer h-4 w-24 rounded bg-muted" />
+                  <div
+                    data-slot="skeleton"
+                    style={{ '--shimmer-delay': '100ms' } as React.CSSProperties}
+                    className="soft-shimmer h-4 w-20 rounded bg-muted"
+                  />
+                </div>
+                <div
+                  data-slot="skeleton"
+                  style={{ '--shimmer-delay': '180ms' } as React.CSSProperties}
+                  className="soft-shimmer h-4 w-32 rounded bg-muted"
+                />
+              </div>
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">

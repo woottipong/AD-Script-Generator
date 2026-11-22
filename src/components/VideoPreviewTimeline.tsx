@@ -691,53 +691,26 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     className="pointer-events-none sticky left-0 block h-full"
                   />
                 ) : (
-                  <div className="pointer-events-none relative h-full w-full overflow-hidden bg-gradient-to-b from-white via-brand-50/35 to-white">
-                    <svg
-                      aria-hidden="true"
-                      className="waveform-loading-wave-slow absolute inset-y-0 left-0 h-full w-[calc(100%+240px)] blur-[2px]"
-                      preserveAspectRatio="none"
-                    >
-                      <defs>
-                        <linearGradient id="ad-mist-fill-back" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.16" />
-                          <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.34" />
-                          <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.04" />
-                        </linearGradient>
-                        <pattern id="ad-loading-wave-soft" width="240" height="56" patternUnits="userSpaceOnUse">
-                          <path
-                            d="M0 30 Q 60 12, 120 30 T 240 30 L 240 56 L 0 56 Z"
-                            fill="url(#ad-mist-fill-back)"
-                          />
-                        </pattern>
-                      </defs>
-                      <rect width="100%" height="100%" fill="url(#ad-loading-wave-soft)" />
-                    </svg>
-                    <svg
-                      aria-hidden="true"
-                      className="waveform-loading-wave absolute inset-y-0 left-0 h-full w-[calc(100%+240px)] blur-[1px]"
-                      preserveAspectRatio="none"
-                    >
-                      <defs>
-                        <linearGradient id="ad-mist-fill-front" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.24" />
-                          <stop offset="60%" stopColor="#0284c7" stopOpacity="0.15" />
-                          <stop offset="100%" stopColor="#0284c7" stopOpacity="0" />
-                        </linearGradient>
-                        <pattern id="ad-loading-wave-main" width="240" height="56" patternUnits="userSpaceOnUse">
-                          <path
-                            d="M0 28 Q 60 15, 120 28 T 240 28 L 240 56 L 0 56 Z"
-                            fill="url(#ad-mist-fill-front)"
-                          />
-                        </pattern>
-                      </defs>
-                      <rect width="100%" height="100%" fill="url(#ad-loading-wave-main)" />
-                    </svg>
+                  <div className="pointer-events-none relative h-full w-full overflow-hidden bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70">
+                    <div aria-hidden="true" className="absolute inset-0 flex items-center justify-between gap-1 px-3 opacity-80">
+                      {[24, 38, 18, 44, 30, 52, 22, 40, 28, 48, 20, 34, 46, 26, 36, 50, 20, 42, 30, 44, 24, 38, 48, 22, 34, 42, 26, 36, 20, 40, 28, 46].map((pct, idx) => (
+                        <div
+                          key={idx}
+                          data-slot="skeleton"
+                          style={{
+                            height: `${pct}%`,
+                            '--shimmer-delay': `${(idx % 8) * 70}ms`,
+                          } as React.CSSProperties}
+                          className="soft-shimmer w-1 flex-1 rounded-full bg-slate-200/80"
+                        />
+                      ))}
+                    </div>
                     <div
                       style={{ width: `${Math.max(1, Math.floor(timelineViewportWidth))}px` }}
                       className="sticky left-0 flex h-full items-center justify-center px-3"
                     >
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1 text-xs font-medium text-brand-900 backdrop-blur-xs tabular-nums">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-600" aria-hidden="true" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200/80 bg-white/90 px-3 py-1 text-xs font-medium text-brand-900 shadow-xs backdrop-blur-xs tabular-nums">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
                         <span>{detectFeedback?.title}</span>
                         {detectPercent !== undefined && <span className="font-semibold text-brand-700">{detectPercent}%</span>}
                       </span>
@@ -748,7 +721,25 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             )}
             <div className="relative h-7 border-b border-slate-200 bg-indigo-50/25">
               {isDetecting && speechSegments.length === 0 ? (
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-brand-50/40 via-slate-50/60 to-brand-50/40" />
+                [
+                  { left: '4%', width: '12%', delay: 0 },
+                  { left: '22%', width: '16%', delay: 140 },
+                  { left: '44%', width: '10%', delay: 280 },
+                  { left: '61%', width: '18%', delay: 420 },
+                  { left: '84%', width: '11%', delay: 560 },
+                ].map((capsule, idx) => (
+                  <div
+                    key={idx}
+                    aria-hidden="true"
+                    data-slot="skeleton"
+                    style={{
+                      left: capsule.left,
+                      width: capsule.width,
+                      '--shimmer-delay': `${capsule.delay}ms`,
+                    } as React.CSSProperties}
+                    className="soft-shimmer pointer-events-none absolute top-1 bottom-1 rounded-[4px] bg-muted"
+                  />
+                ))
               ) : (
                 speechSegments.map((seg, index) => (
                   <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-[4px] border border-indigo-300/90 bg-indigo-100/90" />
@@ -756,6 +747,23 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               )}
             </div>
             <div className="relative h-14 bg-slate-50/40">
+              {isDetecting && spots.length === 0 && [
+                { left: '16%', width: '7%', delay: 100 },
+                { left: '38%', width: '7%', delay: 260 },
+                { left: '79%', width: '6%', delay: 420 },
+              ].map((block, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  data-slot="skeleton"
+                  style={{
+                    left: block.left,
+                    width: block.width,
+                    '--shimmer-delay': `${block.delay}ms`,
+                  } as React.CSSProperties}
+                  className="soft-shimmer pointer-events-none absolute top-1.5 bottom-1.5 rounded-sm border border-brand-200/70 bg-brand-50/80"
+                />
+              ))}
               {activeDrag?.hasMoved && (() => {
                 const trackWidth = timelineViewportWidth * zoomLevel;
                 const gapLeft = Math.max(0, (activeDrag.originSpot.original_start_ms / effectiveDurationMs) * trackWidth);

@@ -133,38 +133,21 @@
   }
 }
 
-@keyframes waveform-loading-glide {
-  0% {
-    transform: translateX(0);
+@layer components {
+  .soft-shimmer {
+    position: relative;
+    overflow: hidden;
   }
-  100% {
-    transform: translateX(-240px);
+
+  .soft-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+    background: linear-gradient(90deg, transparent 10%, oklch(99.5% 0.01 236 / 0.88) 50%, transparent 90%);
+    animation: progress-shimmer-sweep 1.75s ease-in-out infinite;
+    animation-delay: var(--shimmer-delay, 0ms);
   }
-}
-
-.waveform-loading-wave {
-  will-change: transform;
-  animation: waveform-loading-glide 5.5s linear infinite;
-}
-
-.waveform-loading-wave-slow {
-  will-change: transform;
-  animation: waveform-loading-glide 8.5s linear infinite reverse;
-}
-
-.soft-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.soft-shimmer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  will-change: transform;
-  background: linear-gradient(90deg, transparent 10%, oklch(99.5% 0.01 236 / 0.88) 50%, transparent 90%);
-  animation: progress-shimmer-sweep 1.75s ease-in-out infinite;
-  animation-delay: var(--shimmer-delay, 0ms);
 }
 
 .progress-indeterminate-primary {
@@ -199,9 +182,7 @@
   .animate-spin,
   .progress-indeterminate-primary,
   .progress-indeterminate-secondary,
-  .progress-shimmer-sweep,
-  .waveform-loading-wave,
-  .waveform-loading-wave-slow {
+  .progress-shimmer-sweep {
     animation: none;
   }
 

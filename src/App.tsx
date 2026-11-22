@@ -36,6 +36,11 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { JobList } from './components/JobList';
+import {
+  EditorHeaderActionsSkeleton,
+  EditorHeaderTitleSkeleton,
+  EditorWorkspaceSkeleton,
+} from './components/EditorSkeleton';
 import type { GenerateDraft, IntakeControls, ReviewDraft } from './components/IntakeShell';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
@@ -1314,6 +1319,7 @@ export default function App() {
   const videoHeightLabel = videoMetadata?.height ? `${videoMetadata.height}p` : '';
   const videoSize = videoMetadata?.fileSize ? formatFileSize(videoMetadata.fileSize) : null;
   const isCompactHeader = hasProject || path.startsWith('/jobs/');
+  const showEditorHeaderSkeleton = isCompactHeader && !videoMetadata && jobLoad === 'loading';
   const titleFeedback = titleEditor.kind === 'saving' ? 'กำลังบันทึกชื่อ…'
     : titleEditor.kind !== 'display' && registeringJob ? 'กำลังบันทึกงานบนเซิร์ฟเวอร์…'
     : titleEditor.kind === 'display' && titleAcknowledgement === 'server' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
@@ -1345,7 +1351,7 @@ export default function App() {
   );
 
   return (
-    <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${isCompactHeader ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
       <header className="relative flex min-h-16 shrink-0 items-center border-b border-brand-100 bg-card px-4 py-2 sm:px-6">
         <div className="grid w-full min-w-0 items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -1356,6 +1362,8 @@ export default function App() {
                 <TooltipContent role="tooltip" side="bottom">กลับรายการงาน</TooltipContent>
               </Tooltip>
             ) : logoLink}
+
+            {showEditorHeaderSkeleton && <EditorHeaderTitleSkeleton />}
 
             {videoMetadata && (
               <div className="min-w-0 flex-1">
@@ -1454,7 +1462,11 @@ export default function App() {
                 </div>
             )}
           </div>
-          {hasProject && <div ref={setHeaderActionsElement} className="min-h-10 min-w-0 pointer-coarse:min-h-11" />}
+          {hasProject ? (
+            <div ref={setHeaderActionsElement} className="min-h-10 min-w-0 pointer-coarse:min-h-11" />
+          ) : showEditorHeaderSkeleton ? (
+            <EditorHeaderActionsSkeleton />
+          ) : null}
         </div>
         {hasProject && (
           <div className={showTitleNotice
@@ -1549,16 +1561,17 @@ export default function App() {
       {/* Top Studio Project & Queue Command Bar */}
       <WorkspaceLoadBoundary key={path === '/' ? 'list' : 'workspace'} onReady={focusWhenJobReady}>
       <Suspense fallback={
-        <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
-          <Spinner aria-hidden="true" />
-          กำลังโหลดพื้นที่ทำงาน…
-        </p>
+        path.startsWith('/jobs/') ? (
+          <EditorWorkspaceSkeleton label="กำลังโหลดพื้นที่ทำงาน…" />
+        ) : (
+          <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
+            <Spinner aria-hidden="true" />
+            กำลังโหลดพื้นที่ทำงาน…
+          </p>
+        )
       }>
       {jobLoad === 'loading' && !hasProject ? (
-        <p role="status" className="my-14 flex items-center justify-center gap-2 text-muted-foreground">
-          <Spinner aria-hidden="true" />
-          กำลังเปิดงาน…
-        </p>
+        <EditorWorkspaceSkeleton label="กำลังเปิดงาน…" />
       ) : jobLoad && !hasProject ? (
         <Empty ref={focusWhenJobReady} role="alert" className="mx-auto my-14 w-[calc(100%-2rem)] max-w-xl">
           <EmptyHeader>
