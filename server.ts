@@ -118,6 +118,15 @@ type ProcessingLock = {
 };
 let activeProcessingLock: ProcessingLock | null = null;
 const activeUploads = new Set<string>();
+/**
+ * Who started each Unfinished Upload, until it is deleted or becomes a Job. Kept in memory only: after a restart an
+ * upload has no known uploader and only Authors with All-Jobs Access can reach it (ADR-0004).
+ */
+const uploadOwners = new Map<string, string>();
+
+function canUseUpload(uploadId: string, author: AuthorSession): boolean {
+  return author.allJobs || uploadOwners.get(uploadId) === author.sub;
+}
 
 function createProcessingLock(jobId: string): ProcessingLock {
   let release!: () => void;
@@ -641,10 +650,15 @@ async function startServer() {
 
   app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
     try {
+      // A Job's access was checked by the `jobId` param; an Unfinished Upload has no row, so check its uploader here.
+      if (!store.exists(req.params.jobId) && !canUseUpload(req.params.jobId, res.locals.author as AuthorSession)) {
+        res.status(404).json({ error: JOB_NOT_FOUND }); return;
+      }
       if (req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
         res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
       if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: JOB_NOT_FOUND }); return; }
+      uploadOwners.delete(req.params.jobId);
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
@@ -719,6 +733,7 @@ async function startServer() {
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
       fs.writeFileSync(targetFilePath, Buffer.alloc(0));
       activeUploads.add(uploadId);
+      uploadOwners.set(uploadId, (res.locals.author as AuthorSession).sub);
 
       res.json({
         uploadId,
@@ -735,6 +750,11 @@ async function startServer() {
       res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
       return;
     }
+    if (!canUseUpload(req.params.uploadId, res.locals.author as AuthorSession)) {
+      res.status(404).json({ error: 'ไม่พบการอัปโหลดนี้' });
+      return;
+    }
+    // The uploader stays known after abandoning, so their client can still delete the upload.
     activeUploads.delete(req.params.uploadId);
     res.json({ ok: true });
   });
@@ -760,7 +780,7 @@ async function startServer() {
 
         const jobDir = store.dirOf(uploadId);
         const targetFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(jobDir)) {
+        if (!fs.existsSync(jobDir) || !canUseUpload(uploadId, res.locals.author as AuthorSession)) {
           res.status(404).json({ error: 'ไม่พบโฟลเดอร์สำหรับ uploadId นี้' });
           return;
         }
@@ -852,7 +872,8 @@ async function startServer() {
         }
         const jobDir = store.dirOf(jobId);
         localFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || store.exists(jobId)) {
+        // Another Author's upload answers exactly like a missing one.
+        if (!canUseUpload(jobId, res.locals.author as AuthorSession) || !fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || store.exists(jobId)) {
           res.status(400).json({ error: 'ไม่พบไฟล์วิดีโอที่อัปโหลด หรือไฟล์มีขนาดเป็น 0' });
           return;
         }
@@ -957,6 +978,7 @@ async function startServer() {
 
       store.save(jobState);
       activeUploads.delete(jobId);
+      uploadOwners.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
       if (!willAnalyzeNow) {

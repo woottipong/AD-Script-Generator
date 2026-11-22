@@ -167,6 +167,8 @@ Job initialization uses the accumulated file. An unfinished upload can be remove
 
 ### POST /api/upload/:uploadId/abandon
 
+Only the Author who started the upload, or one with All-Jobs Access, can abandon it, write chunks to it, turn it into a Job through `POST /api/jobs/init`, or delete it; anyone else gets the same answer as for a missing upload (HTTP 404 here and for chunks and delete, HTTP 400 from `POST /api/jobs/init`). The server remembers the uploader only until it restarts.
+
 Marks an upload session as no longer active without deleting its files. The browser sends this after completion, failure, or cancellation when it knows the upload ID. Sessions exist in server memory and are cleared on restart. A lost initialization response or browser termination can leave a session marked active until the server restarts.
 
 Returns HTTP 200 `{ "ok": true }`, or HTTP 400 `{ "error": "..." }` if `uploadId` is invalid.
