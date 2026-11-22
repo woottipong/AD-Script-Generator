@@ -22,7 +22,14 @@ export type StoredJobSummary = {
   spot_count?: number;
   progress_percent?: number;
   error_message?: string;
+  /** The Job Owner's email; null for a Job with no Job Owner. */
+  owner_email?: string | null;
+  /** Whether the signed-in Author owns this Job (derived by `GET /api/jobs` from `owner_sub`). */
+  is_owner?: boolean;
 };
+
+/** Internal store list item carrying `owner_sub` so `GET /api/jobs` can derive `is_owner` without leaking `sub`. */
+export type StoredJobRecord = StoredJobSummary & { owner_sub?: string | null };
 
 /** Everything a Job holds except its VAD output and AD Spots. */
 export type JobMeta = Omit<PersistedJobState, 'vad_output' | 'spots'>;
@@ -76,6 +83,10 @@ const MIGRATIONS = [
     FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
   );
   CREATE INDEX idx_job_spots_order ON job_spots(job_id, position);`,
+  // Job Owner (ADR-0004): Jobs created before sign-in keep null and have no Job Owner.
+  `ALTER TABLE jobs ADD COLUMN owner_sub TEXT;
+  ALTER TABLE jobs ADD COLUMN owner_email TEXT;
+  CREATE INDEX idx_jobs_owner ON jobs(owner_sub);`,
 ];
 
 /** Brings the database up to the latest schema; each migration commits together with its version number. */
@@ -126,6 +137,8 @@ function metaFromRow(row: JobRow): JobMeta {
     progress_percent: optional<number>(row.progress_percent),
     active_model: optional<string>(row.active_model),
     error_message: optional<string>(row.error_message),
+    owner_sub: optional<string>(row.owner_sub),
+    owner_email: optional<string>(row.owner_email),
   };
   return Object.fromEntries(Object.entries(meta).filter(([, value]) => value !== undefined)) as JobMeta;
 }
@@ -186,8 +199,8 @@ export function createJobStore(dataDir: string) {
   const upsertJob = db.prepare(`INSERT INTO jobs (job_id, schema_version, title, mode, status, file_name, duration_ms, video_source_kind,
       video_source_json, video_metadata_json, vad_config_json, ad_settings_json, srt_source_json, batches_json, gemini_file_uri,
       gemini_file_name, gemini_file_mime_type, gemini_file_expires_at, progress_stage, progress_percent, active_model, error_message,
-      created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, owner_sub, owner_email)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(job_id) DO UPDATE SET schema_version = excluded.schema_version, title = excluded.title, mode = excluded.mode,
       status = excluded.status, file_name = excluded.file_name, duration_ms = excluded.duration_ms,
       video_source_kind = excluded.video_source_kind, video_source_json = excluded.video_source_json,
@@ -197,18 +210,23 @@ export function createJobStore(dataDir: string) {
       gemini_file_mime_type = excluded.gemini_file_mime_type, gemini_file_expires_at = excluded.gemini_file_expires_at,
       progress_stage = excluded.progress_stage, progress_percent = excluded.progress_percent, active_model = excluded.active_model,
       error_message = excluded.error_message, created_at = excluded.created_at, updated_at = excluded.updated_at`);
+  // The Job Owner is written only when the row is first inserted; the upsert above never changes it.
   const deleteSpots = db.prepare('DELETE FROM job_spots WHERE job_id = ?');
   const insertSpot = db.prepare(`INSERT INTO job_spots (job_id, spot_id, position, start_ms, end_ms, duration_ms, decision, text, reason,
       is_edited, original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const selectJob = db.prepare('SELECT * FROM jobs WHERE job_id = ?');
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
-  const selectSummaries = db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
-      j.progress_percent, j.error_message, j.updated_at,
+  const summaryQuery = (where: string) => db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
+      j.progress_percent, j.error_message, j.updated_at, j.owner_sub, j.owner_email,
       COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' THEN 1 END) AS spot_count
     FROM jobs j
     LEFT JOIN job_spots s ON s.job_id = j.job_id
+    ${where}
     GROUP BY j.job_id
     ORDER BY j.updated_at DESC`);
+  const selectSummaries = summaryQuery('');
+  const selectOwnedSummaries = summaryQuery('WHERE j.owner_sub = ?');
+  const updateOwnerEmailStmt = db.prepare('UPDATE jobs SET owner_email = ? WHERE owner_sub = ?');
   const updateTitle = db.prepare('UPDATE jobs SET title = ?, updated_at = ? WHERE job_id = ?');
   const deleteJobRow = db.prepare('DELETE FROM jobs WHERE job_id = ?');
 
@@ -266,7 +284,7 @@ export function createJobStore(dataDir: string) {
         JSON.stringify(job.vad_config), json(job.ad_settings), json(job.srt_source), JSON.stringify(job.batches),
         job.gemini_file_uri ?? null, job.gemini_file_name ?? null, job.gemini_file_mime_type ?? null, job.gemini_file_expires_at ?? null,
         job.progress_stage ?? null, job.progress_percent ?? null, job.active_model ?? null, job.error_message ?? null,
-        job.created_at, updatedAt);
+        job.created_at, updatedAt, job.owner_sub ?? null, job.owner_email ?? null);
       deleteSpots.run(job.job_id);
       job.spots.forEach((spot, position) => {
         insertSpot.run(job.job_id, spot.spot_id, position, spot.start_ms, spot.end_ms, spot.duration_ms, spot.decision, spot.text,
@@ -312,15 +330,21 @@ export function createJobStore(dataDir: string) {
     }
   }
 
-  /** Every stored Job and Unfinished Upload, most recently changed first. */
-  function list(): StoredJobSummary[] {
-    const jobs = (selectSummaries.all() as JobRow[]).map((found): StoredJobSummary => {
-      const summary: StoredJobSummary = {
+  /**
+   * Every stored Job and Unfinished Upload, most recently changed first; with `ownerSub`, only that Author's Jobs
+   * (an Unfinished Upload has no Job Owner, so it is left out).
+   */
+  function list(ownerSub?: string): StoredJobRecord[] {
+    const rows = (ownerSub === undefined ? selectSummaries.all() : selectOwnedSummaries.all(ownerSub)) as JobRow[];
+    const jobs = rows.map((found): StoredJobRecord => {
+      const summary: StoredJobRecord = {
         job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
         size_bytes: folderSize(found.job_id as string), is_upload: false,
         title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
         duration_ms: Number(found.duration_ms),
         spot_count: Number(found.spot_count),
+        owner_sub: (found.owner_sub as string | null) ?? null,
+        owner_email: (found.owner_email as string | null) ?? null,
       };
       const progressPercent = optional<number>(found.progress_percent);
       if (progressPercent !== undefined) summary.progress_percent = progressPercent;
@@ -328,7 +352,8 @@ export function createJobStore(dataDir: string) {
       if (errorMessage !== undefined) summary.error_message = errorMessage;
       return summary;
     });
-    const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobSummary[] => {
+    if (ownerSub !== undefined) return jobs;
+    const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobRecord[] => {
       const upload = findUnfinishedUpload(name);
       if (!upload) return [];
       return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, size_bytes: folderSize(name), is_upload: true }];
@@ -353,9 +378,14 @@ export function createJobStore(dataDir: string) {
     return true;
   }
 
+  /** Keeps the shown owner email current when an Author's email changes in Keycloak. */
+  function updateOwnerEmail(ownerSub: string, email: string): void {
+    updateOwnerEmailStmt.run(email, ownerSub);
+  }
+
   function close(): void {
     db.close();
   }
 
-  return { dirOf, exists, loadMeta, load, save, rename, list, deleteJob, close };
+  return { dirOf, exists, loadMeta, load, save, rename, list, deleteJob, updateOwnerEmail, close };
 }

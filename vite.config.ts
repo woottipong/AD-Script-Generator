@@ -19,6 +19,17 @@ export default defineConfig(() => {
         interval: Number(process.env.CHOKIDAR_INTERVAL) || 300,
         ignored: ['**/_data/**', '**/.data/**', '**/dist/**'],
       },
+      fs: {
+        deny: [
+          '.env',
+          '.env.*',
+          '*.{crt,pem,key,p12,pfx,cer,der}',
+          '.npmrc',
+          '.yarnrc.yml',
+          '**/.git/**',
+          '**/.data/**',
+        ],
+      },
     },
   };
 });

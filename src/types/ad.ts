@@ -157,6 +157,10 @@ export interface PersistedJobState {
   schema_version: typeof JOB_SCHEMA_VERSION;
   job_id: string;
   title: string;
+  /** Keycloak `sub` of the Job Owner; absent for a Job created before sign-in existed. */
+  owner_sub?: string;
+  /** The Job Owner's email, shown in the Job List. */
+  owner_email?: string;
   mode: JobMode;
   video_source: VideoSource;
   srt_source?: { file_name: string; cue_count: number; imported_at: string };

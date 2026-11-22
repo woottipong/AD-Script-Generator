@@ -12,7 +12,7 @@
 ## เริ่มต้นใช้งาน
 
 1. เตรียม Node.js 22.12 ขึ้นไปและ Bun 1.4 ขึ้นไป หรือใช้ Docker Compose
-2. คัดลอก `.env.example` เป็น `.env` แล้วตั้งค่า `GEMINI_API_KEY` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม
+2. คัดลอก `.env.example` เป็น `.env` แล้วตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบ ([การตั้งค่า `.env`](#การตั้งค่า-env)) หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม
 3. ติดตั้งและเริ่มแอปด้วย `bun install --frozen-lockfile` แล้ว `bun run dev`
 4. เปิด [แอปบนเครื่อง](http://localhost:3000) กด **งานใหม่** เลือกโหมด แล้วทำตามขั้นตอนบนหน้าจอ
 
@@ -92,7 +92,7 @@
 
 ### รายการงาน (หน้าแรก)
 
-- แสดงตารางงานที่บันทึกไว้ในคอลัมน์ **ชื่องาน**, **โหมด**, **สถานะ**, **ความยาว**, **บทบรรยาย**, **แก้ล่าสุด** และ **การทำงาน** (ขนาดไฟล์แสดงเฉพาะแถวอัปโหลดที่ยังไม่เสร็จและในหน้าต่างยืนยันการลบ)
+- แสดงตารางงานที่บันทึกไว้ในคอลัมน์ **ชื่องาน**, **โหมด**, **สถานะ**, **ความยาว**, **บทบรรยาย**, **แก้ล่าสุด** และ **การทำงาน** (ผู้ใช้กลุ่ม `admin` / `supervisor` ที่มีสิทธิ์ All-Jobs Access จะเห็นคอลัมน์ **เจ้าของ** และตัวกรองเจ้าของ **ทุกคน** / **งานของฉัน** เพิ่มเติม; ขนาดไฟล์แสดงเฉพาะแถวอัปโหลดที่ยังไม่เสร็จและในหน้าต่างยืนยันการลบ)
 - รองรับการค้นหา (**ค้นหาชื่องานหรือชื่อไฟล์**), ตัวกรองโหมดแบบปุ่มเลือก (**ทั้งหมด** / **สร้างบทบรรยาย** / **ตรวจแก้ SRT**), การเรียงลำดับคอลัมน์ (**ชื่องาน**, **ความยาว**, **บทบรรยาย**, **แก้ล่าสุด** — ค่าเริ่มต้นเรียงตามแก้ล่าสุด), การแบ่งหน้าครั้งละ 25 รายการ และรีเฟรชสถานะอัตโนมัติทุก 5 วินาทีขณะมีงานกำลังประมวลผล
 - เปิดงานที่ `/jobs/<job_id>` ได้จากลิงก์ชื่องานหรือปุ่มไอคอน **เปิดงาน** และลบงานหรือไฟล์อัปโหลดที่ยังไม่เสร็จได้หลังยืนยัน (การลบย้อนกลับไม่ได้ งานที่กำลังวิเคราะห์หรือกำลังอัปโหลดจะลบไม่ได้)
 - กลับมาหน้ารายการงานได้ทุกเมื่อโดยกดโลโก้ที่แถบด้านบน (**กลับรายการงาน**)
@@ -103,7 +103,7 @@
 
 #### สร้างบทบรรยาย (Generate Mode)
 
-1. **ตรวจเสียงและเตรียมงาน** ลากหรือเลือกไฟล์ MP4 มาเตรียมไว้ก่อน แล้วกด **ตรวจเสียงและเตรียมงาน** ระบบจะตรวจสเปกและตรวจเสียงบนเครื่อง จากนั้นส่งวิดีโอส่วนละ 8 MiB ไปเก็บบนเซิร์ฟเวอร์เพื่อบันทึกงาน (หากบันทึกไม่สำเร็จ กด **ลองบันทึกอีกครั้ง** เพื่อใช้ผลตรวจเสียงเดิม)
+1. **ตรวจเสียงและเตรียมงาน** ลากหรือเลือกไฟล์ MP4 มาเตรียมไว้ก่อน แล้วกด **เริ่มเตรียมงาน** ระบบจะตรวจสเปกและตรวจเสียงบนเครื่อง จากนั้นส่งวิดีโอส่วนละ 8 MiB ไปเก็บบนเซิร์ฟเวอร์เพื่อบันทึกงาน (หากบันทึกไม่สำเร็จ กด **ลองบันทึกอีกครั้ง** เพื่อใช้ผลตรวจเสียงเดิม)
 2. **สร้างบทบรรยายภาพ** เมื่อบันทึกงานสำเร็จและพบช่วงว่าง กด **สร้างบทบรรยายภาพ** ในหน้าตัดต่อเพื่อเริ่มวิเคราะห์ด้วย Gemini ทีละชุด 240 วินาที กดสถานะบนแถบด้านบนเพื่อดูคิวและเลือกชุดที่ต้องการตรวจ
 3. **ตรวจและส่งออก** เลือกช่วงจากไทม์ไลน์หรือรายการบทบรรยาย แก้ข้อความ ปรับเวลา แล้วส่งออก SRT
 
@@ -144,10 +144,16 @@
 | `NODE_ENV` | ค่า `production` ให้เซิร์ฟเวอร์ใช้ไฟล์ใน `dist` ค่าอื่นใช้ Vite middleware |
 | `DISABLE_HMR` | ค่า `true` ปิด HMR และ file watching ของ Vite ค่าอื่นเปิดไว้ โดย `docker-compose.yml` สำหรับพัฒนาตั้งเป็น `false` |
 | `CHOKIDAR_USEPOLLING`, `CHOKIDAR_INTERVAL` | Docker Compose ส่งค่า `true` และ `300` ให้ file watcher ของเครื่องมือพัฒนา |
-| `APP_URL` | มีใน `.env.example` แต่โค้ดแอปปัจจุบันไม่อ่านค่านี้ |
+| `APP_URL` | จำเป็น origin ที่เบราว์เซอร์เปิด (`http://localhost:3003` เมื่อใช้ Docker Compose, `http://localhost:3000` เมื่อใช้ `bun run dev`) ใช้สร้าง redirect URI `<APP_URL>/auth/callback` และเปิด cookie แบบ `Secure` เมื่อเป็น https |
+| `KEYCLOAK_ISSUER_URL` | จำเป็น issuer ของ realm เช่น `https://accounts.rtt.in.th/auth/realms/rtt` |
+| `KEYCLOAK_CLIENT_ID` | จำเป็น client แบบ public ใน Keycloak เช่น `envisio-dev` ใช้ PKCE แทน client secret |
+| `SESSION_SECRET` | จำเป็น อย่างน้อย 32 ตัวอักษร ใช้เข้ารหัส session cookie เปลี่ยนค่าแล้วรีสตาร์ตเพื่อให้ทุกคนออกจากระบบทันที |
+| `AUTH_ALL_JOBS_GROUPS` | ไม่บังคับ กลุ่ม Keycloak ที่ได้ All-Jobs Access คั่นด้วยจุลภาค ค่าเริ่มต้น `admin,supervisor` |
 | `PORT` | พอร์ตที่ `server.ts` ฟัง ค่าเริ่มต้นคือ `3000` และ Dockerfile กำหนดไว้ที่ `3000` |
 
-`GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น แอปไม่มีระบบล็อกอินหรือ middleware ตรวจสิทธิ์ผู้เรียก HTTP API ดู [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions)
+เซิร์ฟเวอร์ไม่ยอม start หากขาดค่าที่จำเป็นของการเข้าสู่ระบบ ทุกหน้าและทุก API ยกเว้น `/api/config` ต้องเข้าสู่ระบบผ่าน Keycloak ก่อน session อยู่ได้ 7 วันนับจากเข้าสู่ระบบ ดู [ADR-0004](docs/adr/0004-keycloak-sign-in-with-server-session-cookie.md) และ [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions) `GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น
+
+ตั้งค่า client ใน Keycloak ดังนี้: ปิด Client authentication (public client) ใช้ PKCE `S256`, ลงทะเบียน Valid redirect URI `<APP_URL>/auth/callback` และ post-logout redirect `<APP_URL>/` (สำหรับพัฒนาคือ `http://localhost:3003/auth/callback` และ `http://localhost:3003/`) และเพิ่ม mapper แบบ Group Membership ที่ส่ง claim `groups` หรือ `group` มากับ token
 
 ---
 
@@ -157,7 +163,7 @@
 
 ใช้ Node.js 22.12 ขึ้นไปในสาย 22 หรือเวอร์ชันใหม่กว่าที่ Vite รองรับ Dockerfile ใช้ `node:22-slim` และ Bun `1.4.4` โปรเจกต์ใช้ `bun.lock` รูปแบบ `lockfileVersion: 2` ซึ่งต้องใช้ Bun 1.4 ขึ้นไป
 
-ก่อนรันครั้งแรก คัดลอกไฟล์ตัวอย่างแล้วตั้ง `GEMINI_API_KEY` ใน `.env` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม:
+ก่อนรันครั้งแรก คัดลอกไฟล์ตัวอย่างแล้วตั้ง `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ใน `.env` หากมี `.env` อยู่แล้ว ให้แก้ไฟล์เดิม:
 
 ```bash
 test -e .env || cp .env.example .env
@@ -225,7 +231,7 @@ docker compose up --build --renew-anon-volumes -d
 
 ### รันด้วย Docker สำหรับ production
 
-[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile), mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่พอร์ต 3000, รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ใส่ `GEMINI_API_KEY` ก่อน (ดู `.env.example`)
+[docker-compose.prod.yml](docker-compose.prod.yml) build stage `production` ใน [Dockerfile](Dockerfile), mount `.data` ของเครื่องเข้าไปเก็บงาน, อ่านค่าจาก `.env`, เปิดที่พอร์ต 3000, รีสตาร์ตเองเมื่อเครื่องบูต และตรวจสุขภาพผ่าน `/api/config` ต้องมี `.env` ที่ตั้งค่า `GEMINI_API_KEY` และค่าการเข้าสู่ระบบที่จำเป็น (`APP_URL`, `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`) ก่อน (ดู `.env.example`)
 
 **ขึ้นระบบครั้งแรก และอัปเดตเป็นโค้ดล่าสุด** ใช้คำสั่งเดียวกัน:
 
@@ -302,89 +308,14 @@ NODE_ENV=production npx tsx server.ts
 
 ## คำสั่งตรวจสอบโค้ด
 
-คำสั่ง `lint` ตรวจชนิดข้อมูลด้วย `tsc --noEmit` ส่วน `bun test` รัน unit tests และ integration tests ใน `src/utils` โดย integration tests ใช้ข้อมูลและ Gemini จำลอง (`bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` ถ้า Bun บนเครื่องเก่ากว่าให้รันใน dev container ด้วย `docker exec -w /app <container> bun test`) `build` สร้างหน้าเว็บ และ `docker compose config --quiet` ตรวจรูปแบบ Compose:
+`check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit/integration และ guardrail tests ใน `src/utils`, และ `build` ไว้ในคำสั่งเดียว (รันใน dev container เพราะ `node:sqlite` ต้องใช้ Bun 1.4+):
 
 ```bash
-bun run lint
-bun test
-bun run build
+docker compose exec ad-script-generator bun run check
 docker compose config --quiet
 ```
 
-### ตรวจหน้าจอด้วยข้อมูลจำลอง
-
-ต้องมี Node.js, npm และ Chromium ที่ Playwright ใช้งานได้ คำสั่ง `npx` อาจดาวน์โหลด Playwright CLI เมื่อยังไม่มีในเครื่อง การตรวจนี้จำลอง API ทุก endpoint และไม่ใช้ข้อมูลงานจริง หากยังไม่มี browser ที่ Playwright รองรับ ให้ติดตั้งตามคำแนะนำของ Playwright CLI
-
-เริ่ม preview ใน terminal หนึ่ง:
-
-```bash
-bun run build
-bun run preview --host 127.0.0.1 --port 4173 --strictPort
-```
-
-ในอีก terminal รัน:
-
-```bash
-npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0.0.1:4173/
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/create-mode.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode-url.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-restore.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check close
-```
-
-`create-mode.js` ต้องมีวิดีโอ MP4 480p ที่มีแทร็ก AAC และมีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที สร้างได้ด้วย FFmpeg:
-
-```bash
-ffmpeg -f lavfi -i color=c=navy:s=854x480:r=25 -f lavfi -i anullsrc=channel_layout=mono:sample_rate=44100 -t 8 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/ad-generate-480p.mp4
-```
-
-`review-mode.js` ต้องมีไฟล์ตัวอย่าง (ไม่ใส่ `+faststart` โดยตั้งใจ เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt` สร้างได้ด้วย FFmpeg:
-
-```bash
-ffmpeg -f lavfi -i color=c=navy:s=1920x1080:r=25 -f lavfi -i sine=frequency=220:sample_rate=48000 -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/ad-review-1080p.mp4
-```
-
-```bash
-printf '1\n00:00:01,000 --> 00:00:03,000\n<i>ชายเปิดประตู</i>\n\n2\n00:00:02,500 --> 00:00:04,000\nทับบรรทัดแรก\n\n3\n00:00:05,000 --> 00:00:07,500\nหญิงยิ้ม\nแล้วเดินออกไป\n\n4\n00:00:09,000 --> 00:00:09,300\nสั้น\n\n5\n00:00:10,000 --> 00:00:10,000\nไม่มีความยาว\n\n6\n00:00:20,000 --> 00:00:21,000\nเลยท้ายวิดีโอ\n' > /tmp/ad-review.srt
-```
-
-`review-mode-url.js` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และใช้เวลาราวครึ่งนาที
-
-ตรวจผล `Result` และข้อผิดพลาดของแต่ละคำสั่ง จากนั้นหยุด preview ใน terminal แรก การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
-
-### วัดการเล่นวิดีโอในหน้ารายการบท
-
-สร้าง production build ของรุ่นก่อนและรุ่นหลังแยกกัน เช่น build รุ่นก่อนจาก checkout อื่นแล้วคัดลอกเนื้อหา `dist` ไปไว้ที่ `/tmp/ad-baseline` จากนั้นรัน `bun run build` ใน checkout ปัจจุบันเพื่อสร้าง `dist` สำหรับรุ่นหลัง
-
-เตรียมไฟล์ MP4 H.264 ที่เล่นได้อย่างน้อย 4 วินาทีไว้ที่ `/tmp/ad-benchmark.mp4` หากมี FFmpeg ที่รองรับ `libx264` สามารถสร้างไฟล์จำลองได้ดังนี้:
-
-```bash
-ffmpeg -f lavfi -i color=c=black:s=854x480:r=25 -t 10 -c:v libx264 -pix_fmt yuv420p -movflags +faststart /tmp/ad-benchmark.mp4
-```
-
-ตัววัดใช้ Job จำลอง 300 ช่วงและไม่เปิดข้อมูลงานจริง
-
-เริ่ม fixture server สองตัวใน terminal แยกกัน:
-
-```bash
-node tests/performance/fixture-server.cjs /tmp/ad-baseline /tmp/ad-benchmark.mp4 4174
-node tests/performance/fixture-server.cjs dist /tmp/ad-benchmark.mp4 4175
-```
-
-ใน terminal ที่สาม เปิด Chromium ผ่าน Playwright CLI แล้วรันตัววัด:
-
-```bash
-npx --yes --package @playwright/cli playwright-cli -s=ad-perf open http://127.0.0.1:4174/
-npx --yes --package @playwright/cli playwright-cli -s=ad-perf run-code --filename tests/performance/editor-playback.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-perf close
-```
-
-ตัววัดสลับ baseline กับ candidate อย่างละ 5 รอบ และตรวจจำนวนช่วงกับการเล่นจริง ผลเป็นเวลางาน main thread และ script ของทั้งหน้า ไม่ใช่เวลาเฉพาะรายการบท ตรวจช่วงค่า ภาระเครื่อง และ CPU profile ก่อนสรุปความแตกต่าง หยุด fixture server ทั้งสองเมื่อเสร็จ
+ดูขั้นตอนการรัน **browser tests (`bun run test:browser`)**, การสร้างไฟล์ตัวอย่างใน `/tmp` และการวัดประสิทธิภาพการเล่นวิดีโอใน [docs/testing.md](docs/testing.md)
 
 ## แก้ปัญหาการติดตั้งและการรัน
 

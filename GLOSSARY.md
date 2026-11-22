@@ -44,16 +44,28 @@ _Avoid_: Drag, slide, pan
 Narration that runs longer than its AD Spot because playback pauses while it is read. Estimated speech longer than the spot is therefore informational, never an error.
 _Avoid_: Overrun, overflow
 
+**Author**:
+A person signed in to Envisio who creates, edits, and exports Jobs.
+_Avoid_: User, editor, member
+
+**Job Owner**:
+The Author who created a Job. Ownership never changes hands; a Job made before sign-in existed has no Job Owner.
+_Avoid_: Creator, assignee
+
+**All-Jobs Access**:
+What an Author in the admin or supervisor group has: they see every Job, including ones with no Job Owner, and may do anything a Job Owner may do with it. Admin and supervisor do not differ.
+_Avoid_: Admin rights, superuser
+
 **Job**:
-One video's persisted authoring work: its Job Title, video metadata, VAD output, Analysis Batches, and AD Spots. Authors reopen any Job from the Job List; several Jobs can be open at once in different browser tabs.
+One video's persisted authoring work: its Job Title, Job Owner, video metadata, VAD output, Analysis Batches, and AD Spots. An Author reopens their own Jobs (or any Job, with All-Jobs Access) from the Job List; several Jobs can be open at once in different browser tabs.
 _Avoid_: Project, session, task
 
 **Job List**:
-The landing view listing every stored Job and Unfinished Upload (sorted most recently changed first by default, with search, mode filtering, and column sorting), from which an author reopens or deletes one or starts a new Job.
+The landing view listing the Author's own Jobs, or every Job, Job Owner, and Unfinished Upload with All-Jobs Access (sorted most recently changed first by default, with search, mode filtering, and column sorting), from which an Author reopens or deletes one or starts a new Job.
 _Avoid_: Dashboard, storage manager, history
 
 **Unfinished Upload**:
-A Generate Mode video copy whose upload never became a Job. It appears in the Job List only so it can be deleted.
+A Generate Mode video copy whose upload never became a Job. It has no Job Owner, so it appears only in the Job List of Authors with All-Jobs Access, and only so it can be deleted.
 _Avoid_: Orphan, partial job
 
 **Job Title**:

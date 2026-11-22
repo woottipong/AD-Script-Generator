@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   const videoPath = '/tmp/ad-generate-480p.mp4';
@@ -25,6 +26,7 @@ async page => {
     await route.abort().catch(() => {});
   });
   await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/upload/init') return route.fulfill({ json: { uploadId: 'job_generate_' + ++uploadRequests } });
@@ -45,11 +47,11 @@ async page => {
     return route.fulfill({ json: { ok: true } });
   });
 
-  await page.goto('http://127.0.0.1:4173/new');
+  await page.goto(`${baseUrl}/new`);
   await page.setViewportSize({ width: 390, height: 844 });
   const generate = page.getByRole('button', { name: 'สร้างบทบรรยาย', exact: true });
   const review = page.getByRole('button', { name: 'ตรวจแก้ไฟล์ SRT', exact: true });
-  const continueGenerate = page.getByRole('button', { name: 'ตรวจเสียงและเตรียมงาน', exact: true });
+  const continueGenerate = page.getByRole('button', { name: 'เริ่มเตรียมงาน', exact: true });
   const continueReview = page.getByRole('button', { name: 'เริ่มตรวจแก้', exact: true });
   const title = page.getByRole('textbox', { name: 'ชื่องาน' });
   const video = page.locator('input[type=file][aria-label="เลือกวิดีโอ MP4"]');

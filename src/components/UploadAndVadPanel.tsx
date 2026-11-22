@@ -339,8 +339,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             </p>
 
             <IntakeFooter
-              actionLabel="ตรวจเสียงและเตรียมงาน"
-              hint={stagedFile ? 'พร้อมตรวจเสียงและเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
+              actionLabel="เริ่มเตรียมงาน"
+              hint={stagedFile ? 'พร้อมเริ่มเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
               disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}

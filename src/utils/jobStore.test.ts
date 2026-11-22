@@ -200,3 +200,43 @@ test('a database from a newer server is refused instead of being written to', ()
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('a Job keeps its Job Owner, lists filter by owner, and the owner email can follow the Author', withStore((store, _dataDir, jobsDir) => {
+  store.save({ ...generateJob('job_mine', jobsDir), owner_sub: 'sub-a', owner_email: 'a@old.example' });
+  store.save({ ...reviewJob('job_theirs'), owner_sub: 'sub-b', owner_email: 'b@example.com' });
+  store.save(reviewJob('job_legacy'));
+  fs.mkdirSync(path.join(jobsDir, 'job_upload'));
+  fs.writeFileSync(path.join(jobsDir, 'job_upload', 'source_video.mp4'), 'abc');
+
+  const { owner_sub: _sub, owner_email: _email, ...withoutOwner } = store.load('job_mine')!;
+  store.save({ ...withoutOwner, title: 'renamed' });
+  assert.equal(store.loadMeta('job_mine')?.owner_sub, 'sub-a', 'saving a Job never changes its Job Owner');
+  assert.equal(store.load('job_mine')?.owner_email, 'a@old.example');
+  assert.equal(store.loadMeta('job_legacy')?.owner_sub, undefined, 'a Job made before sign-in has no Job Owner');
+
+  assert.deepEqual(store.list('sub-a').map(({ job_id, owner_email }) => ({ job_id, owner_email })), [{ job_id: 'job_mine', owner_email: 'a@old.example' }]);
+  assert.deepEqual(store.list().map((job) => job.job_id).sort(), ['job_legacy', 'job_mine', 'job_theirs', 'job_upload']);
+  assert.equal(store.list().find((job) => job.job_id === 'job_legacy')?.owner_email, null);
+
+  store.updateOwnerEmail('sub-a', 'a@new.example');
+  assert.equal(store.loadMeta('job_mine')?.owner_email, 'a@new.example');
+  assert.equal(store.loadMeta('job_theirs')?.owner_email, 'b@example.com');
+}));
+
+test('a database from before Job Owners upgrades and keeps its Jobs without an owner', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
+  try {
+    const first = createJobStore(dataDir);
+    first.save(reviewJob('job_before'));
+    first.close();
+    const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
+    db.exec('DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
+    db.close();
+    const upgraded = createJobStore(dataDir);
+    assert.equal(upgraded.load('job_before')?.title, 'บทเรียน');
+    assert.equal(upgraded.loadMeta('job_before')?.owner_sub, undefined);
+    upgraded.close();
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});

@@ -30,11 +30,24 @@ import { mergeProcessingState } from './src/utils/jobProcessing';
 import { resolveJobTitle, validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
 import { createJobStore, isJobId, type JobMeta } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
+import { mountAuth, readAuthConfig, type AuthConfig } from './src/utils/auth';
+import type { AuthorSession } from './src/utils/session';
+
+// Without its sign-in settings the server would serve every Job to anyone, so it refuses to start.
+let authConfig: AuthConfig;
+try {
+  authConfig = readAuthConfig(process.env);
+} catch (err) {
+  console.error(`Cannot start: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 const PORT = Number(process.env.PORT) || 3000;
 const store = createJobStore(path.resolve(process.cwd(), '.data'));
 
 const ANOTHER_JOB_ANALYZING_ERROR = 'มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ';
+/** Every `:jobId` route answers a missing Job, and a Job the Author may not open, with this same body. */
+const JOB_NOT_FOUND = 'ไม่พบงานนี้';
 
 const FIXED_SERVER_CONFIG: ServerConfig = {
   geminiModel: 'gemini-4-hydrogen',
@@ -104,7 +117,25 @@ type ProcessingLock = {
   release: () => void;
 };
 let activeProcessingLock: ProcessingLock | null = null;
-const activeUploads = new Set<string>();
+const uploadActivity = new Map<string, number | 'abandoned'>();
+const ACTIVE_UPLOAD_IDLE_MS = Number(process.env.ACTIVE_UPLOAD_IDLE_MS) || 5 * 60 * 1000;
+
+function isUploadActive(uploadId: string): boolean {
+  const lastActivityMs = uploadActivity.get(uploadId);
+  if (typeof lastActivityMs !== 'number') return false;
+  if (Date.now() - lastActivityMs <= ACTIVE_UPLOAD_IDLE_MS) return true;
+  uploadActivity.delete(uploadId);
+  return false;
+}
+/**
+ * Who started each Unfinished Upload, until it is deleted or becomes a Job. Kept in memory only: after a restart an
+ * upload has no known uploader and only Authors with All-Jobs Access can reach it (ADR-0004).
+ */
+const uploadOwners = new Map<string, string>();
+
+function canUseUpload(uploadId: string, author: AuthorSession): boolean {
+  return author.allJobs || uploadOwners.get(uploadId) === author.sub;
+}
 
 function createProcessingLock(jobId: string): ProcessingLock {
   let release!: () => void;
@@ -551,12 +582,59 @@ async function startServer() {
   recoverOrphanedJobsOnStartup();
 
   const app = express();
-  app.use(express.json({ limit: '25mb' }));
 
   // Ensure /api responses are never cached by proxies or browsers
   app.use('/api', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     next();
+  });
+
+  // Keycloak may change an Author's email; keep the Job List's owner email in step at each sign-in.
+  const { sessionOf } = mountAuth(app, authConfig, (author) => store.updateOwnerEmail(author.sub, author.email));
+
+  // `/api/config` stays public for the container healthcheck; every other API needs a signed-in Author.
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/config') {
+      next();
+      return;
+    }
+    const author = sessionOf(req);
+    if (!author) {
+      res.status(401).json({ error: 'กรุณาเข้าสู่ระบบอีกครั้ง', code: 'UNAUTHENTICATED' });
+      return;
+    }
+    res.locals.author = author;
+    next();
+  });
+
+  app.use(express.json({ limit: '25mb' }));
+
+  // A page opened without a session goes to sign-in first, so the SPA never renders signed out.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isPage = req.method === 'GET' && Boolean(req.headers.accept?.includes('text/html')) &&
+      !req.path.startsWith('/api/') && !req.path.startsWith('/auth/');
+    if (!isPage || sessionOf(req)) {
+      next();
+      return;
+    }
+    res.redirect(`/auth/login?returnTo=${encodeURIComponent(req.originalUrl)}`);
+  });
+
+  // Another Author's Job, or one with no Job Owner, is reachable only with All-Jobs Access and otherwise
+  // answers exactly like a missing Job, so its existence is never revealed. A missing Job falls through to the route.
+  app.param('jobId', (_req: Request, res: Response, next: NextFunction, jobId: string) => {
+    const job = store.loadMeta(jobId);
+    const author = res.locals.author as AuthorSession;
+    if (job && !author.allJobs && job.owner_sub !== author.sub) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+    next();
+  });
+
+  app.get('/api/me', (_req: Request, res: Response) => {
+    const { email, name, allJobs, accessGroups } = res.locals.author as AuthorSession;
+    res.json({ email, name, allJobs, accessGroups });
   });
 
   // 1. GET /api/config — Return server default configuration (no secrets)
@@ -568,9 +646,11 @@ async function startServer() {
 
   app.get('/api/jobs', (_req: Request, res: Response) => {
     try {
-      const jobs = store.list().map((job) => ({
+      const author = res.locals.author as AuthorSession;
+      const jobs = store.list(author.allJobs ? undefined : author.sub).map(({ owner_sub, ...job }) => ({
         ...job,
-        is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
+        is_owner: !job.is_upload && Boolean(owner_sub) && owner_sub === author.sub,
+        is_processing: job.is_upload ? isUploadActive(job.job_id) : job.job_id === activeProcessingLock?.jobId,
       }));
       res.json({ jobs });
     } catch (err) {
@@ -581,10 +661,16 @@ async function startServer() {
 
   app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
     try {
-      if (req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
+      // A Job's access was checked by the `jobId` param; an Unfinished Upload has no row, so check its uploader here.
+      if (!store.exists(req.params.jobId) && !canUseUpload(req.params.jobId, res.locals.author as AuthorSession)) {
+        res.status(404).json({ error: JOB_NOT_FOUND }); return;
+      }
+      if (req.params.jobId === activeProcessingLock?.jobId || isUploadActive(req.params.jobId)) {
         res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
-      if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
+      if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: JOB_NOT_FOUND }); return; }
+      uploadActivity.delete(req.params.jobId);
+      uploadOwners.delete(req.params.jobId);
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
@@ -595,7 +681,7 @@ async function startServer() {
   app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
     const job = store.load(req.params.jobId);
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผลนี้บนเซิร์ฟเวอร์' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     const isRunning = Boolean(
@@ -607,7 +693,11 @@ async function startServer() {
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
   app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
     const job = store.loadMeta(req.params.jobId);
-    const filePath = job ? serverVideoPath(job) : null;
+    if (!job) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+    const filePath = serverVideoPath(job);
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'ไม่พบไฟล์วิดีโอสำรองสำหรับงานนี้' });
       return;
@@ -654,7 +744,8 @@ async function startServer() {
 
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
       fs.writeFileSync(targetFilePath, Buffer.alloc(0));
-      activeUploads.add(uploadId);
+      uploadActivity.set(uploadId, Date.now());
+      uploadOwners.set(uploadId, (res.locals.author as AuthorSession).sub);
 
       res.json({
         uploadId,
@@ -667,11 +758,18 @@ async function startServer() {
   });
 
   app.post('/api/upload/:uploadId/abandon', (req: Request, res: Response) => {
-    if (!isJobId(req.params.uploadId)) {
+    const { uploadId } = req.params;
+    if (!isJobId(uploadId)) {
       res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
       return;
     }
-    activeUploads.delete(req.params.uploadId);
+    if (!canUseUpload(uploadId, res.locals.author as AuthorSession)) {
+      res.status(404).json({ error: 'ไม่พบการอัปโหลดนี้' });
+      return;
+    }
+    if (!store.exists(uploadId) && fs.existsSync(path.join(store.dirOf(uploadId), 'source_video.mp4'))) {
+      uploadActivity.set(uploadId, 'abandoned');
+    }
     res.json({ ok: true });
   });
 
@@ -696,7 +794,7 @@ async function startServer() {
 
         const jobDir = store.dirOf(uploadId);
         const targetFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(jobDir)) {
+        if (!fs.existsSync(jobDir) || !canUseUpload(uploadId, res.locals.author as AuthorSession)) {
           res.status(404).json({ error: 'ไม่พบโฟลเดอร์สำหรับ uploadId นี้' });
           return;
         }
@@ -746,6 +844,7 @@ async function startServer() {
         } finally {
           fs.closeSync(fd);
         }
+        if (uploadActivity.get(uploadId) !== 'abandoned') uploadActivity.set(uploadId, Date.now());
         res.json({ ok: true, currentSize });
       } catch {
         res.status(500).json({ error: 'ไม่สามารถเขียนไฟล์ Chunk ได้' });
@@ -788,7 +887,8 @@ async function startServer() {
         }
         const jobDir = store.dirOf(jobId);
         localFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || store.exists(jobId)) {
+        // Another Author's upload answers exactly like a missing one.
+        if (!canUseUpload(jobId, res.locals.author as AuthorSession) || !fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || store.exists(jobId)) {
           res.status(400).json({ error: 'ไม่พบไฟล์วิดีโอที่อัปโหลด หรือไฟล์มีขนาดเป็น 0' });
           return;
         }
@@ -866,6 +966,8 @@ async function startServer() {
         schema_version: JOB_SCHEMA_VERSION,
         job_id: jobId,
         title: title.title,
+        owner_sub: (res.locals.author as AuthorSession).sub,
+        owner_email: (res.locals.author as AuthorSession).email,
         mode: 'generate',
         video_source: { kind: 'server_copy', local_file_path: localFilePath },
         created_at: now,
@@ -890,7 +992,8 @@ async function startServer() {
       }
 
       store.save(jobState);
-      activeUploads.delete(jobId);
+      uploadActivity.delete(jobId);
+      uploadOwners.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
       if (!willAnalyzeNow) {
@@ -932,6 +1035,8 @@ async function startServer() {
       schema_version: JOB_SCHEMA_VERSION,
       job_id: `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       title: title.title,
+      owner_sub: (res.locals.author as AuthorSession).sub,
+      owner_email: (res.locals.author as AuthorSession).email,
       mode: 'review',
       video_source,
       srt_source: { ...srt_source, imported_at: now },
@@ -952,6 +1057,12 @@ async function startServer() {
   app.post('/api/jobs/:jobId/start', (req: Request, res: Response) => {
     const { jobId } = req.params;
 
+    const job = store.load(jobId);
+    if (!job) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+
     if (
       activeProcessingLock &&
       activeProcessingLock.jobId !== jobId
@@ -959,12 +1070,6 @@ async function startServer() {
       res.status(409).json({
         error: ANOTHER_JOB_ANALYZING_ERROR,
       });
-      return;
-    }
-
-    const job = store.load(jobId);
-    if (!job) {
-      res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
       return;
     }
     if (job.mode === 'review') {
@@ -1013,7 +1118,15 @@ async function startServer() {
       const { jobId } = req.params;
       const { batch_id } = (req.body || {}) as { batch_id?: string };
 
+      let job = store.load(jobId);
+      if (!job) {
+        res.status(404).json({ error: JOB_NOT_FOUND });
+        return;
+      }
+
+      let waited = false;
       while (activeProcessingLock?.jobId === jobId) {
+        waited = true;
         await activeProcessingLock.finished;
         if (res.destroyed) return;
       }
@@ -1028,10 +1141,12 @@ async function startServer() {
         return;
       }
 
-      const job = store.load(jobId);
-      if (!job) {
-        res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
-        return;
+      if (waited) {
+        job = store.load(jobId);
+        if (!job) {
+          res.status(404).json({ error: JOB_NOT_FOUND });
+          return;
+        }
       }
       if (job.mode === 'review') {
         res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
@@ -1120,6 +1235,10 @@ async function startServer() {
 
   // PATCH /api/jobs/:jobId — Rename a Job
   app.patch('/api/jobs/:jobId', (req: Request, res: Response) => {
+    if (!store.exists(req.params.jobId)) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
     const title = resolveJobTitle((req.body || {}).title);
     if (!title.success) {
       res.status(400).json({ error: title.error });
@@ -1128,7 +1247,7 @@ async function startServer() {
     // Only the title column changes, so a rename never overwrites spots saved meanwhile.
     const job = store.rename(req.params.jobId, title.title) ? store.load(req.params.jobId) : null;
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     res.json({ job });
@@ -1141,7 +1260,7 @@ async function startServer() {
 
     const job = store.load(jobId);
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
 
@@ -1208,6 +1327,20 @@ async function startServer() {
         hmr: process.env.DISABLE_HMR !== 'true' ? { server: httpServer } : false,
       },
       appType: 'spa',
+    });
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent(req.path);
+      } catch {
+        res.status(404).end();
+        return;
+      }
+      if (/(^|\/)\.data(\/|$)/i.test(decodedPath)) {
+        res.status(404).end();
+        return;
+      }
+      next();
     });
     app.use(vite.middlewares);
   } else {

@@ -8,6 +8,10 @@ import * as net from 'node:net';
 import { pollJob } from './jobPolling';
 import type { PersistedJobState } from '../types/ad';
 import { createJobStore } from './jobStore';
+import { authTestEnv, signedInFetch } from './authTestHelpers';
+
+// Every API call in this file is made by an Author with All-Jobs Access, so seeded Jobs with no Job Owner stay reachable.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true });
 
 const root = process.cwd();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -103,10 +107,24 @@ globalThis.fetch = async (input, init) => {
   const source = path.join(dir, '.data/jobs/job_test/source_video.mp4');
   const seed = createJobStore(path.join(dir, '.data'));
   seed.save({ ...makeJob(twoBatches), schema_version: 3, title: 'test', mode: 'generate', video_source: { kind: 'server_copy', local_file_path: source } } as unknown as PersistedJobState);
+  seed.save({
+    ...makeJob(false),
+    job_id: 'job_other',
+    status: 'READY',
+    batches: [],
+    gemini_file_name: undefined,
+    gemini_file_uri: undefined,
+    gemini_file_expires_at: undefined,
+    gemini_file_mime_type: undefined,
+    schema_version: 3,
+    title: 'other',
+    mode: 'generate',
+    video_source: { kind: 'server_copy', local_file_path: source },
+  } as unknown as PersistedJobState);
   seed.close();
   fs.writeFileSync(source, '1');
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], {
-    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
+    cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}/api/jobs/job_test`;
   const request = (suffix = '', method = 'GET', body?: unknown) => fetch(base + suffix, {
@@ -114,7 +132,7 @@ globalThis.fetch = async (input, init) => {
   });
   try {
     await until(async () => { try { return (await request()).ok; } catch { return false; } });
-    const otherJob = () => fetch(`http://127.0.0.1:${port}/api/jobs/other/start`, { method: 'POST' });
+    const otherJob = () => fetch(`http://127.0.0.1:${port}/api/jobs/job_other/start`, { method: 'POST' });
     await action({ dir, request, otherJob });
   } finally {
     child.kill('SIGTERM');
@@ -309,6 +327,8 @@ test('a failed job read never replaces the unreadable persisted data', { timeout
     fs.writeFileSync(path.join(dir, 'release-all'), '1');
     assert.equal((await pending).status, 500);
     assert.equal(fs.readFileSync(jobFile, 'utf8'), '{invalid');
-    assert.equal((await otherJob()).status, 404);
+    const otherRes = await otherJob();
+    assert.equal(otherRes.status, 200);
+    assert.equal((await otherRes.json()).isRunning, false);
   });
 });

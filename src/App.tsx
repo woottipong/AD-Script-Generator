@@ -36,6 +36,7 @@ import {
   generateSrtContent,
 } from './utils/formatters';
 import { JobList } from './components/JobList';
+import { AccountMenu } from './components/AccountMenu';
 import {
   EditorHeaderActionsSkeleton,
   EditorHeaderTitleSkeleton,
@@ -190,6 +191,7 @@ const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', titl
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
+  const [signedInAuthor, setSignedInAuthor] = useState<{ email: string; name?: string; allJobs: boolean; accessGroups?: string[] } | null>(null);
   const [status, setStatus] = useState<JobStatus>('IDLE');
   const [jobId, setJobId] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -641,6 +643,11 @@ export default function App() {
         setBrowserCompat(res);
       }
     });
+    // Only the header's account menu needs this, so a failure just leaves the menu out.
+    fetch('/api/me')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((author) => { if (mounted && typeof author?.email === 'string') setSignedInAuthor(author); })
+      .catch(() => {});
 
     const pathJobId = jobIdFromPath(window.location.pathname);
     if (pathJobId) restoreJob(pathJobId);
@@ -1276,6 +1283,12 @@ export default function App() {
     resetWorkspace();
   };
 
+  const signOut = async () => {
+    const warning = await leaveWarning();
+    if (warning && !(await confirm({ title: 'ออกจากระบบ?', description: warning, confirmLabel: 'ออกจากระบบ', destructive: true }))) return;
+    window.location.assign('/auth/logout');
+  };
+
   // 8. Reset Job
   const handleResetJob = async () => {
     if (!(await confirm({ title: 'เริ่มงานใหม่และออกจากงานปัจจุบัน?', description: 'กรุณาส่งออกบทบรรยายที่ต้องการเก็บไว้ก่อน', confirmLabel: 'เริ่มงานใหม่' }))) return;
@@ -1499,6 +1512,12 @@ export default function App() {
             <EditorHeaderActionsSkeleton />
           ) : null}
         </div>
+        {signedInAuthor && (
+          // On a phone the editor header has no room left; the Job List header still offers sign-out there.
+          <div className={`ml-2 shrink-0 ${isCompactHeader ? 'hidden sm:block' : ''}`}>
+            <AccountMenu email={signedInAuthor.email} name={signedInAuthor.name} allJobs={signedInAuthor.allJobs} accessGroups={signedInAuthor.accessGroups} onSignOut={() => void signOut()} />
+          </div>
+        )}
         {hasProject && (
           <div className={showTitleNotice
             ? 'absolute top-full left-4 z-20 mt-1 max-w-[calc(100%-2rem)] rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-md sm:left-6 sm:max-w-[calc(100%-3rem)]'
@@ -1617,7 +1636,7 @@ export default function App() {
           </EmptyContent>
         </Empty>
       ) : !hasProject && path === '/' ? (
-        <JobList onOpen={openJob} onNew={() => navigate('/new')} />
+        <JobList onOpen={openJob} onNew={() => navigate('/new')} showOwners={signedInAuthor?.allJobs === true} ownEmail={signedInAuthor?.email} />
       ) : !hasProject && (mode ?? 'generate') === 'review' ? (
         <ReviewIntake
           checkingFileName={checkingFileName}

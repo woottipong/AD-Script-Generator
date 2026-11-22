@@ -21,6 +21,7 @@ import {
   Search,
   Trash2,
   Upload,
+  UserRound,
   X,
 } from 'lucide-react';
 import type { JobMode } from '../types/ad';
@@ -260,7 +261,16 @@ function deleteConfirmationCopy(job: StoredJob): string {
   return `ลบ “${name}” และวิดีโอต้นทาง${sizeNote} ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
 }
 
-export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; onNew: () => void }) {
+/**
+ * `showOwners` is the Author's All-Jobs Access: their list mixes Authors, so it names each Job Owner and can narrow
+ * to the Jobs whose owner email is `ownEmail`.
+ */
+export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
+  onOpen: (jobId: string) => void;
+  onNew: () => void;
+  showOwners: boolean;
+  ownEmail?: string;
+}) {
   const [jobs, setJobs] = useState<StoredJob[] | null>(null);
   const [pendingDelete, setPendingDelete] = useState<StoredJob | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -271,6 +281,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
   const [refreshMessage, setRefreshMessage] = useState('');
   const [query, setQuery] = useState('');
   const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
+  const [ownerScope, setOwnerScope] = useState<'all' | 'mine'>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
@@ -334,25 +345,38 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
     return () => window.clearTimeout(timer);
   }, [hasProcessingJobs, loading, loadJobs]);
 
-  const allJobs = jobs ?? [];
+  const isMine = useCallback(
+    (job: StoredJob) =>
+      typeof job.is_owner === 'boolean'
+        ? job.is_owner
+        : (!job.is_upload && Boolean(ownEmail) && job.owner_email === ownEmail),
+    [ownEmail],
+  );
+  const mineCount = useMemo(() => (jobs ?? []).filter(isMine).length, [jobs, isMine]);
+  // Only an Author with All-Jobs Access sees other Authors' Jobs, so only they can narrow to their own.
+  const showMineOnly = showOwners && ownerScope === 'mine';
+  const scopedJobs = useMemo(() => (jobs ?? []).filter((job) => !showMineOnly || isMine(job)), [jobs, showMineOnly, isMine]);
+  // Every row is the Author's own while narrowed, so the owner column would repeat one email.
+  const showOwnerColumn = showOwners && !showMineOnly;
   const { generateCount, reviewCount } = useMemo(() => {
     let generate = 0;
     let review = 0;
-    for (const job of jobs ?? []) {
+    for (const job of scopedJobs) {
       if (job.is_upload) continue;
       if (job.mode === 'generate') generate++;
       else if (job.mode === 'review') review++;
     }
     return { generateCount: generate, reviewCount: review };
-  }, [jobs]);
+  }, [scopedJobs]);
 
   const searchTerm = query.trim().toLocaleLowerCase('th-TH');
-  const isFiltered = Boolean(searchTerm) || modeFilter !== 'all';
+  const isFiltered = Boolean(searchTerm) || modeFilter !== 'all' || showMineOnly;
   const matchingJobs = useMemo(() => {
-    const filtered = (jobs ?? []).filter((job) => {
+    const filtered = scopedJobs.filter((job) => {
       if (modeFilter !== 'all' && (job.is_upload || job.mode !== modeFilter)) return false;
       if (!searchTerm) return true;
-      return [jobName(job), job.file_name].some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
+      return [jobName(job), job.file_name, showOwners ? job.owner_email ?? '' : '']
+        .some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
     });
     return filtered.sort((a, b) => {
       let delta = 0;
@@ -373,7 +397,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
       }
       return sortDirection === 'asc' ? delta : -delta;
     });
-  }, [jobs, modeFilter, searchTerm, sortField, sortDirection]);
+  }, [scopedJobs, modeFilter, searchTerm, sortField, sortDirection, showOwners]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -533,8 +557,8 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   <InputGroupInput
                     ref={searchInput}
                     type="search"
-                    aria-label="ค้นหาชื่องานหรือชื่อไฟล์"
-                    placeholder="ค้นหาชื่องานหรือชื่อไฟล์"
+                    aria-label={showOwners ? 'ค้นหาชื่องาน ชื่อไฟล์ หรืออีเมลเจ้าของ' : 'ค้นหาชื่องานหรือชื่อไฟล์'}
+                    placeholder={showOwners ? 'ค้นหาชื่องาน ชื่อไฟล์ หรืออีเมลเจ้าของ' : 'ค้นหาชื่องานหรือชื่อไฟล์'}
                     className="[&::-webkit-search-cancel-button]:hidden"
                     value={query}
                     onChange={(event) => {
@@ -562,6 +586,37 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   {isFiltered ? `พบ ${matchingJobs.length} รายการ` : ''}
                 </p>
               </div>
+              <div className="flex max-w-full flex-wrap items-center gap-2">
+              {showOwners && (
+                <ToggleGroup
+                  appearance="segmented"
+                  aria-label="กรองตามเจ้าของ"
+                  value={[ownerScope]}
+                  onValueChange={(next) => {
+                    const chosen = next[0] as 'all' | 'mine' | undefined;
+                    if (!chosen) return;
+                    setOwnerScope(chosen);
+                    setPage(1);
+                  }}
+                  className="max-w-full flex-wrap"
+                >
+                  {([
+                    ['all', 'ทุกคน', jobs.length],
+                    ['mine', 'งานของฉัน', mineCount],
+                  ] as const).map(([value, label, count]) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      size="sm"
+                      className="h-7 gap-1.5 rounded-[calc(var(--radius)-2px)] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
+                    >
+                      {value === 'mine' && <UserRound aria-hidden="true" />}
+                      <span>{label}</span>
+                      <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              )}
               <ToggleGroup
                 appearance="segmented"
                 aria-label="กรองตามโหมด"
@@ -575,7 +630,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                 className="max-w-full flex-wrap"
               >
                 {([
-                  ['all', 'ทั้งหมด', allJobs.length],
+                  ['all', 'ทั้งหมด', scopedJobs.length],
                   ['generate', MODE_LABEL.generate, generateCount],
                   ['review', MODE_LABEL.review, reviewCount],
                 ] as const).map(([value, label, count]) => (
@@ -590,6 +645,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
+              </div>
             </div>
           )}
 
@@ -597,9 +653,9 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
             <Empty className="py-12">
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
-                <EmptyTitle>{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'ไม่มีงานในโหมดนี้'}</EmptyTitle>
+                <EmptyTitle>{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : showMineOnly && modeFilter === 'all' ? 'คุณยังไม่มีงานของตัวเอง' : 'ไม่มีงานในโหมดนี้'}</EmptyTitle>
                 <EmptyDescription>
-                  {searchTerm ? 'ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ' : 'สลับตัวกรองโหมดเพื่อดูรายการงานอื่น'}
+                  {searchTerm ? 'ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ' : showMineOnly ? 'เลือก "ทุกคน" เพื่อดูงานของผู้เขียนคนอื่น' : 'สลับตัวกรองโหมดเพื่อดูรายการงานอื่น'}
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -608,6 +664,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   onClick={() => {
                     setQuery('');
                     setModeFilter('all');
+                    setOwnerScope('all');
                     setPage(1);
                     searchInput.current?.focus();
                   }}
@@ -624,6 +681,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                     <TableHead scope="col" aria-sort={ariaSortFor('name')} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground @min-[42rem]:pl-5">
                       <SortableColumnButton label="ชื่องาน" field="name" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
                     </TableHead>
+                    {showOwnerColumn && <TableHead scope="col" className="hidden w-48 px-3 text-xs font-semibold text-muted-foreground @min-[75rem]:table-cell">เจ้าของ</TableHead>}
                     <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
                     <TableHead scope="col" className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
                     <TableHead scope="col" aria-sort={ariaSortFor('duration')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
@@ -652,6 +710,9 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                                 <Skeleton className="h-5 w-20" />
                                 <Skeleton className="h-3.5 w-20" />
                               </div>
+                              {showOwnerColumn && (
+                                <Skeleton className="mt-1.5 hidden h-3.5 w-32 @min-[54rem]:block @min-[75rem]:hidden" />
+                              )}
                             </div>
                           </div>
                           <div className="mt-2 flex items-center gap-1 border-t border-border/60 pt-1 @min-[42rem]:hidden">
@@ -659,6 +720,11 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                             <Skeleton className="size-9 rounded-md" />
                           </div>
                         </TableCell>
+                        {showOwnerColumn && (
+                          <TableCell className="hidden px-3 @min-[75rem]:table-cell">
+                            <Skeleton className="h-3.5 w-32" />
+                          </TableCell>
+                        )}
                         <TableCell className="hidden px-3 @min-[54rem]:table-cell">
                           <Skeleton className="h-3.5 w-20" />
                         </TableCell>
@@ -690,6 +756,11 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                       const uploadSize = job.is_upload ? formatFileSize(job.size_bytes) : '';
                       const href = jobPath(job.job_id);
                       const statusNode = <JobStatusBadge status={status} name={name} />;
+                      const ownerNode = job.is_upload
+                        ? <span className="text-muted-foreground">—</span>
+                        : job.owner_email
+                          ? <span className="[overflow-wrap:anywhere]">{job.owner_email}</span>
+                          : <span className="text-muted-foreground">ไม่มีเจ้าของ</span>;
                       const deleteButton = (
                         <Button
                           variant="ghost-destructive"
@@ -766,11 +837,18 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @min-[54rem]:hidden">
                                   {statusNode}
                                   {!job.is_upload && job.mode && <ModeTag mode={job.mode} />}
+                                  {showOwnerColumn && !job.is_upload && <span className="text-xs text-muted-foreground">{ownerNode}</span>}
                                 </div>
+                                {showOwnerColumn && !job.is_upload && (
+                                  <p className="mt-1 hidden text-xs text-muted-foreground @min-[54rem]:block @min-[75rem]:hidden">{ownerNode}</p>
+                                )}
                               </div>
                             </div>
                             <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
                           </TableCell>
+                          {showOwnerColumn && (
+                            <TableCell className="hidden px-3 text-xs whitespace-normal text-foreground @min-[75rem]:table-cell">{ownerNode}</TableCell>
+                          )}
                           <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
                             {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
                           </TableCell>
