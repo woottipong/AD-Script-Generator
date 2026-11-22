@@ -153,7 +153,7 @@
 
 เซิร์ฟเวอร์ไม่ยอม start หากขาดค่าที่จำเป็นของการเข้าสู่ระบบ ทุกหน้าและทุก API ยกเว้น `/api/config` ต้องเข้าสู่ระบบผ่าน Keycloak ก่อน session อยู่ได้ 7 วันนับจากเข้าสู่ระบบ ดู [ADR-0004](docs/adr/0004-keycloak-sign-in-with-server-session-cookie.md) และ [ขอบเขตของ API](docs/API.md#base-configuration-and-conventions) `GEMINI_API_KEY` ใช้ยืนยันตัวตนกับ Google เท่านั้น
 
-ตั้งค่า client ใน Keycloak ดังนี้: ปิด Client authentication (public client) ใช้ PKCE `S256`, ลงทะเบียน Valid redirect URI `<APP_URL>/auth/callback` และ post-logout redirect `<APP_URL>/` (สำหรับพัฒนาคือ `http://localhost:3003/auth/callback` และ `http://localhost:3003/`) และเพิ่ม mapper แบบ Group Membership ที่ส่ง claim `groups` มากับ token
+ตั้งค่า client ใน Keycloak ดังนี้: ปิด Client authentication (public client) ใช้ PKCE `S256`, ลงทะเบียน Valid redirect URI `<APP_URL>/auth/callback` และ post-logout redirect `<APP_URL>/` (สำหรับพัฒนาคือ `http://localhost:3003/auth/callback` และ `http://localhost:3003/`) และเพิ่ม mapper แบบ Group Membership ที่ส่ง claim `groups` หรือ `group` มากับ token
 
 ---
 

@@ -34,6 +34,7 @@ test('All-Jobs Access comes from a configured group, with or without the group p
   assert.equal(hasAllJobsAccess(['supervisor'], ['admin', 'supervisor']), true);
   assert.equal(hasAllJobsAccess(['/team/admin', 'author'], ['admin', 'supervisor']), false);
   assert.equal(hasAllJobsAccess(undefined, ['admin']), false);
+  assert.equal(hasAllJobsAccess('/admin', ['admin', 'supervisor']), true, 'a single-valued mapper sends one group as a string');
 });
 
 test('sign-in settings are required and the session secret must be long', () => {

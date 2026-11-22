@@ -49,15 +49,24 @@ export function safeReturnTo(value: unknown): string {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\') ? value : '/';
 }
 
-/** Keycloak sends groups as `/admin` with "Full group path" on and `admin` without; both match `admin`. */
+/**
+ * Keycloak sends groups as `/admin` with "Full group path" on and `admin` without; both match `admin`. A mapper
+ * with "Multivalued" off sends one group as a string.
+ */
 export function hasAllJobsAccess(groups: unknown, allJobsGroups: string[]): boolean {
-  return Array.isArray(groups) && groups.some((group) => typeof group === 'string' && allJobsGroups.includes(group.replace(/^\//, '')));
+  const list = typeof groups === 'string' ? [groups] : groups;
+  return Array.isArray(list) && list.some((group) => typeof group === 'string' && allJobsGroups.includes(group.replace(/^\//, '')));
 }
 
-/** The mapper may put `groups` in the access token only; it came straight from the token endpoint over TLS. */
+/** The Group Membership mapper's claim name is whatever was typed in Keycloak; the `rtt` realm uses `group`. */
+function groupsClaim(claims: Record<string, unknown>): unknown {
+  return claims.groups ?? claims.group;
+}
+
+/** The mapper may put the groups in the access token only; it came straight from the token endpoint over TLS. */
 function accessTokenGroups(accessToken: string): unknown {
   try {
-    return (JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf8')) as { groups?: unknown }).groups;
+    return groupsClaim(JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf8')));
   } catch {
     return undefined;
   }
@@ -133,7 +142,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       const session: AuthorSession = {
         sub: claims.sub,
         email,
-        allJobs: hasAllJobsAccess(claims.groups ?? accessTokenGroups(tokens.access_token), config.allJobsGroups),
+        allJobs: hasAllJobsAccess(groupsClaim(claims) ?? accessTokenGroups(tokens.access_token), config.allJobsGroups),
         idToken: tokens.id_token!,
       };
       onSignIn(session);
