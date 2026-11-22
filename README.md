@@ -197,7 +197,7 @@ npm run dev
 
 ### รันด้วย Docker Compose สำหรับพัฒนา
 
-ใช้ [Dockerfile.Dev](Dockerfile.Dev) และ [docker-compose.yml](docker-compose.yml) โดยเปิด Hot Module Replacement (HMR, `DISABLE_HMR=false`) และรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติเมื่อแก้ backend:
+ใช้ stage `development` ใน [Dockerfile](Dockerfile) และ [docker-compose.yml](docker-compose.yml) โดยเปิด Hot Module Replacement (HMR, `DISABLE_HMR=false`) และรีสตาร์ตเซิร์ฟเวอร์อัตโนมัติเมื่อแก้ backend:
 
 ```bash
 docker compose up --build -d
@@ -214,7 +214,7 @@ docker compose up --build -d
 ดูบันทึกการทำงาน:
 
 ```bash
-docker compose logs -f ad-script-generator
+docker compose logs -f envisio
 ```
 
 หยุดการทำงาน:
@@ -311,7 +311,7 @@ NODE_ENV=production npx tsx server.ts
 `check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit/integration และ guardrail tests ใน `src/utils`, และ `build` ไว้ในคำสั่งเดียว (รันใน dev container เพราะ `node:sqlite` ต้องใช้ Bun 1.4+):
 
 ```bash
-docker compose exec ad-script-generator bun run check
+docker compose exec envisio bun run check
 docker compose config --quiet
 ```
 

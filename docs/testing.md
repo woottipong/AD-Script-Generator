@@ -7,7 +7,7 @@
 `check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit และ integration tests ใน `src/utils` (ข้อมูลและ Gemini จำลอง รวมถึง guardrail tests ใน `repoGuardrails.test.ts`) และ `build` ไว้ในคำสั่งเดียว `bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` จึงรันใน dev container ได้เสมอ:
 
 ```bash
-docker compose exec ad-script-generator bun run check
+docker compose exec envisio bun run check
 ```
 
 ตรวจความถูกต้องของ Docker Compose config:
@@ -23,7 +23,7 @@ docker compose config --quiet
 build หน้าเว็บใน dev container แล้วเปิด service `preview` (เสิร์ฟ `dist` ที่ `127.0.0.1:4173` ตั้ง `PREVIEW_PORT` เพื่อเปลี่ยน port):
 
 ```bash
-docker compose exec ad-script-generator bun run build
+docker compose exec envisio bun run build
 docker compose --profile test up -d preview
 ```
 

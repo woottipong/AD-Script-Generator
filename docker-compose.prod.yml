@@ -2,6 +2,7 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Before starting or upgrading, define APP_URL, KEYCLOAK_ISSUER_URL, KEYCLOAK_CLIENT_ID,
 # SESSION_SECRET, and GEMINI_API_KEY in .env (the server exits 1 if auth vars are missing).
+# Optional .env overrides: APP_PORT (default 3000), APP_BIND (e.g. 127.0.0.1 behind a reverse proxy), IMAGE_TAG (default latest).
 # Jobs live in ./.data on the host; the database schema migrates itself on start.
 # Jobs saved as job.json (before schema version 3) are not carried over: clear ./.data/jobs when upgrading from them.
 name: envisio
@@ -11,16 +12,20 @@ services:
     build:
       context: .
       target: production
+    image: envisio:${IMAGE_TAG:-latest}
     init: true
     ports:
-      - "3000:3000"
+      - "${APP_BIND:+${APP_BIND}:}${APP_PORT:-3000}:3000"
     env_file: .env
     volumes:
       - ./.data:/app/.data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/config').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,12 +1,37 @@
+# VCS & CI
+.git
+.gitignore
+.github
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets & local runtime data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.data
+_data
+
+# Docker files
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Dependencies & build artifacts
 node_modules
 dist
 build
 coverage
-.git
-.env
-.env.*
-!.env.example
-.data
-_data
 *.log
-.DS_Store
+
+# Docs, tests & local scratch (not required for build or runtime)
+docs
+tests
+.scratch
+.impeccable
+.playwright-cli
+*.md

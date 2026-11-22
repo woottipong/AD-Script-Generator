@@ -1,20 +1,23 @@
+name: envisio-dev
+
 services:
-  ad-script-generator:
+  envisio:
     build:
       context: .
-      dockerfile: Dockerfile.Dev
+      target: development
+    image: envisio:dev
     init: true
     ports:
-      - "3003:3000"
+      - "${DEV_PORT:-3003}:3000"
     environment:
       - NODE_ENV=development
       - DISABLE_HMR=false
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=300
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # Sign-in (ADR-0004). The browser reaches this container on host port 3003, so that is the sign-in origin;
-      # register http://localhost:3003/auth/callback on the Keycloak client. SESSION_SECRET comes from .env only.
-      - APP_URL=http://localhost:3003
+      # Sign-in (ADR-0004). The browser reaches this container on host port 3003 (or DEV_PORT), so that is the
+      # sign-in origin; register http://localhost:3003/auth/callback on the Keycloak client. SESSION_SECRET comes from .env only.
+      - APP_URL=http://localhost:${DEV_PORT:-3003}
       - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-https://accounts.rtt.in.th/auth/realms/rtt}
       - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-envisio-dev}
       - SESSION_SECRET=${SESSION_SECRET:?Set SESSION_SECRET in .env to at least 32 random characters}
@@ -30,7 +33,8 @@ services:
     profiles: [test]
     build:
       context: .
-      dockerfile: Dockerfile.Dev
+      target: development
+    image: envisio:dev
     init: true
     command: ["./node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "4173", "--strictPort"]
     ports:
