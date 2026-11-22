@@ -168,29 +168,39 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     const totalTrackWidth = Math.max(1, cssWidth * zoomLevel);
     const scrollLeft = scrollContainer.scrollLeft;
 
-    // Crisp center baseline
+    // Clean 1px center baseline (silence stays a crisp continuous hairline without beaded dots)
     const midY = cssHeight / 2;
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.22)';
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.7)';
     ctx.fillRect(0, Math.round(midY) - 0.5, cssWidth, 1);
 
-    // Crisp Retina rounded micro-bars (2px bar + 1px gap); the playhead line alone marks position
+    // High-resolution Retina bars (1.5px bar + 1.5px gap, integer-snapped for crisp edges)
     const barStep = 3;
-    const barWidth = 2;
-    const maxHalfHeight = midY - 4;
+    const barWidth = 1.5;
+    const maxHalfHeight = midY - 3;
 
-    const barGrad = ctx.createLinearGradient(0, 4, 0, cssHeight - 4);
-    barGrad.addColorStop(0, '#94a3b8');
-    barGrad.addColorStop(0.5, '#475569');
-    barGrad.addColorStop(1, '#94a3b8');
+    const ambientGrad = ctx.createLinearGradient(0, 3, 0, cssHeight - 3);
+    ambientGrad.addColorStop(0, 'rgba(125, 211, 252, 0.85)');
+    ambientGrad.addColorStop(0.5, 'rgba(3, 105, 161, 0.82)');
+    ambientGrad.addColorStop(1, 'rgba(125, 211, 252, 0.85)');
 
-    // One path per fill style: two fill() calls per frame instead of one per bar
+    const speechGrad = ctx.createLinearGradient(0, 3, 0, cssHeight - 3);
+    speechGrad.addColorStop(0, 'rgba(165, 180, 252, 0.92)');
+    speechGrad.addColorStop(0.5, 'rgba(79, 70, 229, 0.92)');
+    speechGrad.addColorStop(1, 'rgba(165, 180, 252, 0.92)');
+
+    // One path per fill style: three fill() calls per frame instead of one per bar
     const quietBars = new Path2D();
-    const loudBars = new Path2D();
+    const ambientBars = new Path2D();
+    const speechBars = new Path2D();
 
-    // Anchor bars to absolute timeline pixels so each bar keeps its time window while scrolling
-    for (let x = -(scrollLeft % barStep); x < cssWidth; x += barStep) {
-      const tStart = ((scrollLeft + x) / totalTrackWidth) * effectiveDurationMs;
-      const tEnd = ((scrollLeft + x + barStep) / totalTrackWidth) * effectiveDurationMs;
+    let segIndex = 0;
+    const offset = Math.floor(scrollLeft) % barStep;
+
+    // Anchor bars to integer timeline pixels so edges stay sharp while scrolling
+    for (let x = -offset; x < cssWidth; x += barStep) {
+      const px = Math.round(x);
+      const tStart = ((scrollLeft + px) / totalTrackWidth) * effectiveDurationMs;
+      const tEnd = ((scrollLeft + px + barStep) / totalTrackWidth) * effectiveDurationMs;
       const bucketStart = Math.max(0, Math.floor(tStart / waveformIntervalMs));
       const bucketEnd = Math.min(
         waveformPeaks.length - 1,
@@ -202,27 +212,38 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         if (waveformPeaks[b] > maxPeak) maxPeak = waveformPeaks[b];
       }
 
+      while (segIndex < speechSegments.length && speechSegments[segIndex].end_ms <= tStart) {
+        segIndex++;
+      }
+      const inSpeech = segIndex < speechSegments.length && speechSegments[segIndex].start_ms < tEnd;
+
       const normalized = Math.min(1, maxPeak / waveformPeakCeiling);
-      // Restore crisp peak-to-silence contrast so quiet gaps stay thin and transients pop
-      const shaped = Math.pow(normalized, 1.45);
-      const barHalf = Math.max(1, Math.round(shaped * maxHalfHeight * 2) / 2);
+      if (normalized < 0.04) continue;
+
+      // Sharper dynamic curve so transients and micro-pauses read clearly
+      const shaped = Math.pow(normalized, 1.55);
+      const barHalf = Math.round(shaped * maxHalfHeight * 2) / 2;
+      if (barHalf < 1) continue;
+
       const barH = barHalf * 2;
       const y = midY - barHalf;
 
-      const path = normalized < 0.12 ? quietBars : loudBars;
+      const path = normalized < 0.09 ? quietBars : inSpeech ? speechBars : ambientBars;
 
       if (barH <= 2) {
-        path.rect(x, y, barWidth, barH);
+        path.rect(px, y, barWidth, barH);
       } else {
-        path.roundRect(x, y, barWidth, barH, 1);
+        path.roundRect(px, y, barWidth, barH, 0.75);
       }
     }
 
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
     ctx.fill(quietBars);
-    ctx.fillStyle = barGrad;
-    ctx.fill(loudBars);
-  }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth]);
+    ctx.fillStyle = ambientGrad;
+    ctx.fill(ambientBars);
+    ctx.fillStyle = speechGrad;
+    ctx.fill(speechBars);
+  }, [waveformPeaks, waveformPeakCeiling, waveformIntervalMs, effectiveDurationMs, zoomLevel, timelineViewportWidth, speechSegments]);
 
   useEffect(() => {
     drawWaveform();
@@ -535,27 +556,27 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
         <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border bg-card px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
-            <WithTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="font-mono tabular-nums">−5s</Button></WithTooltip>
-            <WithTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="font-mono tabular-nums">−1s</Button></WithTooltip>
+            <WithTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−5s</Button></WithTooltip>
+            <WithTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−1s</Button></WithTooltip>
             <WithTooltip label={`${isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} (Alt + P)`}>
-              <Button size="icon-sm" onClick={togglePlayPause} disabled={!videoUrl} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'}>
+              <Button size="icon-sm" onClick={togglePlayPause} disabled={!videoUrl} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} className="mx-0.5">
                 {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
               </Button>
             </WithTooltip>
-            <WithTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="font-mono tabular-nums">+1s</Button></WithTooltip>
-            <WithTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="font-mono tabular-nums">+5s</Button></WithTooltip>
+            <WithTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+1s</Button></WithTooltip>
+            <WithTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+5s</Button></WithTooltip>
           </div>
           <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-border pl-2">
-            <WithTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า"><SkipBack aria-hidden="true" /></Button></WithTooltip>
-            <WithTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป"><SkipForward aria-hidden="true" /></Button></WithTooltip>
+            <WithTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipBack aria-hidden="true" /></Button></WithTooltip>
+            <WithTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipForward aria-hidden="true" /></Button></WithTooltip>
           </div>
           <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-border sm:pl-2">
-            <WithTooltip label="วนซ้ำช่วงที่เลือก"><Toggle size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก"><Repeat aria-hidden="true" /></Toggle></WithTooltip>
-            <WithTooltip label={captionLabel}><Toggle size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel}><Subtitles aria-hidden="true" /></Toggle></WithTooltip>
-            <WithTooltip label={muteLabel}><Toggle size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel}>{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></WithTooltip>
+            <WithTooltip label="วนซ้ำช่วงที่เลือก"><Toggle size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก" className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80"><Repeat aria-hidden="true" /></Toggle></WithTooltip>
+            <WithTooltip label={captionLabel}><Toggle size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel} className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80"><Subtitles aria-hidden="true" /></Toggle></WithTooltip>
+            <WithTooltip label={muteLabel}><Toggle size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel} className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80">{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></WithTooltip>
           </div>
-          <div className="ml-auto whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
-            <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
+          <div className="ml-auto rounded-md bg-muted/60 px-2.5 py-1 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5 text-muted-foreground/70" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
           </div>
         </div>
       </div>
@@ -569,11 +590,23 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           ) : (
             <span className="text-muted-foreground">ไทม์ไลน์</span>
           )}
-          <div className="hidden xl:flex items-center gap-3 text-muted-foreground" aria-label="สถานะช่วงบรรยาย">
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-brand-700" aria-hidden="true" />บรรยาย</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-warning-strong-border" aria-hidden="true" />รอ</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-xs bg-input" aria-hidden="true" />ข้าม</span>
-          </div>
+          {(() => {
+            const legendItems = [
+              spots.some((s) => s.decision === 'generate') && { key: 'generate', label: 'บรรยาย', swatch: 'bg-brand-700' },
+              spots.some((s) => s.decision === 'pending') && { key: 'pending', label: 'รอ', swatch: 'border border-amber-400 bg-amber-100' },
+              spots.some((s) => s.decision === 'skip') && { key: 'skip', label: 'ข้าม', swatch: 'border border-slate-400 bg-slate-300' },
+            ].filter(Boolean) as { key: string; label: string; swatch: string }[];
+            return legendItems.length > 1 ? (
+              <div className="hidden xl:flex items-center gap-3 text-muted-foreground" aria-label="สถานะช่วงบรรยาย">
+                {legendItems.map((item) => (
+                  <span key={item.key} className="inline-flex items-center gap-1.5">
+                    <span className={`h-2.5 w-2.5 rounded-[3px] ${item.swatch}`} aria-hidden="true" />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
           {activeDrag?.hasMoved ? (
             <span className="inline-flex items-center gap-1.5 rounded bg-foreground px-2 py-0.5 font-mono text-xs tabular-nums text-background">
               <span>{monitorTime(activeDrag.previewStartMs)} – {monitorTime(activeDrag.previewEndMs)}</span>
@@ -585,14 +618,18 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             </span>
           )}
         </div>
-        <div role="group" aria-label="ซูมไทม์ไลน์" className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div role="group" aria-label="ซูมไทม์ไลน์" className="ml-auto flex shrink-0 items-center gap-1.5">
           {selectedSpot && selectedSpot.duration_ms / effectiveDurationMs * timelineViewportWidth * zoomLevel < 24 && zoomLevel < MAX_TIMELINE_ZOOM && (
             <Button variant="link" size="sm" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))}>ซูมช่วงนี้</Button>
           )}
-          <WithTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="sm" onClick={() => setZoomLevel(1)} disabled={zoomLevel === 1} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ">พอดี</Button></WithTooltip>
-          <WithTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์"><ZoomOut aria-hidden="true" /></Button></WithTooltip>
-          <span className="min-w-11 text-center text-xs text-muted-foreground tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
-          <WithTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-sm" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์"><ZoomIn aria-hidden="true" /></Button></WithTooltip>
+          {zoomLevel > 1 && (
+            <WithTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="xs" onClick={() => setZoomLevel(1)} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className="h-7 px-2 text-muted-foreground hover:text-foreground">พอดี</Button></WithTooltip>
+          )}
+          <div className="inline-flex items-center rounded-lg border border-border/70 bg-background p-0.5">
+            <WithTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomOut aria-hidden="true" /></Button></WithTooltip>
+            <span className="min-w-11 text-center font-mono text-xs text-muted-foreground tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
+            <WithTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomIn aria-hidden="true" /></Button></WithTooltip>
+          </div>
         </div>
       </div>
 
@@ -602,8 +639,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           {showWaveformTrack && (
             <div className="flex h-14 items-center border-b border-border px-3 text-muted-foreground">คลื่นเสียง</div>
           )}
-          <div className="flex h-7 items-center justify-between gap-1.5 border-b border-border px-3 text-muted-foreground"><span>เสียงพูด</span><span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground/80">{speechSegments.length}</span></div>
-          <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-secondary-foreground"><span>บรรยาย</span><span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground">{spots.length}</span></div>
+          <div className="flex h-7 items-center justify-between gap-1.5 border-b border-border px-3 text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 shrink-0 rounded-full bg-indigo-500" aria-hidden="true" />เสียงพูด</span>
+            <span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground">{speechSegments.length}</span>
+          </div>
+          <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-secondary-foreground">
+            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 shrink-0 rounded-full bg-brand-700" aria-hidden="true" />บรรยาย</span>
+            <span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground">{spots.length}</span>
+          </div>
         </div>
         <div
           ref={timelineScrollContainerRef}
@@ -611,6 +654,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           className="min-w-0 flex-1 overflow-x-auto select-none"
         >
           <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className={`relative min-w-full overflow-x-clip bg-white ${activeDrag ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : effectiveDurationMs > 1 ? 'cursor-crosshair' : 'cursor-default'}`}>
+            {ticks.slice(1, -1).map((tickMs, idx) => (
+              <div
+                key={`grid-${idx}`}
+                aria-hidden="true"
+                style={{ left: `${tickMs / effectiveDurationMs * 100}%` }}
+                className="pointer-events-none absolute top-7 bottom-0 z-[1] w-px bg-slate-200/50"
+              />
+            ))}
             <div
               role="slider" tabIndex={videoUrl ? 0 : -1} aria-disabled={!videoUrl}
               aria-label="ตำแหน่งวิดีโอ ใช้ปุ่มลูกศรซ้ายและขวาเพื่อเลื่อนเวลา"
@@ -631,7 +682,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               ))}
             </div>
             {showWaveformTrack && (
-              <div className="relative h-14 border-b border-slate-200 bg-white">
+              <div className="relative h-14 border-b border-slate-200 bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70">
                 {waveformPeaks.length > 0 ? (
                   <canvas
                     ref={waveformCanvasRef}
@@ -695,12 +746,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 )}
               </div>
             )}
-            <div className="relative h-7 border-b border-slate-200 bg-white">
+            <div className="relative h-7 border-b border-slate-200 bg-indigo-50/25">
               {isDetecting && speechSegments.length === 0 ? (
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-brand-50/40 via-slate-50/60 to-brand-50/40" />
               ) : (
                 speechSegments.map((seg, index) => (
-                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-xs bg-slate-400/75" />
+                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-[4px] border border-indigo-300/90 bg-indigo-100/90" />
                 ))
               )}
             </div>
@@ -769,7 +820,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   >
                     <span
                       style={{ left: left - hitLeft, width }}
-                      className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-xs border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-950 ring-offset-1' : hasIssue ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
+                      className={`absolute top-1.5 bottom-1.5 flex items-center justify-center overflow-hidden rounded-sm border transition-colors ${colorClasses} ${isSelected || isDraggingThis ? 'ring-2 ring-brand-900/90 ring-offset-1 shadow-xs' : hasIssue ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
                     >
                       {isProcessingSpot && (
                         <span aria-hidden="true" className="progress-shimmer-sweep pointer-events-none absolute inset-0" />
@@ -783,7 +834,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                           onPointerCancel={(event) => finishSpotDrag(event, true)}
                           className="absolute inset-y-0 left-0 z-10 flex w-2.5 cursor-ew-resize items-center justify-center hover:bg-black/20"
                         >
-                          <span className={`h-4 w-0.5 rounded-full bg-white/90 transition-opacity ${isSelected || isDraggingThis ? 'opacity-90' : 'opacity-0 group-hover:opacity-100'}`} />
+                          <span className={`h-4 w-1 rounded-full bg-white/95 transition-opacity ${isSelected || isDraggingThis ? 'opacity-95' : 'opacity-0 group-hover:opacity-100'}`} />
                         </span>
                       )}
                       {width >= 24 && (
@@ -800,7 +851,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                           onPointerCancel={(event) => finishSpotDrag(event, true)}
                           className="absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-ew-resize items-center justify-center hover:bg-black/20"
                         >
-                          <span className={`h-4 w-0.5 rounded-full bg-white/90 transition-opacity ${isSelected || isDraggingThis ? 'opacity-90' : 'opacity-0 group-hover:opacity-100'}`} />
+                          <span className={`h-4 w-1 rounded-full bg-white/95 transition-opacity ${isSelected || isDraggingThis ? 'opacity-95' : 'opacity-0 group-hover:opacity-100'}`} />
                         </span>
                       )}
                     </span>
