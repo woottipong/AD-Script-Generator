@@ -152,7 +152,7 @@ test('generate intake validation, draft preservation, single VAD scan, and save 
   ).toBe(true);
   await page.getByRole('button', { name: 'ล้างไฟล์ SRT', exact: true }).press('Enter');
   expect(
-    await page.getByRole('button', { name: 'เลือกไฟล์ SRT', exact: true }).evaluate((el) => el === document.activeElement),
+    await page.getByRole('button', { name: 'เลือกไฟล์จากเครื่อง (SRT)', exact: true }).evaluate((el) => el === document.activeElement),
     'Clearing a file returns focus to its picker'
   ).toBe(true);
 

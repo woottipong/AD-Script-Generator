@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
+import { useRevealSlowCheck, VideoProcessingStatus } from './VideoProcessingStatus';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, IntakeTitleField, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -14,8 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { Field, FieldDescription, FieldGroup, FieldTitle } from '@/components/ui/field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
@@ -139,6 +138,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
+  const showCheckStatus = useRevealSlowCheck(Boolean(checkingFileName));
   const activityFeedback: ProcessingFeedback | null = checkingFileName
     ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
     : processingFeedback;
@@ -271,7 +271,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           aria-label="เลือกวิดีโอ MP4"
         />
 
-        {checkingFileName ? (
+        {checkingFileName && showCheckStatus ? (
           <div className="w-full">
             <VideoProcessingStatus
               fileName={checkingFileName}
@@ -281,7 +281,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
           </div>
         ) : (
-          <FieldGroup className="gap-5">
+          <FieldGroup className="gap-5" inert={Boolean(checkingFileName)} aria-busy={Boolean(checkingFileName) || undefined}>
             <Field aria-labelledby="generate-video-label">
               <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
               <IntakeDropzone
@@ -307,7 +307,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 }}
                 icon={<FileVideo className="size-5" />}
                 emptyTitle="วางไฟล์ MP4 ที่นี่"
-                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
+                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4 พร้อมใช้` : ''}
                 pickLabel="เลือกวิดีโอ"
                 clearLabel="ล้างไฟล์วิดีโอ"
                 pickDescribedBy={errorAlert ? 'upload-requirements upload-feedback' : 'upload-requirements'}
@@ -317,25 +317,14 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </FieldDescription>
             </Field>
 
-            <Field>
-              <FieldLabel htmlFor="generate-title" className="gap-1.5">
-                <span>ชื่องาน</span>
-                <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
-              </FieldLabel>
-              <Input
-                id="generate-title"
-                type="text"
-                value={resolvedTitle}
-                maxLength={120}
-                onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
-                placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
-              />
-            </Field>
+            <IntakeTitleField
+              id="generate-title"
+              value={resolvedTitle}
+              isAutoTitle={draft.title === null && resolvedTitle.trim() !== ''}
+              onChange={(title) => setDraft((current) => ({ ...current, title }))}
+            />
 
             {errorAlert}
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              ระบบจะตรวจเสียงบนเครื่องแล้วบันทึกวิดีโอไว้บนเซิร์ฟเวอร์ คุณเลือกเริ่มสร้างบทด้วย AI ได้ในหน้าตัดต่อ
-            </p>
 
             <IntakeFooter
               actionLabel="เริ่มเตรียมงาน"

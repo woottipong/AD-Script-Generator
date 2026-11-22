@@ -59,6 +59,15 @@
     color: var(--placeholder);
   }
 
+  /* Keep browser autofill from painting a blue rectangle across InputGroup inputs. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--foreground);
+    box-shadow: 0 0 0 1000px var(--background) inset;
+    transition: background-color 9999s ease-out 0s;
+  }
+
   @media (pointer: coarse) {
     button, summary, input, select {
       min-height: 2.75rem;
@@ -263,6 +272,10 @@
   --color-error-surface: var(--error-surface);
   --color-error-foreground: var(--error-foreground);
   --color-error-border: var(--error-border);
+  --color-success-surface: var(--success-surface);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-border: var(--success-border);
+  --color-success-accent: var(--success-accent);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -306,6 +319,10 @@
   --error-surface: var(--color-red-50);
   --error-foreground: var(--color-red-800);
   --error-border: var(--color-red-200);
+  --success-surface: var(--color-emerald-50);
+  --success-foreground: var(--color-emerald-800);
+  --success-border: var(--color-emerald-200);
+  --success-accent: var(--color-emerald-600);
   --border: var(--color-slate-200);
   --input: var(--color-slate-300);
   --ring: var(--color-brand-600);

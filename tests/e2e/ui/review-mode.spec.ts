@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { ensureVideoFixtures, REVIEW_1080P_PATH, REVIEW_SRT_PATH } from '../fixtures';
 
@@ -213,4 +214,160 @@ test('review mode creation, queued rename, warnings filter, spot save, and creat
     renamed === 'ตรวจบท ตอนที่ 1 (แก้)' && new URL(page.url()).pathname === '/new',
     'Cancelling an edit keeps the original local-only title'
   ).toBe(true);
+});
+
+test('review mode accepts a public Google Drive SRT link with inline error, retry, and verification card', async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const srtContent = fs.readFileSync(REVIEW_SRT_PATH, 'utf8');
+  let fetchAttempts = 0;
+  let created: {
+    title: string;
+    srt_source: { file_name: string; cue_count: number };
+    spots: Array<{ text: string }>;
+  } | null = null;
+
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const url = request.url();
+    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
+    if (url.endsWith('/api/review/fetch-srt') && request.method() === 'POST') {
+      fetchAttempts += 1;
+      if (fetchAttempts === 1) {
+        return route.fulfill({
+          status: 400,
+          json: { error: 'ไฟล์นี้ไม่ได้ตั้งเป็นสาธารณะ กรุณาเปิดสิทธิ์ “ทุกคนที่มีลิงก์” ใน Google Drive' },
+        });
+      }
+      return route.fulfill({
+        json: {
+          file_name: 'drive-ad-script.srt',
+          content: srtContent,
+          size_bytes: Buffer.byteLength(srtContent, 'utf8'),
+          cue_count: 6,
+        },
+      });
+    }
+    if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
+      created = request.postDataJSON();
+      return route.fulfill({
+        json: {
+          job: {
+            ...created,
+            job_id: 'job_review_gdrive',
+            schema_version: 3,
+            mode: 'review',
+            status: 'READY',
+            batches: [],
+            created_at: '2026-11-20T00:00:00Z',
+            updated_at: '2026-11-20T00:00:00Z',
+          },
+          isRunning: false,
+        },
+      });
+    }
+    if (url.endsWith('/api/jobs/job_review_gdrive/spots')) {
+      return route.fulfill({ json: { job: { job_id: 'job_review_gdrive' } } });
+    }
+    return route.fulfill({ status: 404, json: { error: 'fixture' } });
+  });
+
+  await page.goto('/new');
+  await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
+  await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles(REVIEW_1080P_PATH);
+
+  const srtLinkInput = page.getByPlaceholder('https://drive.google.com/file/d/…/view');
+  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
+
+  await srtLinkInput.fill('https://example.com/script.srt');
+  await page.getByText('กรุณาวางลิงก์ไฟล์ Google Drive เช่น https://drive.google.com/file/d/…/view').waitFor();
+  expect(await srtLinkInput.getAttribute('aria-invalid')).toBe('true');
+  expect(await process.isDisabled()).toBe(true);
+
+  await srtLinkInput.fill('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing');
+  await page.getByText('กำลังตรวจสอบและดึงไฟล์ SRT จาก Google Drive…').waitFor();
+  await page.getByText('ไฟล์นี้ไม่ได้ตั้งเป็นสาธารณะ กรุณาเปิดสิทธิ์ “ทุกคนที่มีลิงก์” ใน Google Drive').waitFor();
+  const retryButton = page.getByRole('button', { name: 'ลองอีกครั้ง', exact: true });
+  await retryButton.waitFor();
+  expect(await process.isDisabled(), 'Process stays disabled when Drive SRT fetch fails').toBe(true);
+
+  await retryButton.click();
+  await page.getByText('drive-ad-script.srt', { exact: true }).waitFor();
+  await page.getByText(/6 บรรทัด/).waitFor();
+  expect(fetchAttempts).toBe(2);
+  expect(await process.isEnabled(), 'Process enables once Drive SRT is verified').toBe(true);
+
+  await page.getByRole('button', { name: 'แก้ไขลิงก์', exact: true }).click();
+  await srtLinkInput.waitFor();
+  await page.getByRole('button', { name: 'ล้างลิงก์ไฟล์ SRT', exact: true }).click();
+  expect(await srtLinkInput.inputValue(), 'Clicking clear while editing a verified Drive SRT link clears the link').toBe('');
+  expect(await page.getByText('drive-ad-script.srt', { exact: true }).count(), 'Verified card clears when link is cleared').toBe(0);
+  expect(await process.isDisabled(), 'Process disables after clearing Drive SRT link').toBe(true);
+
+  await srtLinkInput.fill('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing');
+  await page.getByText('drive-ad-script.srt', { exact: true }).waitFor();
+  expect(await process.isEnabled(), 'Process re-enables once Drive SRT is re-verified').toBe(true);
+
+  await process.click();
+  await page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true }).waitFor({ timeout: 55_000 });
+  await expect
+    .poll(() => new URL(page.url()).pathname, { message: 'Opens the created Review Mode job' })
+    .toBe('/jobs/job_review_gdrive');
+  expect(created!.srt_source.file_name).toBe('drive-ad-script.srt');
+  expect(created!.srt_source.cue_count).toBe(4);
+});
+
+test('review mode verifies remote MP4 URL via HEAD with inline error, retry, and verified card', async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const remoteMp4Url = 'https://cdn.example.invalid/clips/%E0%B8%9A%E0%B8%97%E0%B8%97%E0%B8%B5%E0%B9%88%201.mp4';
+  let headAttempts = 0;
+
+  await page.route('**/api/**', async (route) => {
+    if (route.request().url().endsWith('/api/me')) {
+      return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
+    }
+    return route.fulfill({ status: 404, json: { error: 'fixture' } });
+  });
+
+  await page.route('https://cdn.example.invalid/**', async (route) => {
+    if (route.request().method() !== 'HEAD') {
+      return route.fulfill({ status: 404 });
+    }
+    headAttempts += 1;
+    if (headAttempts === 1) {
+      return route.fulfill({
+        status: 403,
+        headers: { 'access-control-allow-origin': '*' },
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-expose-headers': 'content-length',
+        'content-length': String(2 * 1024 * 1024),
+      },
+    });
+  });
+
+  await page.goto('/new');
+  await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
+  await page.getByLabel('เลือกไฟล์ SRT').setInputFiles(REVIEW_SRT_PATH);
+
+  const videoLinkInput = page.getByPlaceholder('https://…/video.mp4');
+  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
+
+  await videoLinkInput.fill(remoteMp4Url);
+  await page.getByText('ลิงก์นี้เปิดจากเบราว์เซอร์ไม่ได้ กรุณาดาวน์โหลดแล้วเลือกเป็นไฟล์แทน').waitFor();
+  const retryButton = page.getByRole('button', { name: 'ลองอีกครั้ง', exact: true });
+  await retryButton.waitFor();
+  expect(await process.isDisabled(), 'Process stays disabled when remote MP4 HEAD fails').toBe(true);
+
+  await retryButton.click();
+  await page.getByText('บทที่ 1.mp4', { exact: true }).waitFor();
+  await page.getByText('2.00 MB · ลิงก์ MP4 พร้อมใช้', { exact: true }).waitFor();
+  expect(headAttempts).toBe(2);
+  expect(await page.getByRole('textbox', { name: 'ชื่องาน' }).inputValue()).toBe('บทที่ 1');
+  expect(await process.isEnabled(), 'Process enables once remote MP4 HEAD succeeds').toBe(true);
 });

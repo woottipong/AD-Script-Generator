@@ -45,7 +45,7 @@ import {
 import { IntakeSkeleton, type GenerateDraft, type IntakeControls, type ReviewDraft } from './components/IntakeShell';
 import { useConfirm } from './components/ConfirmDialog';
 import { cuesToSpots, decodeSrtBytes, parseSrt, type SkippedCue } from './utils/srtImport';
-import { fileByteSource, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
+import { fileByteSource, fileNameFromUrl, openByteSource, type ByteSource, type ByteSourceInput } from './utils/byteSource';
 import { getProcessingFeedback, type ProcessingProgress } from './utils/processingFeedback';
 import { parseApiResponse } from './utils/apiResponse';
 import { defaultJobTitle, resolveJobTitle } from './utils/jobValidation';
@@ -187,7 +187,7 @@ type TitleEditor =
   | { kind: 'editing' | 'queued' | 'saving'; draft: string }
   | { kind: 'error'; draft: string; message: string };
 const EMPTY_GENERATE_DRAFT: GenerateDraft = { file: null, title: null };
-const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', title: null };
+const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', linkProbe: null, srtLink: '', srtLinkResult: null, title: null };
 
 export default function App() {
   const [browserCompat, setBrowserCompat] = useState<BrowserCompatibilityResult | null>(null);
@@ -741,7 +741,7 @@ export default function App() {
     clearVideo();
     setErrorMessage(null);
     setVadProgress(null);
-    setCheckingFileName(typeof video === 'string' ? video : video.name);
+    setCheckingFileName(title.trim() || (typeof video === 'string' ? fileNameFromUrl(video) : video.name));
     setStatus('IDLE');
 
     let source: ByteSource;

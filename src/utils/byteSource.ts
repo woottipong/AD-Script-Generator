@@ -38,20 +38,29 @@ export function fileByteSource(file: File): ByteSource {
   return { name: file.name, size: file.size, type: file.type, read: (start, end) => file.slice(start, end).arrayBuffer() };
 }
 
+export async function probeMp4Url(
+  url: string,
+  options?: { signal?: AbortSignal; fetchImpl?: typeof fetch },
+): Promise<{ fileName: string; sizeBytes: number }> {
+  const fetchImpl = options?.fetchImpl ?? fetch;
+  let head: Response;
+  try {
+    head = await fetchImpl(url, { method: 'HEAD', cache: 'no-store', signal: options?.signal });
+  } catch (err) {
+    if (options?.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
+    throw new UrlNotReadableError();
+  }
+  const size = Number(head.headers.get('content-length'));
+  if (!head.ok || !Number.isSafeInteger(size) || size <= 0) throw new UrlNotReadableError();
+  return { fileName: fileNameFromUrl(url), sizeBytes: size };
+}
+
 /**
  * Reads a remote MP4 range by range. `no-store` keeps the browser from caching the whole video on disk,
  * and the size comes from HEAD because cross-origin responses rarely expose Content-Range.
  */
 async function urlByteSource(url: string, fetchImpl: typeof fetch): Promise<ByteSource> {
-  let head: Response;
-  try {
-    head = await fetchImpl(url, { method: 'HEAD', cache: 'no-store' });
-  } catch {
-    throw new UrlNotReadableError();
-  }
-  const size = Number(head.headers.get('content-length'));
-  if (!head.ok || !Number.isSafeInteger(size) || size <= 0) throw new UrlNotReadableError();
-  const name = fileNameFromUrl(url);
+  const { fileName: name, sizeBytes: size } = await probeMp4Url(url, { fetchImpl });
   return {
     name,
     size,

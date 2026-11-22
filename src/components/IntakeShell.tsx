@@ -1,7 +1,9 @@
 import { useRef, type DragEvent, type ReactNode } from 'react';
-import { ArrowRight, FileText, FileVideo, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, FileText, FileVideo, X } from 'lucide-react';
 import type { JobMode } from '../types/ad';
 import { Button } from '@/components/ui/button';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const INTAKE_MODES: ReadonlyArray<{
@@ -18,7 +20,15 @@ const INTAKE_MODES: ReadonlyArray<{
  * header matching the Job List above a studio card with a 2-column mode switcher header.
  */
 export type GenerateDraft = { file: File | null; title: string | null };
-export type ReviewDraft = { video: File | null; srt: File | null; link: string; title: string | null };
+export type ReviewDraft = {
+  video: File | null;
+  srt: File | null;
+  link: string;
+  linkProbe: { url: string; fileName: string; sizeBytes: number } | null;
+  srtLink: string;
+  srtLinkResult: { url: string; file: File; cueCount: number } | null;
+  title: string | null;
+};
 
 export type IntakeControls = {
   canProcess: boolean;
@@ -152,25 +162,28 @@ export function IntakeDropzone({
         isDragging
           ? 'bg-brand-100/70 outline-dashed outline-brand-600'
           : file
-          ? 'bg-brand-50 outline-solid outline-brand-400'
-          : 'bg-brand-50/45 outline-dashed outline-brand-300 hover:bg-brand-50 hover:outline-brand-500'
+          ? 'bg-success-surface/65 outline-solid outline-success-border'
+          : 'bg-background outline-dashed outline-brand-300 hover:bg-brand-50/60 hover:outline-brand-500'
       }`}
     >
       <div className="flex min-w-0 flex-1 flex-col items-start gap-3 @min-[17rem]:flex-row @min-[17rem]:items-center">
         <span
           aria-hidden="true"
           className={`inline-flex size-10 shrink-0 items-center justify-center rounded-lg ${
-            file ? 'bg-primary text-primary-foreground' : 'bg-brand-100 text-brand-700'
+            file ? 'bg-success-accent/12 text-success-foreground' : 'bg-brand-100 text-brand-700'
           }`}
         >
           {icon}
         </span>
-        <div className="min-w-0">
-          <span className={`block text-sm font-semibold [overflow-wrap:anywhere] ${file ? 'text-brand-950' : 'text-foreground'}`}>
-            {file ? file.name : emptyTitle}
-          </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            {file && <CheckCircle2 aria-hidden="true" className="size-4 shrink-0 text-success-accent" />}
+            <span className="block truncate text-sm font-semibold text-foreground" title={file ? file.name : undefined}>
+              {file ? file.name : emptyTitle}
+            </span>
+          </div>
           {subtitle && (
-            <span className={`block text-xs tabular-nums ${file ? 'text-brand-800' : 'text-muted-foreground'}`}>
+            <span className={`mt-0.5 block text-xs tabular-nums ${file ? 'text-success-foreground/90' : 'text-muted-foreground'}`}>
               {subtitle}
             </span>
           )}
@@ -180,28 +193,69 @@ export function IntakeDropzone({
         <Button
           type="button"
           ref={pickButton}
-          variant="outline-primary"
+          variant={file ? 'outline-success' : 'outline-primary'}
           size="sm"
           onClick={onPick}
           aria-describedby={pickDescribedBy}
-          className="h-auto min-h-8 max-w-full whitespace-normal border-brand-200 py-1.5 text-brand-800 [overflow-wrap:anywhere] pointer-coarse:min-h-11"
+          className={`h-auto min-h-8 max-w-full whitespace-normal py-1.5 [overflow-wrap:anywhere] pointer-coarse:min-h-11 ${
+            file ? 'text-xs' : 'border-brand-200 text-brand-800'
+          }`}
         >
           {file ? replaceLabel : pickLabel}
         </Button>
         {file && (
           <Button
             type="button"
-            variant="ghost"
+            variant="ghost-success"
             size="icon-sm"
             aria-label={clearLabel}
             onClick={() => { onClear(); pickButton.current?.focus(); }}
-            className="text-brand-800 hover:bg-brand-100 hover:text-brand-950 pointer-coarse:size-11"
+            className="pointer-coarse:size-11"
           >
             <X aria-hidden="true" />
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Shared optional Job Title field used by both Generate and Review intake modes.
+ */
+export function IntakeTitleField({ id, value, isAutoTitle, onChange }: {
+  id: string;
+  value: string;
+  isAutoTitle: boolean;
+  onChange: (title: string) => void;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id} className="gap-1.5">
+        <span>ชื่องาน</span>
+        <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
+      </FieldLabel>
+      <InputGroup className="bg-background">
+        <InputGroupInput
+          id={id}
+          type="text"
+          value={value}
+          maxLength={120}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
+        />
+        {value.trim() !== '' && (
+          <InputGroupAddon align="inline-end">
+            <CheckCircle2 aria-hidden="true" className="size-4 text-success-accent" />
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+      {isAutoTitle && (
+        <FieldDescription className="text-xs">
+          ตั้งชื่ออัตโนมัติจากไฟล์วิดีโอ แก้ไขได้
+        </FieldDescription>
+      )}
+    </Field>
   );
 }
 
@@ -269,8 +323,6 @@ export function IntakeSkeleton() {
             <Skeleton variant="shimmer" delay={280} className="h-4 w-16 rounded bg-muted" />
             <Skeleton variant="shimmer" delay={340} className="h-9 w-full rounded-lg bg-muted/70" />
           </div>
-
-          <Skeleton variant="shimmer" delay={380} className="h-4 w-3/4 rounded bg-muted/70" />
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:px-7">

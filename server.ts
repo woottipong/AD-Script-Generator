@@ -31,6 +31,7 @@ import { resolveJobTitle, validateEditedSpots, validateJobInitialization, valida
 import { createJobStore, isJobId, type JobMeta } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
 import { mountAuth, readAuthConfig, type AuthConfig } from './src/utils/auth';
+import { fetchGoogleDriveSrt, GoogleDriveSrtError } from './src/utils/googleDriveSrt';
 import type { AuthorSession } from './src/utils/session';
 
 // Without its sign-in settings the server would serve every Job to anyone, so it refuses to start.
@@ -1051,6 +1052,30 @@ async function startServer() {
     };
     store.save(job);
     res.json({ job, isRunning: false });
+  });
+
+  // POST /api/review/fetch-srt — Fetch a public Google Drive SRT server-side with redirect/size/format validation
+  app.post('/api/review/fetch-srt', async (req: Request, res: Response) => {
+    const rawUrl = req.body?.url;
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+      res.status(400).json({ error: 'กรุณาวางลิงก์ไฟล์ Google Drive' });
+      return;
+    }
+    try {
+      const result = await fetchGoogleDriveSrt(rawUrl);
+      res.json({
+        file_name: result.fileName,
+        content: result.content,
+        size_bytes: result.sizeBytes,
+        cue_count: result.cueCount,
+      });
+    } catch (err) {
+      if (err instanceof GoogleDriveSrtError) {
+        res.status(sanitizeApiStatusCode(err.statusCode)).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'ไม่สามารถดึงไฟล์จาก Google Drive ได้ กรุณาลองอีกครั้ง' });
+    }
   });
 
   // 6a. POST /api/jobs/:jobId/start — Start or resume background batch processing immediately

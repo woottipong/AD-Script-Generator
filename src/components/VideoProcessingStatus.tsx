@@ -1,13 +1,26 @@
 import { useEffect, useState } from 'react';
+import { FileVideo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { formatCompactTime } from '../utils/formatters';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import { focusIntakeFeedback } from './IntakeShell';
 
-const SPEC_CHECKS = ['รูปแบบไฟล์', 'ความละเอียด', 'แทร็กเสียง'] as const;
+/** Header-only MP4 checks usually finish well under this, so the status screen would only flash. */
+const REVEAL_DELAY_MS = 300;
+
+/** True once `checking` has stayed on for REVEAL_DELAY_MS; callers keep the form (inert) until then. */
+export function useRevealSlowCheck(checking: boolean): boolean {
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    setRevealed(false);
+    if (!checking) return;
+    const timer = setTimeout(() => setRevealed(true), REVEAL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [checking]);
+  return checking && revealed;
+}
 
 export function VideoProcessingStatus({
   feedback,
@@ -30,7 +43,11 @@ export function VideoProcessingStatus({
   const percent = feedback.percent !== undefined && feedback.percent > 0 ? Math.min(100, feedback.percent) : null;
 
   return (
-    <div ref={focusIntakeFeedback} tabIndex={-1} className="w-full text-left">
+    <div
+      ref={focusIntakeFeedback}
+      tabIndex={-1}
+      className="w-full text-left motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
+    >
       <div className="flex flex-wrap items-center gap-2.5">
         <Spinner aria-hidden="true" className="size-5 shrink-0 text-primary" />
         <h2 className="min-w-0 text-base sm:text-lg font-semibold leading-snug text-foreground">
@@ -42,11 +59,14 @@ export function VideoProcessingStatus({
       </div>
 
       {fileName && (
-        <p className="mt-1.5 text-sm font-medium text-foreground [overflow-wrap:anywhere]">
-          {fileName}
-        </p>
+        <div className="mt-3 flex min-w-0 items-center gap-2 rounded-lg border border-border/75 bg-surface-subtle/80 px-3 py-2">
+          <FileVideo aria-hidden="true" className="size-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium text-foreground" title={fileName}>
+            {fileName}
+          </span>
+        </div>
       )}
-      <p className="mt-1 text-sm text-muted-foreground">{feedback.description}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{feedback.description}</p>
 
       <Progress
         className="mt-4"
@@ -62,19 +82,6 @@ export function VideoProcessingStatus({
           )}
         </div>
       )}
-
-      <div aria-hidden="true" className="mt-5 grid grid-cols-3 gap-2">
-        {SPEC_CHECKS.map((label, index) => (
-          <div key={label} className="min-w-0 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <Skeleton
-              variant="shimmer"
-              delay={index * 120}
-              className="mt-1.5 h-3.5 w-16 max-w-full rounded bg-muted"
-            />
-          </div>
-        ))}
-      </div>
 
       <div className="-mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-between gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:-mx-7 sm:-mb-7 sm:px-7">
         <p className="text-xs text-muted-foreground">กำลังตรวจสอบบนเครื่องของคุณ</p>

@@ -244,6 +244,19 @@ Registers a Review Mode job: an existing SRT script plus the browser's VAD outpu
 
 HTTP 200 returns `{ job, isRunning: false }` with `mode: "review"`, `status: "READY"`, `batches: []`, and `srt_source.imported_at`. Invalid input returns HTTP 400. Review Mode does not wait for another job's Gemini analysis.
 
+### POST /api/review/fetch-srt
+
+Fetches a public Google Drive `.srt` link server-side for Review Mode intake without exposing an open URL proxy ([ADR-0005](adr/0005-google-drive-srt-server-fetch.md)). The JSON body requires `{ "url": "<Google Drive link>" }`, accepting `http(s)` URLs on `drive.google.com` or `drive.usercontent.google.com` (`/file/d/<id>`, `/open?id=`, `/uc?id=`, `/download?id=`). The server requests `https://drive.usercontent.google.com/download?id=<id>&export=download` with manual redirects (up to 2 hops strictly to allowlisted `https:` Google Drive/googleusercontent hosts), enforces a 15-second timeout and 5 MiB size limit (`5 × 1024 × 1024` bytes), decodes UTF-8 or Windows-874, validates cues with `parseSrt`, and derives `file_name` from `Content-Disposition` (fallback `drive-<id prefix>.srt`).
+
+HTTP 200 returns `{ file_name, content, size_bytes, cue_count }`.
+
+| Status | Condition |
+|---|---|
+| 400 | Missing/non-Drive URL, redirect to `accounts.google.com` or non-allowlisted host, HTTP 401/403 from Drive, `text/html` response, or unreadable/empty SRT content |
+| 404 | Google Drive returned HTTP 404 |
+| 413 | Response `Content-Length` or streamed body exceeds 5 MiB |
+| 500 | Network failure, timeout, excessive redirects, or other non-2xx upstream status (remapped from 502 via `sanitizeApiStatusCode`) |
+
 ### POST /api/jobs/:jobId/start
 
 Starts or resumes background processing. Review Mode jobs return HTTP 409. No request body is required. The server resets failed or interrupted batches for another attempt and skips completed batches.
