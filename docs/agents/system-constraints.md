@@ -52,7 +52,7 @@ Owned by `src/utils/auth.ts` (required env config via `readAuthConfig`, `/auth/*
 - **All-Jobs Access**: computed once at sign-in from the token's `groups` (or `group`) claim (ignoring leading `/`) against `AUTH_ALL_JOBS_GROUPS`, stored in session as `allJobs` and `accessGroups`.
 - **Job Owner & access rule**: Job-creation routes record `owner_sub` and `owner_email`; `jobStore.save` preserves them, and sign-in refreshes `owner_email` for the Author's Jobs (pre-auth Jobs have no owner). `app.param('jobId')` allows access only to the Job Owner or All-Jobs Access and answers unauthorized Jobs with the same HTTP 404 as missing Jobs. `GET /api/jobs` filters via `store.list(ownerSub)`. New routes addressing a Job without `:jobId` must enforce the same check.
 - **Unfinished Uploads**: `uploadOwners` in `server.ts` tracks uploaders in memory until deletion, Job creation, or server restart. Only the uploader or All-Jobs Access can access chunks, abandon, init a Job from `uploadId`, or delete (others receive the missing-upload response). Uploads become inactive after five minutes of inactivity by default. Explicitly abandoned uploads stay inactive even if a late chunk arrives. After a restart, only All-Jobs Access can reach an Unfinished Upload.
-- **Testing**: there is no sign-in bypass; integration tests seal cookies with a test `SESSION_SECRET` via `src/utils/authTestHelpers.ts`.
+- **Testing**: there is no sign-in bypass; integration tests seal cookies with a test `SESSION_SECRET` via `tests/integration/helpers/auth.ts`.
 
 ## API error sanitization and concurrency
 

@@ -308,14 +308,22 @@ NODE_ENV=production npx tsx server.ts
 
 ## คำสั่งตรวจสอบโค้ด
 
-`check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit/integration และ guardrail tests ใน `src/utils`, และ `build` ไว้ในคำสั่งเดียว (รันใน dev container เพราะ `node:sqlite` ต้องใช้ Bun 1.4+):
+ระบบแบ่งการทดสอบเป็น 4 ระดับ (รัน unit/integration ใน dev container เพราะ `node:sqlite` ต้องใช้ Bun 1.4+ และรัน E2E/smoke บนเครื่อง):
+
+- `docker compose exec envisio bun run test:unit` — unit tests และ guardrail tests ใน `src/`
+- `docker compose exec envisio bun run test:integration` — integration tests ของ Auth, Upload และ Job store ใน `tests/integration/`
+- `docker compose exec envisio bun run check` — ตรวจชนิดข้อมูล (`tsc --noEmit`), รัน `test:unit` + `test:integration` และ `vite build`
+- `bun run test:e2e` — Playwright UI tests (`tests/e2e/ui/*.spec.ts`) จำลอง API ผ่าน `tests/e2e/serve-dist.mjs` (สร้างไฟล์วิดีโอจำลองด้วย `ffmpeg` อัตโนมัติเมื่อยังไม่มี)
+- `bun run test:smoke` — Playwright smoke test (`tests/e2e/smoke/app.spec.ts`) ทดสอบ container production จริง (`envisio:latest`)
 
 ```bash
 docker compose exec envisio bun run check
 docker compose config --quiet
+bun run test:e2e
+bun run test:smoke
 ```
 
-ดูขั้นตอนการรัน **browser tests (`bun run test:browser`)**, การสร้างไฟล์ตัวอย่างใน `/tmp` และการวัดประสิทธิภาพการเล่นวิดีโอใน [docs/testing.md](docs/testing.md)
+ดูขั้นตอนการติดตั้ง Chromium สำหรับ Playwright, การตั้งค่าไฟล์ตัวอย่างและการวัดประสิทธิภาพการเล่นวิดีโอใน [docs/testing.md](docs/testing.md)
 
 ## แก้ปัญหาการติดตั้งและการรัน
 

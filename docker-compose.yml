@@ -26,19 +26,3 @@ services:
       - .:/app
       - /app/node_modules
     restart: unless-stopped
-
-  # Serves the built `dist` for the browser scripts in tests/browser (build in the dev container first).
-  # Start it with `docker compose --profile test up -d preview`.
-  preview:
-    profiles: [test]
-    build:
-      context: .
-      target: development
-    image: envisio:dev
-    init: true
-    command: ["./node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "4173", "--strictPort"]
-    ports:
-      - "127.0.0.1:${PREVIEW_PORT:-4173}:4173"
-    volumes:
-      - .:/app
-      - /app/node_modules

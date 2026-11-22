@@ -1,4 +1,4 @@
-import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue, type AuthorSession } from './session';
+import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue, type AuthorSession } from '../../../src/utils/session';
 
 export const TEST_SESSION_SECRET = 'test-only-session-secret-0123456789';
 

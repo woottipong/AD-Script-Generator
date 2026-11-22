@@ -10,3 +10,6 @@ coverage/
 .impeccable
 .playwright-cli
 .data
+test-results/
+playwright-report/
+tests/fixtures/.generated/

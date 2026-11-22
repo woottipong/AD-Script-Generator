@@ -5,8 +5,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import { authTestEnv, sessionCookie, TEST_SESSION_SECRET } from './authTestHelpers';
-import { SESSION_COOKIE, sealValue } from './session';
+import { authTestEnv, sessionCookie, TEST_SESSION_SECRET } from './helpers/auth';
+import { SESSION_COOKIE, sealValue } from '../../src/utils/session';
 
 async function freePort(): Promise<number> {
   const socket = net.createServer();

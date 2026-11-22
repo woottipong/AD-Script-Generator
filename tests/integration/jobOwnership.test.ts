@@ -5,9 +5,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import type { PersistedJobState } from '../types/ad';
-import { authTestEnv, signedInFetch } from './authTestHelpers';
-import { createJobStore } from './jobStore';
+import type { PersistedJobState } from '../../src/types/ad';
+import { authTestEnv, signedInFetch } from './helpers/auth';
+import { createJobStore } from '../../src/utils/jobStore';
 
 const authorA = { sub: 'sub-a', email: 'a@example.com', allJobs: false };
 const authorB = { sub: 'sub-b', email: 'b@example.com', allJobs: false };
