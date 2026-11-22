@@ -94,6 +94,27 @@ test('rename changes only the title', withStore(async (store, _dataDir, jobsDir)
   assert.equal(store.rename('job_missing', 'x'), false);
 }));
 
+test('saveProgress changes only the progress fields and reports a missing job', withStore((store, _dataDir, jobsDir) => {
+  const job = { ...generateJob('job_gen', jobsDir), status: 'ANALYZING' as const, active_model: 'gemini-a' };
+  store.save(job);
+
+  assert.equal(store.saveProgress('job_gen', { progress_stage: 'ชุดที่ 2/3', progress_percent: 40, active_model: 'gemini-b' }), true);
+  const progressed = store.load('job_gen')!;
+  assert.equal(progressed.progress_stage, 'ชุดที่ 2/3');
+  assert.equal(progressed.progress_percent, 40);
+  assert.equal(progressed.active_model, 'gemini-b');
+  assert.deepEqual({ ...progressed, progress_stage: undefined, progress_percent: job.progress_percent, active_model: job.active_model, updated_at: job.updated_at },
+    { ...job, progress_stage: undefined, updated_at: job.updated_at }, 'spots, title, batches and every other field are unchanged');
+
+  assert.equal(store.saveProgress('job_gen', { progress_percent: 100 }), true);
+  const cleared = store.load('job_gen')!;
+  assert.equal(cleared.progress_stage, undefined);
+  assert.equal(cleared.active_model, undefined);
+  assert.equal(cleared.progress_percent, 100);
+
+  assert.equal(store.saveProgress('job_missing', { progress_percent: 1 }), false);
+}));
+
 test('saving spots or status again leaves vad_output.json untouched', withStore((store, _dataDir, jobsDir) => {
   const job = generateJob('job_gen', jobsDir);
   store.save(job);

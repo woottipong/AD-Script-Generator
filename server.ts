@@ -100,6 +100,10 @@ function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
   });
 }
 
+function saveProcessingProgress(job: PersistedJobState): void {
+  if (!store.saveProgress(job.job_id, job)) throw new Error('ไม่สามารถอ่านสถานะงานล่าสุดได้');
+}
+
 function saveProcessingState(
   job: PersistedJobState,
   results?: ReadonlyMap<string, { decision: 'generate' | 'skip'; text: string; reason?: string }>,
@@ -473,7 +477,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
     await ensureActiveGeminiFileUri(uploadAi, job, (stage) => {
       job.progress_stage = stage;
       job.progress_percent = 12;
-      saveProcessingState(job);
+      saveProcessingProgress(job);
     });
 
     // Step 2: Process incomplete batches sequentially
@@ -511,7 +515,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
         (stage, activeModel) => {
           job.progress_stage = stage;
           job.active_model = activeModel;
-          saveProcessingState(job);
+          saveProcessingProgress(job);
         }
       );
 

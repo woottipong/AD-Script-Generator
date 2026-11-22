@@ -228,6 +228,9 @@ export function createJobStore(dataDir: string) {
   const selectOwnedSummaries = summaryQuery('WHERE j.owner_sub = ?');
   const updateOwnerEmailStmt = db.prepare('UPDATE jobs SET owner_email = ? WHERE owner_sub = ?');
   const updateTitle = db.prepare('UPDATE jobs SET title = ?, updated_at = ? WHERE job_id = ?');
+  const updateProgress = db.prepare(
+    'UPDATE jobs SET progress_stage = ?, progress_percent = ?, active_model = ?, updated_at = ? WHERE job_id = ?',
+  );
   const deleteJobRow = db.prepare('DELETE FROM jobs WHERE job_id = ?');
 
   function dirOf(jobId: string): string {
@@ -302,6 +305,16 @@ export function createJobStore(dataDir: string) {
       throw err;
     }
     job.updated_at = updatedAt;
+  }
+
+  /** Persists only the live progress fields; returns false when the Job no longer exists. */
+  function saveProgress(
+    jobId: string,
+    progress: Pick<PersistedJobState, 'progress_stage' | 'progress_percent' | 'active_model'>,
+  ): boolean {
+    return isJobId(jobId) && Number(updateProgress.run(
+      progress.progress_stage ?? null, progress.progress_percent ?? null, progress.active_model ?? null,
+      new Date().toISOString(), jobId).changes) > 0;
   }
 
   function rename(jobId: string, title: string): boolean {
@@ -391,5 +404,5 @@ export function createJobStore(dataDir: string) {
     db.close();
   }
 
-  return { dirOf, exists, loadMeta, loadSpots, load, save, rename, list, deleteJob, updateOwnerEmail, close };
+  return { dirOf, exists, loadMeta, loadSpots, load, save, saveProgress, rename, list, deleteJob, updateOwnerEmail, close };
 }
