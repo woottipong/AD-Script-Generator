@@ -308,12 +308,13 @@ NODE_ENV=production npx tsx server.ts
 
 ## คำสั่งตรวจสอบโค้ด
 
-คำสั่ง `lint` ตรวจชนิดข้อมูลด้วย `tsc --noEmit` ส่วน `bun test` รัน unit tests และ integration tests ใน `src/utils` โดย integration tests ใช้ข้อมูลและ Gemini จำลอง (`bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` ถ้า Bun บนเครื่องเก่ากว่าให้รันใน dev container ด้วย `docker exec -w /app <container> bun test`) `build` สร้างหน้าเว็บ และ `docker compose config --quiet` ตรวจรูปแบบ Compose:
+`check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit และ integration tests ใน `src/utils` (ข้อมูลและ Gemini จำลอง) และ `build` ไว้ในคำสั่งเดียว `bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` จึงรันใน dev container ได้เสมอ:
 
 ```bash
-bun run lint
-bun test
-bun run build
+docker compose exec ad-script-generator bun run check
+```
+
+```bash
 docker compose config --quiet
 ```
 
@@ -321,28 +322,20 @@ docker compose config --quiet
 
 ต้องมี Node.js, npm และ Chromium ที่ Playwright ใช้งานได้ คำสั่ง `npx` อาจดาวน์โหลด Playwright CLI เมื่อยังไม่มีในเครื่อง การตรวจนี้จำลอง API ทุก endpoint และไม่ใช้ข้อมูลงานจริง หากยังไม่มี browser ที่ Playwright รองรับ ให้ติดตั้งตามคำแนะนำของ Playwright CLI
 
-เริ่ม preview ใน terminal หนึ่ง:
+build หน้าเว็บใน dev container แล้วเปิด service `preview` (เสิร์ฟ `dist` ที่ 127.0.0.1:4173 ตั้ง `PREVIEW_PORT` เพื่อเปลี่ยน port):
 
 ```bash
-bun run build
-bun run preview --host 127.0.0.1 --port 4173 --strictPort
+docker compose exec ad-script-generator bun run build
 ```
 
-ในอีก terminal รัน:
+```bash
+docker compose --profile test up -d preview
+```
+
+แล้วรันทุก script บนเครื่อง (ระบุชื่อไฟล์เพื่อรันเฉพาะบางไฟล์ได้) คำสั่งแสดง `ok`, `FAIL` พร้อมข้อความ error หรือ `skip` เมื่อไม่มีไฟล์ตัวอย่างใน `/tmp` ที่ script นั้นต้องใช้ และจบด้วย exit code ไม่เป็นศูนย์เมื่อมีไฟล์ที่ไม่ผ่าน:
 
 ```bash
-npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0.0.1:4173/
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list-owners.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/create-mode.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode-url.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-restore.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/sign-in.js
-npx --yes --package @playwright/cli playwright-cli -s=ad-check close
+bun run test:browser
 ```
 
 `create-mode.js` ต้องมีวิดีโอ MP4 480p ที่มีแทร็ก AAC และมีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที สร้างได้ด้วย FFmpeg:
@@ -363,7 +356,7 @@ printf '1\n00:00:01,000 --> 00:00:03,000\n<i>ชายเปิดประต�
 
 `review-mode-url.js` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และใช้เวลาราวครึ่งนาที
 
-ตรวจผล `Result` และข้อผิดพลาดของแต่ละคำสั่ง จากนั้นหยุด preview ใน terminal แรก การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
+หยุด preview ด้วย `docker compose --profile test stop preview` เมื่อเสร็จ การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
 
 ### วัดการเล่นวิดีโอในหน้ารายการบท
 

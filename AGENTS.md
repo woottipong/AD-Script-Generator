@@ -24,12 +24,12 @@ TCC Envisio authors Thai Audio Description (AD) scripts in two modes. Both decod
 
 Keep executable setup, Docker, build, and verification commands in [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์); consult `package.json` for scripts.
 
-- **Dependencies and tests:** Update `package.json` and `bun.lock` (`lockfileVersion 2`) together using Bun 1.4+ (Docker installs with `--frozen-lockfile`, and `node:sqlite` requires Bun 1.4+ for `bun test`). When local Bun is older, run `docker exec -w /app <container> bun …` inside the dev container. With npm, pass `--legacy-peer-deps`.
+- **Dependencies and tests:** Update `package.json` and `bun.lock` (`lockfileVersion 2`) together using Bun 1.4+ (Docker installs with `--frozen-lockfile`, and `node:sqlite` requires Bun 1.4+ for `bun test`). The host has no `node_modules`, so run checks in the dev container: `docker compose exec ad-script-generator bun run check` (typecheck, tests, build); editor "Cannot find module" diagnostics on the host are noise. With npm, pass `--legacy-peer-deps`.
 - **Docker:** `docker-compose.yml` (`Dockerfile.Dev`) bind-mounts `.:/app` for development; `docker-compose.prod.yml` (`Dockerfile` `production` stage) mounts only `./.data:/app/.data` for deployment and updates. In both setups, Jobs persist in `.data` (`envisio.db` plus `jobs/`).
 
 ## Verification
 
-Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; see [README.md](README.md#คำสั่งตรวจสอบโค้ด)). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes the Job for every Author (and, with All-Jobs Access, can remove another Author's Job).
+Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route): build in the dev container, start `docker compose --profile test up -d preview` (serves `dist` on 127.0.0.1:4173), then `bun run test:browser [file…]` on the host. In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes the Job for every Author (and, with All-Jobs Access, can remove another Author's Job).
 
 ## UX conventions
 

@@ -9,7 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "bun test",
+    "check": "tsc --noEmit && bun test && vite build",
+    "test:browser": "sh tests/browser/run.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
