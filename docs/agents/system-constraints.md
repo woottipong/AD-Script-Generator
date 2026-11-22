@@ -14,7 +14,7 @@ The client validator (`src/utils/videoValidator.ts`) rejects files that violate 
 
 ## Review Mode
 
-Review Mode opens an existing video and SRT. `src/utils/videoValidator.ts` (with `mode: 'review'`) skips the upload size, H.264, and 480p checks and allows up to `REVIEW_MAX_DURATION_MS` (60 minutes); an AAC audio track is still required. `src/utils/srtImport.ts` decodes UTF-8 (BOM allowed) or falls back to Windows-874, keeps multi-line cue text, strips `<i>`, `<b>`, `<u>`, and `<font>` tags, and leaves out cues that start after the video ends. The video can also be an `http(s)` `.mp4` link: `src/utils/byteSource.ts` gives the validator and the VAD worker one reader with two adapters, a local `File` and a URL read with `HEAD` (size) plus `Range` requests sent `cache: 'no-store'`; a link without CORS or Range support fails with `UrlNotReadableError`, and playback uses the link as the `<video>` source. The worker allows one rewind so MP4s whose `moov` box follows `mdat` still decode audio. Restoring a Review Mode job on reload reuses its saved `vad_output` without rescanning; a `url` source plays at once, and a `local_file` source asks the author to pick the same file again, matched by name and size. `POST /api/jobs/review` stores the job with no video copy; Gemini routes return HTTP 409 for it. The spec and remaining tickets live in `.scratch/review-mode/`.
+Review Mode opens an existing video and SRT. `src/utils/videoValidator.ts` (with `mode: 'review'`) skips the upload size, H.264, and 480p checks and allows up to `REVIEW_MAX_DURATION_MS` (60 minutes); an AAC audio track is still required. `src/utils/srtImport.ts` decodes UTF-8 (BOM allowed) or falls back to Windows-874, keeps multi-line cue text, strips `<i>`, `<b>`, `<u>`, and `<font>` tags, and leaves out cues that start after the video ends. The video can also be an `http(s)` `.mp4` link: `src/utils/byteSource.ts` gives the validator and the VAD worker one reader with two adapters, a local `File` and a URL read with `HEAD` (size) plus `Range` requests sent `cache: 'no-store'`; a link without CORS or Range support fails with `UrlNotReadableError`, and playback uses the link as the `<video>` source. The worker allows one rewind so MP4s whose `moov` box follows `mdat` still decode audio. Restoring a Review Mode job on reload reuses its saved `vad_output` without rescanning; a `url` source plays at once, and a `local_file` source asks the author to pick the same file again, matched by name and size. `POST /api/jobs/review` stores the job with no video copy; Gemini routes return HTTP 409 for it. The spec and its resolved tickets live in `.scratch/review-mode/`.
 
 ## Voice activity detection pipeline
 
@@ -31,11 +31,11 @@ VAD runs in `src/workers/vad.worker.ts` and post-processes in `src/utils/vadPost
 
 Signal analysis can recommend different speech, silence, and padding values before the gaps are recalculated.
 
-The worker also builds the Waveform Envelope (`src/utils/waveform.ts`): one peak byte per 20 ms bucket, stored base64-encoded in `vad_output.waveform`. Job initialization accepts `sampleIntervalMs` from 10 to 1000 and at most 200,000 base64 characters. [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md) records why the timeline draws it on its own canvas.
+The worker also builds the Waveform Envelope (`src/utils/waveform.ts`): one peak byte per 20 ms bucket, stored base64-encoded in `vad_output.waveform`. Job initialization accepts `sampleIntervalMs` from 10 to 1000 and at most 250,000 base64 characters. [ADR-0001](../adr/0001-custom-canvas-waveform-and-peaks-storage.md) records why the timeline draws it on its own canvas.
 
 ## Processing feedback
 
-`src/utils/processingFeedback.ts` turns job status, progress, and batches into the status shown to authors. It branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-edits`); `stage` text is display-only, so stage wording can change freely. The worker's PROGRESS message is typed against `ProcessingProgress`, so a misspelled phase fails `tsc`.
+`src/utils/processingFeedback.ts` turns job status, progress, and batches into the status shown to authors. It branches on `ProcessingProgress.phase` (`finalizing-detection`, `saving-job`, `saving-edits`); `stage` text is display-only, so stage wording can change freely. The worker's PROGRESS message is typed against `ProcessingProgress`, so a misspelled phase fails `tsc`.
 
 ## Gemini analysis pipeline
 
@@ -52,17 +52,19 @@ Batching runs in `src/utils/formatters.ts`. Prompt building and response validat
 
 ## Data storage and persistence
 
-Job state persists as JSON on disk inside `.data/jobs/`. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, the active pointer, storage listing, and deletable directories. Route code goes through the store.
+Job state persists in SQLite at `.data/envisio.db` (built-in `node:sqlite`, WAL mode), with per-Job files under `.data/jobs/<job_id>/`; [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md) records why. `src/utils/jobStore.ts` owns this layout: job ID checks (`job_` followed by letters, digits, `_`, or `-`), reads, writes, renames, storage listing, and deletion. Route code goes through the store and never opens the database or Job files itself.
 
-Each Job records `schema_version` (currently 2), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). The store upgrades jobs without `schema_version` on read to Generate Mode with a `server_copy` source, and the next save writes the new shape. Only a `server_copy` source has a video file on the server.
+Each Job records `schema_version` (currently 3), its Job Title (`title`, 1 to 120 characters, defaulting to the video file name without its extension; `resolveJobTitle` in `src/utils/jobValidation.ts` owns this rule), `mode` (`generate` or `review`), and `video_source` (`server_copy`, `url`, or `local_file`); see [ADR-0002](../adr/0002-job-mode-and-video-source.md). Job files from before schema version 3 are not supported: clear `.data` when upgrading (there is no migration). Only a `server_copy` source has a video file on the server.
 
-- Path format: `.data/jobs/<job_id>/job.json`
-- Active pointer: `.data/jobs/active_job.json` contains `{ "active_job_id": "<job_id>", "updated_at": "…" }`
+- Tables: `jobs` (one row per Job; Analysis Batches as `batches_json`) and `job_spots` (AD Spots in order by `position`, deleted with their Job).
+- Schema changes: `MIGRATIONS` in `jobStore.ts` is an append-only list and `PRAGMA user_version` counts how many have run. On open the store runs the missing ones, each in its own transaction, so a fresh database and an upgraded one end up identical; it refuses a database newer than the code. Never edit a released migration; add a new entry instead.
+- VAD output: `.data/jobs/<job_id>/vad_output.json`, written once when the Job is first saved (`.tmp` then rename) and never rewritten.
 - Local video copy: `.data/jobs/<job_id>/source_video.mp4` stored during upload for range streaming (`/api/jobs/:jobId/video`) and automatic re-upload if Gemini file TTL expires.
-- Writes: `job.json` and the pointer are written to a `.tmp` file and renamed, so an interrupted save keeps the previous file.
-- Reads: `load` treats any unreadable job as missing; `activeJobId` throws on a corrupt pointer so storage routes answer HTTP 500 instead of acting on bad data.
+- Writes: a save upserts the Job row and replaces its spots in one transaction, so a failed save keeps the previous state. Renaming updates only the title. Saving spots replaces the whole list, so two tabs editing one Job overwrite each other (last write wins; see [ADR-0003](../adr/0003-sqlite-job-store-and-url-addressed-jobs.md)).
+- Reads: `load` treats a Job without a row or without a readable VAD file as missing; `loadMeta` reads the row only (used to stream video).
+- There is no active Job. The browser opens the Job named in its `/jobs/:jobId` URL, so several tabs can work on different Jobs. On startup the server returns every Job left `ANALYZING` to `VAD_READY`.
 
-Keep job files inside `.data/jobs/`. Clean orphaned pointers via `DELETE /api/jobs/:jobId`.
+Keep Job data inside `.data/`.
 
 ## API contract
 
@@ -84,5 +86,6 @@ Processing uses a single-job concurrency lock (`activeProcessingLock` in `server
 - Timestamps must never overlap any detected speech segment from `vad_output.speech_segments`.
 - Spot duration must be at least 500 ms (`MIN_SPOT_DURATION_MS`).
 
-Review Mode replaces the first two rules: a retimed spot stays inside the video, lasts at least 500 ms, and does not overlap another spot whose decision is not `skip`; it may overlap a Speech Segment. Callers pass a `SpotTimingContext` (`generate` or `review`) so one module decides which rules apply. `PATCH` checks only Review Mode spots whose `start_ms` or `end_ms` changed, and a drag or nudge on an imported spot that overlaps its neighbour pulls it out of the overlap. `findSpotIssues` flags Review Mode spots that overlap speech, overlap another non-skipped spot, last under 500 ms, or end after the video; these are warnings shown in the editor and timeline, never save errors. SRT cues that start after the video ends or have no duration are not imported and are listed to the author.
-- SubRip (`.srt`) export includes only spots where `decision === 'generate'` with non-empty text.
+Review Mode replaces the first two rules: a retimed spot stays inside the video, lasts at least 500 ms, and does not overlap another spot whose decision is not `skip`; it may overlap a Speech Segment. Callers pass a `SpotTimingContext` (`generate` or `review`) so one module decides which rules apply. `PATCH` checks only Review Mode spots whose `start_ms` or `end_ms` changed, and a drag or nudge on an imported spot that overlaps its neighbour pulls it out of the overlap. `findSpotIssues` flags Review Mode spots that overlap speech, overlap another non-skipped spot, last under 500 ms, or end after the video; these are warnings shown in the editor and timeline, never save errors. The editor counts them under one `ต้องตรวจ` menu together with over-duration (estimated speech longer than the spot), which stays informational because Extended AD may pause the picture. SRT cues that start after the video ends or have no duration are not imported and are listed to the author.
+
+SubRip (`.srt`) export includes only spots where `decision === 'generate'` with non-empty text.

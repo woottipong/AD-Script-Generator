@@ -4,7 +4,6 @@ async page => {
   let created = null;
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
-    if (url.endsWith('/api/jobs/current')) return route.fulfill({ json: { job: null, isRunning: false } });
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
       created = request.postDataJSON();
       return route.fulfill({ json: { job: { ...created, job_id: 'job_review_url', schema_version: 2, mode: 'review', status: 'READY', batches: [] }, isRunning: false } });
@@ -13,10 +12,10 @@ async page => {
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
-  await page.goto('http://127.0.0.1:4173/');
-  await page.getByRole('button', { name: /แก้ไข SRT ที่มีอยู่/ }).click();
+  await page.goto('http://127.0.0.1:4173/new');
+  await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
   const link = page.getByPlaceholder('https://…/video.mp4');
-  const process = page.getByRole('button', { name: 'ประมวลผล' });
+  const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });
   await page.getByLabel('เลือกไฟล์ SRT').setInputFiles('/tmp/ad-review.srt');
   await link.fill('https://example.com/video.mov');
   assert(await process.isDisabled(), 'A non-.mp4 link cannot be processed');

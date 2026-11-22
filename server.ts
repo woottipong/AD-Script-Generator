@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
@@ -27,12 +27,14 @@ import {
   formatTimestampDisplay,
 } from './src/utils/formatters';
 import { mergeProcessingState } from './src/utils/jobProcessing';
-import { validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
-import { createJobStore, isJobId } from './src/utils/jobStore';
+import { resolveJobTitle, validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './src/utils/jobValidation';
+import { createJobStore, isJobId, type JobMeta } from './src/utils/jobStore';
 import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError } from './src/utils/geminiBatch';
 
 const PORT = Number(process.env.PORT) || 3000;
-const store = createJobStore(path.resolve(process.cwd(), '.data', 'jobs'));
+const store = createJobStore(path.resolve(process.cwd(), '.data'));
+
+const ANOTHER_JOB_ANALYZING_ERROR = 'มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ';
 
 const FIXED_SERVER_CONFIG: ServerConfig = {
   geminiModel: 'gemini-4-hydrogen',
@@ -90,7 +92,9 @@ function saveProcessingState(
   const latest = store.load(job.job_id);
   if (!latest) throw new Error('ไม่สามารถอ่านสถานะงานล่าสุดได้');
   job.spots = mergeProcessingState(job, latest, results).spots;
-  store.save(job, false);
+  // The author may rename the Job while it is analysed; analysis never changes the title.
+  job.title = latest.title;
+  store.save(job);
 }
 
 // Single-job concurrency lock (MVP rule: process 1 Gemini job at a time)
@@ -172,7 +176,7 @@ async function deleteJobGeminiFile(ai: GoogleGenAI, job: PersistedJobState): Pro
  * If the URI has expired and the local source MP4 still exists, re-uploads it automatically (Section 06 Rule 7).
  */
 /** Server path of the Job's video copy; null when the video is not stored on this server. */
-function serverVideoPath(job: PersistedJobState): string | null {
+function serverVideoPath(job: JobMeta): string | null {
   return job.video_source.kind === 'server_copy' ? job.video_source.local_file_path : null;
 }
 
@@ -515,29 +519,36 @@ async function runJobInBackground(jobId: string): Promise<void> {
   }
 }
 
-function recoverOrphanedJobOnStartup(): void {
-  const activeJob = store.loadActive();
-  if (!activeJob) return;
-  let modified = false;
-  for (const b of activeJob.batches) {
-    if (b.status === 'processing') {
-      b.status = 'pending';
-      b.error = undefined;
-      modified = true;
+/** Analysis runs only in this process, so any Job still marked as analysing was cut off by a restart. */
+function recoverOrphanedJobsOnStartup(): void {
+  try {
+    for (const { job_id, is_upload } of store.list()) {
+      if (is_upload) continue;
+      const job = store.load(job_id);
+      if (!job) continue;
+      let modified = false;
+      for (const b of job.batches) {
+        if (b.status === 'processing') {
+          b.status = 'pending';
+          b.error = undefined;
+          modified = true;
+        }
+      }
+      if (job.status === 'ANALYZING') {
+        job.status = 'VAD_READY';
+        job.progress_stage = undefined;
+        modified = true;
+      }
+      if (modified) store.save(job);
     }
-  }
-  if (activeJob.status === 'ANALYZING') {
-    activeJob.status = 'VAD_READY';
-    activeJob.progress_stage = undefined;
-    modified = true;
-  }
-  if (modified) {
-    store.save(activeJob);
+  } catch (err) {
+    // Unreadable storage must not keep the server from starting; the Job List reports the storage error.
+    console.error('Startup recovery could not read jobs:', err);
   }
 }
 
 async function startServer() {
-  recoverOrphanedJobOnStartup();
+  recoverOrphanedJobsOnStartup();
 
   const app = express();
   app.use(express.json({ limit: '25mb' }));
@@ -552,46 +563,28 @@ async function startServer() {
   app.get('/api/config', (_req: Request, res: Response) => {
     res.json({
       config: FIXED_SERVER_CONFIG,
-      hasActiveJob: Boolean(store.loadActive()),
     });
-  });
-
-  // 2. GET /api/jobs/current — Restore active/recent job on browser refresh or reconnect
-  app.get('/api/jobs/current', (_req: Request, res: Response) => {
-    const job = store.loadActive();
-    if (!job) {
-      res.json({ job: null, isRunning: false });
-      return;
-    }
-    const isRunning = Boolean(
-      activeProcessingLock && activeProcessingLock.jobId === job.job_id
-    );
-    res.json({ job, isRunning });
   });
 
   app.get('/api/jobs', (_req: Request, res: Response) => {
     try {
-      const activeId = store.activeJobId();
       const jobs = store.list().map((job) => ({
         ...job,
-        is_active: job.job_id === activeId,
         is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
       }));
       res.json({ jobs });
-    } catch {
+    } catch (err) {
+      console.error('Could not list jobs:', err);
       res.status(500).json({ error: 'ไม่สามารถอ่านรายการงานได้' });
     }
   });
 
   app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
     try {
-      const activeId = store.activeJobId();
-      const dir = store.filesDir(req.params.jobId);
-      if (!dir) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
-      if (req.params.jobId === activeId || req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
-        res.status(409).json({ error: 'ไม่สามารถลบงานปัจจุบันหรืองานที่กำลังประมวลผล' }); return;
+      if (req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
+        res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
-      fs.rmSync(dir, { recursive: true });
+      if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
@@ -613,7 +606,7 @@ async function startServer() {
 
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
   app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
-    const job = store.load(req.params.jobId);
+    const job = store.loadMeta(req.params.jobId);
     const filePath = job ? serverVideoPath(job) : null;
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'ไม่พบไฟล์วิดีโอสำรองสำหรับงานนี้' });
@@ -707,7 +700,7 @@ async function startServer() {
           res.status(404).json({ error: 'ไม่พบโฟลเดอร์สำหรับ uploadId นี้' });
           return;
         }
-        if (!fs.lstatSync(jobDir).isDirectory() || fs.existsSync(path.join(jobDir, 'job.json'))) {
+        if (!fs.lstatSync(jobDir).isDirectory() || store.exists(uploadId)) {
           res.status(409).json({ error: 'ไม่สามารถอัปโหลดลงในงานนี้ได้' });
           return;
         }
@@ -768,11 +761,13 @@ async function startServer() {
       next();
     }
   }, async (req: Request, res: Response) => {
+    const autoStart = req.body?.autoStart !== false && req.body?.autoStart !== 'false';
     if (
+      autoStart &&
       activeProcessingLock
     ) {
       res.status(409).json({
-        error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
+        error: ANOTHER_JOB_ANALYZING_ERROR,
       });
       return;
     }
@@ -793,7 +788,7 @@ async function startServer() {
         }
         const jobDir = store.dirOf(jobId);
         localFilePath = path.join(jobDir, 'source_video.mp4');
-        if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || fs.existsSync(path.join(jobDir, 'job.json'))) {
+        if (!fs.existsSync(localFilePath) || !fs.lstatSync(jobDir).isDirectory() || !fs.lstatSync(localFilePath).isFile() || fs.statSync(localFilePath).size === 0 || store.exists(jobId)) {
           res.status(400).json({ error: 'ไม่พบไฟล์วิดีโอที่อัปโหลด หรือไฟล์มีขนาดเป็น 0' });
           return;
         }
@@ -838,6 +833,11 @@ async function startServer() {
         return;
       }
       ({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings } = validated.data);
+      const title = resolveJobTitle(req.body.title, videoMetadata.fileName);
+      if (!title.success) {
+        res.status(400).json({ error: title.error });
+        return;
+      }
 
 
       const batches = buildAnalysisBatches(
@@ -861,14 +861,16 @@ async function startServer() {
       }));
 
       const now = new Date().toISOString();
+      const willAnalyzeNow = autoStart && batches.length > 0;
       const jobState: PersistedJobState = {
         schema_version: JOB_SCHEMA_VERSION,
         job_id: jobId,
+        title: title.title,
         mode: 'generate',
         video_source: { kind: 'server_copy', local_file_path: localFilePath },
         created_at: now,
         updated_at: now,
-        status: batches.length === 0 ? 'READY' : 'ANALYZING',
+        status: batches.length === 0 ? 'READY' : willAnalyzeNow ? 'ANALYZING' : 'VAD_READY',
         video_metadata: videoMetadata,
         vad_config: vadConfig,
         ad_settings: adSettings,
@@ -876,14 +878,14 @@ async function startServer() {
         batches,
         spots: initialSpots,
         progress_stage:
-          batches.length === 0
-            ? undefined
-            : 'กำลังเตรียมส่งไฟล์วิดีโอไปยัง Gemini Files API...',
-        progress_percent: batches.length === 0 ? 100 : 8,
+          willAnalyzeNow
+            ? 'กำลังเตรียมส่งไฟล์วิดีโอไปยัง Gemini Files API...'
+            : undefined,
+        progress_percent: batches.length === 0 ? 100 : willAnalyzeNow ? 8 : undefined,
       };
 
       // Validate API key presence immediately so missing key fails fast before background spawn
-      if (batches.length > 0) {
+      if (willAnalyzeNow) {
         getGeminiClient({ fastFail: true });
       }
 
@@ -891,7 +893,7 @@ async function startServer() {
       activeUploads.delete(jobId);
 
       // Section 06 Rule: "หากไม่มี Candidate Spots ไม่ต้องเรียก Gemini"
-      if (batches.length === 0) {
+      if (!willAnalyzeNow) {
         res.json({ job: jobState, isRunning: false });
         return;
       }
@@ -914,22 +916,22 @@ async function startServer() {
 
   // POST /api/jobs/review — Register a Review Mode job: the author's SRT plus VAD output, with no video on the server
   app.post('/api/jobs/review', (req: Request, res: Response) => {
-    if (activeProcessingLock) {
-      res.status(409).json({
-        error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
-      });
-      return;
-    }
     const checked = validateReviewJobCreation(req.body);
     if (!checked.success) {
       res.status(400).json({ error: checked.error.issues[0]?.message || 'ข้อมูลงานตรวจแก้ SRT ไม่ถูกต้อง' });
       return;
     }
     const { video_metadata, vad_config, vad_output, video_source, srt_source, spots } = checked.data;
+    const title = resolveJobTitle(req.body.title, video_metadata.fileName);
+    if (!title.success) {
+      res.status(400).json({ error: title.error });
+      return;
+    }
     const now = new Date().toISOString();
     const job: PersistedJobState = {
       schema_version: JOB_SCHEMA_VERSION,
       job_id: `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      title: title.title,
       mode: 'review',
       video_source,
       srt_source: { ...srt_source, imported_at: now },
@@ -955,7 +957,7 @@ async function startServer() {
       activeProcessingLock.jobId !== jobId
     ) {
       res.status(409).json({
-        error: `ขณะนี้ระบบกำลังประมวลผลอีกงานหนึ่งอยู่ (${activeProcessingLock.jobId}) กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน`,
+        error: ANOTHER_JOB_ANALYZING_ERROR,
       });
       return;
     }
@@ -1006,110 +1008,130 @@ async function startServer() {
   });
 
   // 6b. POST /api/jobs/:jobId/analyze-batch — Backward-compatible single-batch endpoint
-  app.post('/api/jobs/:jobId/analyze-batch', async (req: Request, res: Response) => {
-    const { jobId } = req.params;
-    const { batch_id } = req.body as { batch_id?: string };
-
-    while (activeProcessingLock?.jobId === jobId) {
-      await activeProcessingLock.finished;
-      if (res.destroyed) return;
-    }
-
-    if (
-      activeProcessingLock &&
-      activeProcessingLock.jobId !== jobId
-    ) {
-      res.status(409).json({
-        error: 'ระบบจำกัดการประมวลผล Gemini ได้ทีละหนึ่งงานใน MVP กรุณารอให้งานที่กำลังรันอยู่เสร็จสิ้น',
-      });
-      return;
-    }
-
-    const job = store.load(jobId);
-    if (!job) {
-      res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
-      return;
-    }
-    if (job.mode === 'review') {
-      res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
-      return;
-    }
-
-    const batch = batch_id
-      ? job.batches.find((b) => b.batch_id === batch_id)
-      : job.batches.find((b) => b.status !== 'completed');
-
-    if (!batch) {
-      job.status = 'READY';
-      store.save(job);
-      res.json({ job });
-      return;
-    }
-
-    if (batch.status === 'completed') {
-      res.json({ job, batch });
-      return;
-    }
-
-    const lock = createProcessingLock(jobId);
-    activeProcessingLock = lock;
-    batch.status = 'processing';
-    batch.error = undefined;
-    job.status = 'ANALYZING';
-    job.error_message = undefined;
-    let uploadAi: GoogleGenAI | undefined;
+  app.post('/api/jobs/:jobId/analyze-batch', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      store.save(job);
-      uploadAi = getGeminiClient({ fastFail: false });
-      const fastAi = getGeminiClient({ fastFail: true });
-      const spotResults = await analyzeBatchWithGemini(
-        fastAi,
-        uploadAi,
-        job,
-        batch,
-        FIXED_SERVER_CONFIG
-      );
+      const { jobId } = req.params;
+      const { batch_id } = (req.body || {}) as { batch_id?: string };
 
-      batch.status = 'completed';
-      batch.error = undefined;
-
-      const allCompleted = job.batches.every((b) => b.status === 'completed');
-      if (allCompleted) {
-        job.status = 'READY';
+      while (activeProcessingLock?.jobId === jobId) {
+        await activeProcessingLock.finished;
+        if (res.destroyed) return;
       }
 
-      saveProcessingState(job, spotResults);
-      if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
-        try {
-          saveProcessingState(job);
-        } catch {
-          console.error('Failed to persist Gemini file cleanup');
-        }
-      }
-      res.json({ job, batch });
-    } catch (err) {
-      const parsed = parseGeminiError(err);
-      batch.status = 'failed';
-      batch.error = parsed.userMessage;
-      job.status = 'FAILED';
-      job.error_message = parsed.userMessage;
-      try {
-        if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
-        saveProcessingState(job);
-      } catch {
-        res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
+      if (
+        activeProcessingLock &&
+        activeProcessingLock.jobId !== jobId
+      ) {
+        res.status(409).json({
+          error: 'ระบบจำกัดการประมวลผล Gemini ได้ทีละหนึ่งงานใน MVP กรุณารอให้งานที่กำลังรันอยู่เสร็จสิ้น',
+        });
         return;
       }
 
-      res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
-        error: parsed.userMessage,
-        isRateLimit: parsed.isRateLimit,
-        job,
-        batch,
-      });
-    } finally {
-      releaseProcessingLock(lock);
+      const job = store.load(jobId);
+      if (!job) {
+        res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+        return;
+      }
+      if (job.mode === 'review') {
+        res.status(409).json({ error: REVIEW_MODE_GEMINI_ERROR });
+        return;
+      }
+
+      const batch = batch_id
+        ? job.batches.find((b) => b.batch_id === batch_id)
+        : job.batches.find((b) => b.status !== 'completed');
+
+      if (!batch) {
+        job.status = 'READY';
+        store.save(job);
+        res.json({ job });
+        return;
+      }
+
+      if (batch.status === 'completed') {
+        res.json({ job, batch });
+        return;
+      }
+
+      const lock = createProcessingLock(jobId);
+      activeProcessingLock = lock;
+      batch.status = 'processing';
+      batch.error = undefined;
+      job.status = 'ANALYZING';
+      job.error_message = undefined;
+      let uploadAi: GoogleGenAI | undefined;
+      try {
+        store.save(job);
+        uploadAi = getGeminiClient({ fastFail: false });
+        const fastAi = getGeminiClient({ fastFail: true });
+        const spotResults = await analyzeBatchWithGemini(
+          fastAi,
+          uploadAi,
+          job,
+          batch,
+          FIXED_SERVER_CONFIG
+        );
+
+        batch.status = 'completed';
+        batch.error = undefined;
+
+        const allCompleted = job.batches.every((b) => b.status === 'completed');
+        if (allCompleted) {
+          job.status = 'READY';
+        }
+
+        saveProcessingState(job, spotResults);
+        if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
+          try {
+            saveProcessingState(job);
+          } catch {
+            console.error('Failed to persist Gemini file cleanup');
+          }
+        }
+        res.json({ job, batch });
+      } catch (err) {
+        const parsed = parseGeminiError(err);
+        batch.status = 'failed';
+        batch.error = parsed.userMessage;
+        job.status = 'FAILED';
+        job.error_message = parsed.userMessage;
+        try {
+          if (uploadAi && !(err instanceof GeminiFileDeletionError)) await deleteJobGeminiFile(uploadAi, job);
+          saveProcessingState(job);
+        } catch {
+          res.status(500).json({ error: 'ไม่สามารถบันทึกสถานะงานได้' });
+          return;
+        }
+
+        res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
+          error: parsed.userMessage,
+          isRateLimit: parsed.isRateLimit,
+          job,
+          batch,
+        });
+      } finally {
+        releaseProcessingLock(lock);
+      }
+    } catch (err) {
+      next(err);
     }
+  });
+
+  // PATCH /api/jobs/:jobId — Rename a Job
+  app.patch('/api/jobs/:jobId', (req: Request, res: Response) => {
+    const title = resolveJobTitle((req.body || {}).title);
+    if (!title.success) {
+      res.status(400).json({ error: title.error });
+      return;
+    }
+    // Only the title column changes, so a rename never overwrites spots saved meanwhile.
+    const job = store.rename(req.params.jobId, title.title) ? store.load(req.params.jobId) : null;
+    if (!job) {
+      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
+      return;
+    }
+    res.json({ job });
   });
 
   // 7. PATCH /api/jobs/:jobId/spots — Save user edits (text, decision skip->generate, timestamp edits) to local server JSON
@@ -1134,16 +1156,6 @@ async function startServer() {
     res.json({ job });
   });
 
-  // 8. DELETE /api/jobs/:jobId — Clear active job pointer when resetting
-  app.delete('/api/jobs/:jobId', (req: Request, res: Response) => {
-    try {
-      store.clearActive(req.params.jobId);
-      res.json({ ok: true });
-    } catch {
-      res.json({ ok: true });
-    }
-  });
-
   // Prevent unmatched /api/* routes from ever falling through to Vite SPA index.html
   app.use('/api', (req: Request, res: Response) => {
     res.status(404).json({
@@ -1158,8 +1170,11 @@ async function startServer() {
     console.error('API Error handler caught:', err);
     const rawStatus = err.status || err.statusCode || 500;
     const status = sanitizeApiStatusCode(rawStatus);
+    // Only request errors meant for the client (body parsing, Multer limits) keep their message; storage and
+    // other internal errors could name server paths or database state.
+    const exposeMessage = err instanceof multer.MulterError || err.expose === true;
     res.status(status).json({
-      error: err.message || 'เกิดข้อผิดพลาดในการประมวลผลคำขอของเซิร์ฟเวอร์',
+      error: (exposeMessage && err.message) || 'เกิดข้อผิดพลาดในการประมวลผลคำขอของเซิร์ฟเวอร์',
       code: err.code || 'SERVER_ERROR',
     });
   });
@@ -1197,6 +1212,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
+    app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '1y', immutable: true }));
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -1205,6 +1221,14 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`AD Script Generator Server listening on http://0.0.0.0:${PORT}`);
+  });
+}
+
+// Close the database so its write-ahead log is checkpointed before the process exits.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    store.close();
+    process.exit(0);
   });
 }
 

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -23,90 +25,6 @@
   --text-xs--line-height: 1.5;
   --text-sm: 0.9375rem;
   --text-sm--line-height: 1.5;
-
-  --shadow-popover: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-}
-
-/*
- * Shared UI vocabulary (see DESIGN.md › Components). Each class owns the look of one recurring intent;
- * call sites add only layout and size. Utilities still override these because components sit below utilities.
- */
-@layer components {
-  .btn-primary {
-    @apply rounded-md bg-brand-700 font-semibold text-white hover:bg-brand-800 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-brand-700;
-  }
-  .field {
-    @apply rounded-md border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600;
-  }
-  .tag {
-    @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5;
-  }
-  .banner-warning {
-    @apply shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6;
-  }
-  .alert-error {
-    @apply flex items-start gap-2 rounded-md border border-red-200 bg-red-50 text-red-800;
-  }
-  .menu-panel {
-    @apply absolute top-full z-50 mt-2 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white text-sm shadow-popover;
-  }
-  .menu-item {
-    @apply flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-slate-700 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
-  }
-  .menu-item > svg {
-    @apply shrink-0 text-slate-500;
-  }
-}
-
-/*
- * The filter <select> keeps native semantics but, where the browser allows (Chrome/Edge 135+),
- * its open list takes the same chrome as .menu-panel. Other browsers fall back to the OS list.
- */
-.menu-select {
-  appearance: none;
-}
-
-@supports (appearance: base-select) {
-  .menu-select,
-  .menu-select::picker(select) {
-    appearance: base-select;
-  }
-  .menu-select::picker-icon {
-    display: none;
-  }
-  .menu-select::picker(select) {
-    margin-block: 0.5rem;
-    padding: 0.375rem;
-    min-width: 12rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.5rem;
-    background: #fff;
-    box-shadow: var(--shadow-popover);
-  }
-  .menu-select option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.625rem;
-    border-radius: 0.375rem;
-    color: var(--color-slate-700);
-    cursor: pointer;
-  }
-  .menu-select option:hover,
-  .menu-select option:focus-visible {
-    background: var(--color-slate-100);
-    color: var(--color-slate-900);
-    outline: none;
-  }
-  .menu-select option:checked {
-    color: var(--color-brand-800);
-    font-weight: 600;
-  }
-  .menu-select option::checkmark {
-    order: 1;
-    margin-inline-start: auto;
-    color: var(--color-brand-700);
-  }
 }
 
 @layer base {
@@ -119,17 +37,11 @@
     font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     accent-color: var(--color-brand-700);
+    @apply bg-background text-foreground;
   }
 
-  button, input, select {
-    min-height: 2.25rem;
-  }
-
-  button {
-    min-width: 2.25rem;
-  }
-
-  button:focus-visible, summary:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  /* The one focus indicator for every button and link; shadcn inputs keep their own border-and-ring focus. */
+  button:focus-visible, summary:focus-visible, a:focus-visible, input:not([data-slot]):focus-visible, textarea:not([data-slot]):focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--color-brand-600);
     outline-offset: 3px;
   }
@@ -144,12 +56,17 @@
   }
 
   input::placeholder, textarea::placeholder {
-    color: #64748b;
+    color: var(--placeholder);
   }
 
   @media (pointer: coarse) {
     button, summary, input, select {
       min-height: 2.75rem;
+    }
+
+    /* Square shadcn buttons (size icon, icon-sm, ...); matched on data-size alone because a menu or dialog trigger replaces data-slot. */
+    button[data-size^="icon"] {
+      min-width: 2.75rem;
     }
   }
 
@@ -161,6 +78,9 @@
   .font-script {
     font-feature-settings: normal;
   }
+  * {
+    @apply border-border outline-ring/50;
+  }
 }
 
 .skip-link {
@@ -169,9 +89,9 @@
   left: 1rem;
   z-index: 50;
   padding: 0.75rem 1rem;
-  background: white;
-  color: #0f172a;
-  border: 1px solid #94a3b8;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
   border-radius: 0.25rem;
   transform: translateY(-200%);
 }
@@ -213,38 +133,21 @@
   }
 }
 
-@keyframes waveform-loading-glide {
-  0% {
-    transform: translateX(0);
+@layer components {
+  .soft-shimmer {
+    position: relative;
+    overflow: hidden;
   }
-  100% {
-    transform: translateX(-240px);
+
+  .soft-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+    background: linear-gradient(90deg, transparent 10%, oklch(99.5% 0.01 236 / 0.88) 50%, transparent 90%);
+    animation: progress-shimmer-sweep 1.75s ease-in-out infinite;
+    animation-delay: var(--shimmer-delay, 0ms);
   }
-}
-
-.waveform-loading-wave {
-  will-change: transform;
-  animation: waveform-loading-glide 5.5s linear infinite;
-}
-
-.waveform-loading-wave-slow {
-  will-change: transform;
-  animation: waveform-loading-glide 8.5s linear infinite reverse;
-}
-
-.soft-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.soft-shimmer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  will-change: transform;
-  background: linear-gradient(90deg, transparent 10%, oklch(99.5% 0.01 236 / 0.88) 50%, transparent 90%);
-  animation: progress-shimmer-sweep 1.75s ease-in-out infinite;
-  animation-delay: var(--shimmer-delay, 0ms);
 }
 
 .progress-indeterminate-primary {
@@ -261,6 +164,14 @@
   animation: progress-indeterminate-secondary 2.1s cubic-bezier(0.165, 0.84, 0.44, 1) 1.05s infinite;
 }
 
+/* shadcn Progress with no value yet: the same Material Design 3 sweep as the hairline bar (DESIGN › Status Pill). */
+[data-slot="progress-indicator"][data-indeterminate] {
+  width: 100%;
+  transform-origin: left center;
+  will-change: transform;
+  animation: progress-indeterminate-primary 2.1s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
 .progress-shimmer-sweep {
   will-change: transform;
   background: linear-gradient(90deg, transparent 0%, oklch(98% 0.02 236 / 0.55) 50%, transparent 100%);
@@ -271,13 +182,13 @@
   .animate-spin,
   .progress-indeterminate-primary,
   .progress-indeterminate-secondary,
-  .progress-shimmer-sweep,
-  .waveform-loading-wave,
-  .waveform-loading-wave-slow {
+  .progress-shimmer-sweep {
     animation: none;
   }
 
-  .progress-indeterminate-primary {
+  .progress-indeterminate-primary,
+  [data-slot="progress-indicator"][data-indeterminate] {
+    animation: none;
     transform: none;
   }
 
@@ -311,25 +222,80 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-brand-800);
 }
-
-.video-control {
-  min-width: 2rem;
-  min-height: 2rem;
-  height: 2rem;
+/*
+ * shadcn/ui tokens mapped onto the brand (DESIGN.md › Colors). Components in src/components/ui read only these,
+ * so they inherit the cerulean accent, slate inks, hairline borders and 8px control radius.
+ */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-placeholder: var(--placeholder);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-stage: var(--stage);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-border: var(--warning-border);
+  --color-warning-strong: var(--warning-strong);
+  --color-warning-strong-foreground: var(--warning-strong-foreground);
+  --color-warning-strong-border: var(--warning-strong-border);
+  --color-error-surface: var(--error-surface);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-border: var(--error-border);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Secondary actions inside a dense row (card footers) stay text-height on desktop. */
-.compact-action {
-  min-height: 1.75rem;
-}
-
-@media (pointer: coarse) {
-  .compact-action {
-    min-height: 2.75rem;
-  }
-  .video-control {
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    height: 2.75rem;
-  }
+/* Broadcast Desk uses a fixed light editorial canvas paired with the dark broadcast video stage (--stage). */
+:root, .dark {
+  --background: #ffffff;
+  --foreground: var(--color-slate-900);
+  --card: #ffffff;
+  --card-foreground: var(--color-slate-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-slate-900);
+  --primary: var(--color-brand-700);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-slate-100);
+  --secondary-foreground: var(--color-slate-700);
+  --muted: var(--color-slate-100);
+  --muted-foreground: var(--color-slate-600);
+  --placeholder: oklch(65% 0.036 257);
+  --accent: var(--color-brand-50);
+  --accent-foreground: var(--color-brand-950);
+  --destructive: var(--color-red-700);
+  --stage: var(--color-slate-950);
+  --warning: var(--color-amber-50);
+  --warning-foreground: var(--color-amber-800);
+  --warning-border: var(--color-amber-200);
+  --warning-strong: var(--color-amber-100);
+  --warning-strong-foreground: var(--color-amber-900);
+  --warning-strong-border: var(--color-amber-300);
+  --error-surface: var(--color-red-50);
+  --error-foreground: var(--color-red-800);
+  --error-border: var(--color-red-200);
+  --border: var(--color-slate-200);
+  --input: var(--color-slate-300);
+  --ring: var(--color-brand-600);
+  --radius: 0.5rem;
 }

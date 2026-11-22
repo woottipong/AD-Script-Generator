@@ -27,5 +27,5 @@ ENV NODE_ENV=production
 # Build frontend production bundle
 RUN npm run build
 
-# Run full-stack Node.js server via tsx / node
-CMD ["npx", "tsx", "server.ts"]
+# Run tsx directly (not through npx) so a stop signal reaches the server and it closes the database cleanly
+CMD ["./node_modules/.bin/tsx", "server.ts"]

@@ -1,9 +1,22 @@
-import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { Progress } from '@/components/ui/progress';
 import { formatCompactTime } from '../utils/formatters';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
+import { focusIntakeFeedback } from './IntakeShell';
 
-export function VideoProcessingStatus({ feedback }: { feedback: ProcessingFeedback }) {
+const SPEC_CHECKS = ['รูปแบบไฟล์', 'ความละเอียด', 'แทร็กเสียง'] as const;
+
+export function VideoProcessingStatus({
+  feedback,
+  fileName,
+  onCancel,
+}: {
+  feedback: ProcessingFeedback;
+  fileName?: string;
+  onCancel: () => void;
+}) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
@@ -13,47 +26,67 @@ export function VideoProcessingStatus({ feedback }: { feedback: ProcessingFeedba
     return () => clearInterval(timer);
   }, [feedback.title]);
 
+  const percent = feedback.percent !== undefined && feedback.percent > 0 ? Math.min(100, feedback.percent) : null;
+
   return (
-    <div className="w-full max-w-lg mx-auto rounded-xl border border-brand-200 bg-brand-50 p-4 sm:p-6 text-left">
-      <div className="flex items-center gap-3">
-        <Loader2 className="w-6 h-6 shrink-0 animate-spin text-brand-700" aria-hidden="true" />
-        <h2 className="min-w-0 text-lg sm:text-xl font-semibold leading-snug text-slate-900">
+    <div ref={focusIntakeFeedback} tabIndex={-1} className="w-full text-left">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Spinner aria-hidden="true" className="size-5 shrink-0 text-primary" />
+        <h2 className="min-w-0 text-base sm:text-lg font-semibold leading-snug text-foreground">
           <span role="status">{feedback.title}</span>
         </h2>
+        <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+          เวลาที่ใช้ {formatCompactTime(elapsedMs)}
+        </span>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-brand-900">{feedback.description}</p>
-      {(feedback.detail || feedback.percent !== undefined) && <div className="mt-5 flex items-end justify-between gap-3 text-sm text-brand-900 tabular-nums">
-        {feedback.detail && <p className="min-w-0 leading-relaxed">{feedback.detail}</p>}
-        {feedback.percent !== undefined && <span className="ml-auto shrink-0 text-3xl font-semibold leading-none text-brand-800">{feedback.percent}%</span>}
-      </div>}
-      <div className="mt-3">
-        <div
-          role="progressbar"
-          aria-label={feedback.title}
-          aria-valuenow={feedback.percent}
-          aria-valuetext={feedback.percent !== undefined ? `${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}` : feedback.description}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          className="relative h-2 overflow-hidden rounded-full bg-brand-100"
-        >
-          {feedback.percent !== undefined && feedback.percent > 0 ? (
-            <div
-              className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-brand-700 via-brand-600 to-brand-500 transition-[width] duration-300 ease-out"
-              style={{ width: `${Math.min(100, feedback.percent)}%` }}
-            >
-              <div className="progress-shimmer-sweep absolute inset-0" />
-            </div>
-          ) : (
-            <>
-              <div className="progress-indeterminate-primary absolute inset-0" />
-              <div className="progress-indeterminate-secondary absolute inset-0" />
-            </>
+
+      {fileName && (
+        <p className="mt-1.5 text-sm font-medium text-foreground [overflow-wrap:anywhere]">
+          {fileName}
+        </p>
+      )}
+      <p className="mt-1 text-sm text-muted-foreground">{feedback.description}</p>
+
+      <Progress
+        className="mt-4"
+        value={percent}
+        aria-label={feedback.title}
+        getAriaValueText={() => (feedback.percent !== undefined ? `${feedback.percent}%${feedback.detail ? ` · ${feedback.detail}` : ''}` : feedback.description)}
+      />
+      {(feedback.detail || feedback.percent !== undefined) && (
+        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground tabular-nums">
+          {feedback.detail && <p className="min-w-0">{feedback.detail}</p>}
+          {feedback.percent !== undefined && (
+            <span className="ml-auto shrink-0 font-medium text-foreground">{feedback.percent}%</span>
           )}
         </div>
+      )}
+
+      <div aria-hidden="true" className="mt-5 grid grid-cols-3 gap-2">
+        {SPEC_CHECKS.map((label, index) => (
+          <div key={label} className="min-w-0 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div
+              data-slot="skeleton"
+              className="soft-shimmer mt-1.5 h-3.5 w-16 max-w-full rounded bg-muted"
+              style={{ '--shimmer-delay': `${index * 120}ms` } as CSSProperties}
+            />
+          </div>
+        ))}
       </div>
-      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brand-900">
-        <span>เวลาที่ใช้ในช่วงนี้</span><span className="tabular-nums">{formatCompactTime(elapsedMs)}</span>
-      </p>
+
+      <div className="-mx-5 -mb-5 mt-6 flex flex-wrap items-center justify-between gap-2.5 border-t border-border bg-muted/35 px-5 py-4 sm:-mx-7 sm:-mb-7 sm:px-7">
+        <p className="text-xs text-muted-foreground">กำลังตรวจสอบบนเครื่องของคุณ</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          onClick={onCancel}
+          className="h-auto min-h-10 py-2 pointer-coarse:min-h-11"
+        >
+          ยกเลิกการตรวจไฟล์
+        </Button>
+      </div>
     </div>
   );
 }

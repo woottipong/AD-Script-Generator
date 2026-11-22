@@ -18,23 +18,22 @@ Before exploring a domain, read the single-context glossary and relevant ADRs as
 
 ## Project overview
 
-TCC Envisio authors Thai Audio Description (AD) scripts for 480p MP4 videos. The browser decodes the audio track with WebCodecs and finds Non-Speech Gaps with Silero VAD in a Web Worker. The Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. Authors review and retime AD Spots in a timeline editor, then export SRT.
+TCC Envisio authors Thai Audio Description (AD) scripts in two modes. Both decode the audio track with WebCodecs and find Speech Segments with Silero VAD in a Web Worker. In Generate Mode (480p MP4) the Express server persists the Job, uploads the video to the Gemini Files API, and analyses Analysis Batches one at a time. In Review Mode an existing SRT is opened against a local or linked MP4 with no video upload and no Gemini. Authors review and retime AD Spots in one timeline editor, then export SRT.
 
 ## Development workflow
 
-For local setup, Docker hot reload, dependency or environment changes, production builds, and verification, follow [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์). Keep executable setup instructions there; consult `package.json` for available scripts.
+Keep executable setup, Docker, build, and verification commands in [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์); consult `package.json` for scripts.
 
-Maintain `bun.lock` (lockfileVersion 2) with Bun 1.4 or newer, and change `package.json` and `bun.lock` together; Docker installs with `--frozen-lockfile`. When the local Bun is older, run the dependency command inside the dev container (`docker exec -w /app <container> bun add …`), which ships Bun 1.4. With npm, use `npm install --legacy-peer-deps` because of the Vite/esbuild peer dependency conflict.
-
-Compose uses `Dockerfile.Dev` for development; `Dockerfile` builds production. The project root is bind mounted to `/app`, and jobs persist directly in `.data/jobs` on both the host and the container.
+- **Dependencies and tests:** Update `package.json` and `bun.lock` (`lockfileVersion 2`) together using Bun 1.4+ (Docker installs with `--frozen-lockfile`, and `node:sqlite` requires Bun 1.4+ for `bun test`). When local Bun is older, run `docker exec -w /app <container> bun …` inside the dev container. With npm, pass `--legacy-peer-deps`.
+- **Docker:** `docker-compose.yml` (`Dockerfile.Dev`) bind-mounts `.:/app` for development; `docker-compose.prod.yml` (`Dockerfile` `production` stage) mounts only `./.data:/app/.data` for deployment and updates. In both setups, Jobs persist in `.data` (`envisio.db` plus `jobs/`).
 
 ## Verification
 
-Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; the README shows how to run them). In a running app with real data, keep to read-only checks: changing the video, rescanning audio, and starting a new job all call `DELETE /api/jobs/:jobId`, which detaches the author's active Job.
+Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; see [README.md](README.md#คำสั่งตรวจสอบโค้ด)). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes another author's Job too.
 
 ## UX conventions
 
-For interface changes, preserve the guided intake and [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด). Prioritize desktop editing; keep mobile readable and usable for basic actions. Reveal technical processing details on demand. Save feedback must reflect server acknowledgement and distinguish local-only edits from persisted work.
+Preserve the mode choice, guided intake, [three-step workflow](README.md#วิธีใช้งานและคีย์ลัด), and product principles in [PRODUCT.md](PRODUCT.md) (desktop-first editing with basic mobile usability, on-demand processing details, and server-acknowledged save feedback). Build UI from the shadcn/ui components in `src/components/ui` themed via `src/index.css` tokens per [DESIGN.md](DESIGN.md#components); add components with `bun x --bun shadcn@latest add <name>` inside the dev container so `package.json` and `bun.lock` stay in sync.
 
 ## System contracts
 

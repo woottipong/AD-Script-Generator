@@ -98,6 +98,26 @@ export function validateReviewJobCreation(input: unknown) {
   }).safeParse(input);
 }
 
+const MAX_JOB_TITLE_LENGTH = 120;
+
+/** The Job Title a new Job starts with: its video file name without the extension. */
+export function defaultJobTitle(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, '').trim().slice(0, MAX_JOB_TITLE_LENGTH);
+}
+
+/**
+ * The Job Title the author typed, trimmed. Without one, a new Job takes its video file name minus the
+ * extension; a rename (no `fileName`) must supply a title.
+ */
+export function resolveJobTitle(input: unknown, fileName?: string): { success: true; title: string } | { success: false; error: string } {
+  if (input !== undefined && typeof input !== 'string') return { success: false, error: 'ชื่องานไม่ถูกต้อง' };
+  const typed = (input ?? '').trim();
+  const title = typed || defaultJobTitle(fileName ?? '');
+  if (!title) return { success: false, error: 'กรุณาใส่ชื่องาน' };
+  if (title.length > MAX_JOB_TITLE_LENGTH) return { success: false, error: `ชื่องานยาวได้ไม่เกิน ${MAX_JOB_TITLE_LENGTH} ตัวอักษร` };
+  return { success: true, title };
+}
+
 export function validateEditedSpots(input: unknown, job: PersistedJobState):
   { success: true; spots: ADSpot[] } | { success: false; error: string } {
   const parsed = z.array(editedSpot).safeParse(input);

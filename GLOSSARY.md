@@ -1,4 +1,4 @@
-# AD Script Generator
+# TCC Envisio
 
 Thai Audio Description authoring workspace. Authors either generate a new Thai narration script for a video or review an existing SRT script against its video, then adjust text and timing and export SRT.
 
@@ -33,16 +33,32 @@ A visual amplitude representation of the video's audio track aligned with the ti
 _Avoid_: Audio graph, sound bar, equalizer
 
 **Trim**:
-Adjusting an AD Spot's start or end edge independently to shorten or lengthen its duration within its Non-Speech Gap.
+Adjusting an AD Spot's start or end edge independently to shorten or lengthen its duration. In Generate Mode it is bounded by its Non-Speech Gap; in Review Mode it is bounded by video duration and neighboring spots, and any speech overlap is flagged.
 _Avoid_: Resize, stretch, crop
 
 **Move**:
-Shifting an entire AD Spot earlier or later along the timeline while preserving its duration, bounded by its Non-Speech Gap.
+Shifting an entire AD Spot earlier or later along the timeline while preserving its duration. In Generate Mode it is bounded by its Non-Speech Gap; in Review Mode it is bounded by video duration and neighboring spots, and any speech overlap is flagged.
 _Avoid_: Drag, slide, pan
 
+**Extended AD**:
+Narration that runs longer than its AD Spot because playback pauses while it is read. Estimated speech longer than the spot is therefore informational, never an error.
+_Avoid_: Overrun, overflow
+
 **Job**:
-One video's persisted authoring work: video metadata, VAD output, Analysis Batches, and AD Spots, stored under `.data/jobs/<job_id>/`. One Job is active at a time.
+One video's persisted authoring work: its Job Title, video metadata, VAD output, Analysis Batches, and AD Spots. Authors reopen any Job from the Job List; several Jobs can be open at once in different browser tabs.
 _Avoid_: Project, session, task
+
+**Job List**:
+The landing view listing every stored Job and Unfinished Upload (sorted most recently changed first by default, with search, mode filtering, and column sorting), from which an author reopens or deletes one or starts a new Job.
+_Avoid_: Dashboard, storage manager, history
+
+**Unfinished Upload**:
+A Generate Mode video copy whose upload never became a Job. It appears in the Job List only so it can be deleted.
+_Avoid_: Orphan, partial job
+
+**Job Title**:
+The name authors know a Job by. It defaults to the video's file name without its extension (up to 120 characters) when the Job is created.
+_Avoid_: Job name, label
 
 **Analysis Batch**:
 A 240-second slice of the timeline whose Candidate Spots Gemini analyses in one request, read with 20 seconds of context before and 10 seconds after.

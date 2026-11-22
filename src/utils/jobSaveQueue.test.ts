@@ -59,26 +59,6 @@ test('reports failure until a later save is acknowledged for the same job', asyn
   assert.deepEqual(statuses, ['saving', 'error', 'saving', 'error', 'saving', 'saved']);
 });
 
-test('leaving a job waits for its in-flight save and suppresses stale acknowledgement', async () => {
-  const pending = deferred<Response>();
-  const calls: string[] = [];
-  const statuses: JobSaveStatus[] = [];
-  const request: typeof fetch = async (url, init) => {
-    calls.push(`${init?.method} ${String(url)}`);
-    return init?.method === 'PATCH' ? pending.promise : new Response(null, { status: 200 });
-  };
-  const queue = createJobSaveQueue((status) => statuses.push(status), request);
-
-  queue.save('job /1', [spot('draft')]);
-  await Promise.resolve();
-  queue.leave('job /1');
-  assert.deepEqual(calls, ['PATCH /api/jobs/job%20%2F1/spots']);
-  pending.resolve(acknowledged('job /1'));
-  await queue.wait();
-  assert.deepEqual(calls, ['PATCH /api/jobs/job%20%2F1/spots', 'DELETE /api/jobs/job%20%2F1']);
-  assert.deepEqual(statuses, ['saving']);
-});
-
 test('invalidating a job suppresses an old response without blocking a later save', async () => {
   const pending = deferred<Response>();
   const statuses: JobSaveStatus[] = [];
@@ -95,4 +75,12 @@ test('invalidating a job suppresses an old response without blocking a later sav
   pending.resolve(acknowledged('old'));
   assert.equal(await queue.wait(), true);
   assert.deepEqual(statuses, ['saving', 'saving', 'saved']);
+});
+
+test('a failed save of a Job that was left is not reported for the next one', async () => {
+  const queue = createJobSaveQueue(() => {}, async () => new Response(null, { status: 500 }));
+  queue.save('old', [spot('old')]);
+  assert.equal(await queue.wait(), false);
+  queue.invalidate();
+  assert.equal(await queue.wait(), undefined, 'the next Job starts with nothing unsaved');
 });

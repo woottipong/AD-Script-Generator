@@ -3,7 +3,7 @@ import { formatCompactTime, formatFileSize } from './formatters';
 
 export interface ProcessingProgress {
   stage: string;
-  phase?: 'finalizing-detection' | 'saving-edits';
+  phase?: 'finalizing-detection' | 'saving-job' | 'saving-edits';
   percent: number;
   processedMs?: number;
   totalMs?: number;
@@ -25,6 +25,17 @@ export function getProcessingFeedback(
   errorMessage: string | null,
 ): ProcessingFeedback | null {
   if (status === 'DETECTING') {
+    if (progress?.phase === 'saving-job') {
+      return { title: 'กำลังบันทึกงาน', description: 'ส่งวิดีโอครบแล้ว กรุณาเปิดหน้านี้ไว้จนบันทึกงานเสร็จ' };
+    }
+    if (progress?.loadedBytes !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0) {
+      return {
+        title: 'กำลังส่งวิดีโอ',
+        description: 'ตรวจเสียงครบแล้ว กำลังส่งวิดีโอไปยังเซิร์ฟเวอร์',
+        detail: `ส่งแล้ว ${formatFileSize(progress.loadedBytes)} จาก ${formatFileSize(progress.totalBytes)}`,
+        percent: Math.min(100, Math.round(progress.loadedBytes / progress.totalBytes * 100)),
+      };
+    }
     if (progress?.phase === 'finalizing-detection') {
       return { title: 'กำลังจัดช่วงสำหรับบรรยาย', description: 'ตรวจเสียงครบแล้ว กำลังจัดรายการช่วงว่างให้คุณตรวจและสร้างบทบรรยาย' };
     }

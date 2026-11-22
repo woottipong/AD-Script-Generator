@@ -38,6 +38,16 @@ test('decoded frame padding cannot push the audio progress past the video durati
   assert.equal(feedback.detail, 'ตรวจเสียงแล้ว 00:10 จาก 00:10');
 });
 
+test('upload progress during detection reports sent bytes and percentage', () => {
+  const upload = getProcessingFeedback('DETECTING', {
+    stage: 'กำลังบันทึกวิดีโอลงเซิร์ฟเวอร์', percent: 50, loadedBytes: 524_288, totalBytes: 1_048_576,
+  }, [], null);
+  assert.ok(upload);
+  assert.equal(upload.title, 'กำลังส่งวิดีโอ');
+  assert.equal(upload.percent, 50);
+  assert.equal(upload.detail, 'ส่งแล้ว 512.0 KB จาก 1.00 MB');
+});
+
 test('upload completion transitions to waiting without showing a backwards overall percentage', () => {
   const upload = getProcessingFeedback('ANALYZING', {
     stage: 'กำลังอัปโหลดวิดีโอ', percent: 95, loadedBytes: 1_048_576, totalBytes: 1_048_576,
@@ -80,4 +90,10 @@ test('waiting for edits to save is shown as saving, not as server preparation', 
   assert.ok(feedback);
   assert.equal(feedback.title, 'กำลังบันทึกบทบรรยาย');
   assert.equal(feedback.percent, undefined);
+});
+
+test('waiting for the server to save a Job has its own indeterminate state', () => {
+  const feedback = getProcessingFeedback('DETECTING', { phase: 'saving-job', stage: '', percent: 0 }, [], null);
+  assert.equal(feedback?.title, 'กำลังบันทึกงาน');
+  assert.equal(feedback?.percent, undefined);
 });

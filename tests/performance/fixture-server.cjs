@@ -14,14 +14,14 @@ const spots = Array.from({ length: 300 }, (_, i) => ({
   decision: 'generate', text: `บุคคลเดินผ่านประตูหมายเลข ${i}`, is_edited: false,
 }));
 const job = {
-  job_id: 'benchmark', status: 'READY',
+  schema_version: 3, job_id: 'benchmark', title: 'benchmark', mode: 'generate', status: 'READY',
   video_metadata: { fileName: 'fixture.mp4', fileSize: 1, mimeType: 'video/mp4', width: 854, height: 480,
     durationMs: 1800000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
   vad_output: { duration_ms: 1800000, speech_segments: [], candidate_spots: [] }, batches: [], spots,
 };
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
-  if (url.pathname === '/api/jobs/current') {
+  if (url.pathname === '/api/jobs/benchmark') {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify({ job, isRunning: false }));
   }
@@ -33,7 +33,8 @@ http.createServer((req, res) => {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end('{}');
   }
-  const target = path.resolve(buildDir, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
+  const page = url.pathname === '/' || url.pathname.startsWith('/jobs/') ? '/index.html' : url.pathname;
+  const target = path.resolve(buildDir, '.' + page);
   if (!target.startsWith(buildDir + path.sep) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
     res.writeHead(404); return res.end();
   }

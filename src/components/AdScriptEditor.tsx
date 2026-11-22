@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  X,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
@@ -21,6 +22,23 @@ import {
 } from '../utils/formatters';
 import { computeClampedSpotDrag, findSpotIssues, spotTimingKey, validateSpotTimestampEdit, type SpotIssue, type SpotTimingContext } from '../utils/spotTiming';
 import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 interface AdScriptEditorProps {
   spots: ADSpot[];
@@ -29,6 +47,8 @@ interface AdScriptEditorProps {
   emptyState: 'preparing' | 'no-gaps' | 'failed';
   errorMessage: string | null;
   onRetryVad: () => void;
+  onRetryJobSave?: () => void;
+  preparationTitle?: string;
   mode: JobMode;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
@@ -68,10 +88,26 @@ interface SpotBlockItemProps {
   checks?: SpotCheck[];
   onSelect: (spotId: string, seekToStart?: boolean) => void;
   onUpdate: (updatedSpot: ADSpot) => void;
-  itemRef?: (el: HTMLDivElement | null) => void;
+  registerItemRef: (spotId: string, el: HTMLDivElement | null) => void;
 }
 
-const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
+const checksEqual = (a?: SpotCheck[], b?: SpotCheck[]) =>
+  a === b || (Boolean(a && b) && a!.length === b!.length && a!.every((v, i) => v === b![i]));
+
+const areSpotBlockPropsEqual = (prev: SpotBlockItemProps, next: SpotBlockItemProps) =>
+  prev.spot === next.spot &&
+  prev.spotOrder === next.spotOrder &&
+  prev.batchInfo === next.batchInfo &&
+  prev.isAnalyzing === next.isAnalyzing &&
+  prev.isSelected === next.isSelected &&
+  prev.isPlayingNow === next.isPlayingNow &&
+  prev.timingContext === next.timingContext &&
+  prev.onSelect === next.onSelect &&
+  prev.onUpdate === next.onUpdate &&
+  prev.registerItemRef === next.registerItemRef &&
+  checksEqual(prev.checks, next.checks);
+
+const SpotBlockItem = React.memo<SpotBlockItemProps>(({
   spot,
   spotOrder,
   batchInfo,
@@ -82,14 +118,18 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   checks,
   onSelect,
   onUpdate,
-  itemRef,
+  registerItemRef,
 }) => {
   const [startInput, setStartInput] = useState(formatTimestampDisplay(spot.start_ms));
   const [endInput, setEndInput] = useState(formatTimestampDisplay(spot.end_ms));
   const [timestampError, setTimestampError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const itemRef = useCallback(
+    (el: HTMLDivElement | null) => registerItemRef(spot.spot_id, el),
+    [registerItemRef, spot.spot_id]
+  );
 
-  useEffect(() => {
+  React.useEffect(() => {
     setStartInput(formatTimestampDisplay(spot.start_ms));
     setEndInput(formatTimestampDisplay(spot.end_ms));
     setTimestampError(null);
@@ -132,6 +172,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
   };
 
   const nudgeTargets = React.useMemo(() => {
+    if (!isExpanded) return null;
     const target = (mode: 'trim-start' | 'trim-end', deltaMs: number) =>
       computeClampedSpotDrag(spot, mode, deltaMs, timingContext, 1);
     return {
@@ -140,7 +181,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       endEarlier: target('trim-end', -200),
       endLater: target('trim-end', 200),
     };
-  }, [spot, timingContext]);
+  }, [isExpanded, spot, timingContext]);
 
   const isUnchanged = (next: { start_ms: number; end_ms: number }) =>
     next.start_ms === spot.start_ms && next.end_ms === spot.end_ms;
@@ -207,16 +248,16 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       role="listitem"
       aria-label={`ช่วงบรรยายที่ ${spotOrder}`}
       onClick={() => onSelect(spot.spot_id, true)}
-      className={`px-4 py-3.5 transition-colors cursor-pointer ${
+      className={`px-4 py-3.5 transition-colors ${isSelected ? 'cursor-default' : 'cursor-pointer'} ${
         isSkipped
           ? isSelected
-            ? 'relative z-10 bg-slate-100 ring-1 ring-inset ring-slate-300'
-            : 'bg-slate-50/85 hover:bg-slate-100/70'
+            ? 'relative z-10 bg-muted ring-1 ring-inset ring-input'
+            : 'bg-muted/60 hover:bg-muted'
           : isSelected
           ? 'relative z-10 bg-brand-50/90 ring-1 ring-inset ring-brand-200'
           : isPlayingNow
           ? 'bg-brand-50/35 hover:bg-brand-50/60'
-          : 'bg-white hover:bg-slate-50/80'
+          : 'bg-card hover:bg-muted/50'
       }`}
     >
       <div className="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-x-2.5 gap-y-2">
@@ -226,13 +267,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
             aria-pressed={isSelected}
             aria-label={`เลือกช่วงที่ ${spotOrder} เวลา ${formatTimestampDisplay(spot.start_ms)} ถึง ${formatTimestampDisplay(spot.end_ms)}`}
             onClick={(event) => { event.stopPropagation(); onSelect(spot.spot_id, true); }}
-            className="min-w-0 inline-flex items-center gap-2 rounded text-left text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+            className="min-w-0 inline-flex items-center gap-2 rounded text-left text-xs text-muted-foreground hover:text-foreground cursor-pointer"
           >
-            <span className={`text-sm font-semibold leading-none whitespace-nowrap ${isSkipped ? 'text-slate-500' : isSelected ? 'text-brand-900' : 'text-slate-900'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
-            {!isExpanded && <span className={`whitespace-nowrap font-mono leading-none tabular-nums ${isSkipped ? 'text-slate-400' : ''}`}>{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
+            <span className={`text-sm font-semibold leading-none whitespace-nowrap ${isSkipped ? 'text-muted-foreground' : isSelected ? 'text-brand-900' : 'text-foreground'}`} title={spot.spot_id}>ช่วง {spotOrder}</span>
+            {!isExpanded && <span className="whitespace-nowrap font-mono leading-none tabular-nums text-muted-foreground">{formatTimestampDisplay(spot.start_ms).replace(/^00:/, '')} – {formatTimestampDisplay(spot.end_ms).replace(/^00:/, '')}</span>}
           </button>
 
-          {isExpanded && (
+          {isExpanded && nudgeTargets && (
             <fieldset
               disabled={isAnalyzing || isSkipped}
               aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
@@ -240,18 +281,20 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
               onClick={(e) => e.stopPropagation()}
               className={`flex flex-wrap items-center gap-1.5 text-xs transition-opacity ${isSkipped ? 'opacity-50' : ''}`}
             >
-              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
-                <button
+              <div className="inline-flex items-center rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => applyNudge(nudgeTargets.startEarlier)}
                   disabled={isUnchanged(nudgeTargets.startEarlier)}
                   title="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มเร็วขึ้น 0.2 วินาที"
-                  className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
-                  <Minus className="h-3 w-3" aria-hidden="true" />
-                </button>
-                <input
+                  <Minus className="size-3" aria-hidden="true" />
+                </Button>
+                <Input
                   type="text"
                   aria-label={`เวลาเริ่มบทบรรยายที่ ${spotOrder}`}
                   value={startInput}
@@ -260,32 +303,36 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleStartBlur();
                   }}
-                  className="video-control w-[6.75rem] border-0 bg-transparent px-1 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
+                  className="h-8 w-[6.75rem] rounded-none border-0 bg-transparent px-1 text-center font-mono text-xs md:text-xs tabular-nums focus-visible:ring-0"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => applyNudge(nudgeTargets.startLater)}
                   disabled={isUnchanged(nudgeTargets.startLater)}
                   title="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
                   aria-label="ขยับเวลาเริ่มช้าลง 0.2 วินาที"
-                  className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
-                  <Plus className="h-3 w-3" aria-hidden="true" />
-                </button>
+                  <Plus className="size-3" aria-hidden="true" />
+                </Button>
               </div>
-              <span aria-hidden="true" className="text-slate-400">–</span>
-              <div className="inline-flex items-center rounded-md border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100">
-                <button
+              <span aria-hidden="true" className="hidden text-muted-foreground sm:inline">–</span>
+              <div className="inline-flex items-center rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-brand-100">
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => applyNudge(nudgeTargets.endEarlier)}
                   disabled={isUnchanged(nudgeTargets.endEarlier)}
                   title="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
                   aria-label="ขยับเวลาจบเร็วขึ้น 0.2 วินาที"
-                  className="video-control inline-flex shrink-0 items-center justify-center rounded-l text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
-                  <Minus className="h-3 w-3" aria-hidden="true" />
-                </button>
-                <input
+                  <Minus className="size-3" aria-hidden="true" />
+                </Button>
+                <Input
                   type="text"
                   aria-label={`เวลาจบบทบรรยายที่ ${spotOrder}`}
                   value={endInput}
@@ -294,98 +341,101 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleEndBlur();
                   }}
-                  className="video-control w-[6.75rem] border-0 bg-transparent px-1 text-center font-mono text-xs tabular-nums text-slate-900 focus-visible:outline-none"
+                  className="h-8 w-[6.75rem] rounded-none border-0 bg-transparent px-1 text-center font-mono text-xs md:text-xs tabular-nums focus-visible:ring-0"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => applyNudge(nudgeTargets.endLater)}
                   disabled={isUnchanged(nudgeTargets.endLater)}
                   title="ขยายเวลาจบออกไป 0.2 วินาที"
                   aria-label="ขยายเวลาจบออกไป 0.2 วินาที"
-                  className="video-control inline-flex shrink-0 items-center justify-center rounded-r text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer"
+                  className="rounded-none first:rounded-l-lg last:rounded-r-lg"
                 >
-                  <Plus className="h-3 w-3" aria-hidden="true" />
-                </button>
+                  <Plus className="size-3" aria-hidden="true" />
+                </Button>
               </div>
             </fieldset>
           )}
 
-          <span className="inline-flex items-center rounded border border-slate-200 bg-slate-100/80 px-1.5 py-1 font-mono text-xs leading-none tabular-nums text-slate-600" title="ความยาวช่วงว่าง">
+          <span className="inline-flex items-center rounded border border-border bg-muted/80 px-1.5 py-1 font-mono text-xs leading-none tabular-nums text-muted-foreground" title="ความยาวช่วงว่าง">
             {(spot.duration_ms / 1000).toFixed(1)}s
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {isExpanded && (
-            <fieldset
+            <ToggleGroup
+              appearance="segmented"
               disabled={isAnalyzing}
               aria-label={`เลือกการบรรยายจุดที่ ${spotOrder}`}
+              value={spot.decision === 'generate' || spot.decision === 'skip' ? [spot.decision] : []}
+              onValueChange={(next) => {
+                const chosen = next[0];
+                if (!chosen || chosen === spot.decision) return;
+                if (chosen === 'generate') onUpdate(enableSpotNarration(spot));
+                else if (chosen === 'skip') onUpdate({ ...spot, decision: 'skip', is_edited: true });
+              }}
               onClick={(e) => e.stopPropagation()}
-              className="min-w-0 inline-flex items-center gap-0.5 rounded-md border border-slate-200/90 bg-slate-100 p-0.5"
+              className="min-w-0"
             >
-              <button
-                type="button"
-                aria-pressed={spot.decision === 'generate'}
-                onClick={() => onUpdate(enableSpotNarration(spot))}
-                className={`video-control px-2.5 text-xs font-semibold leading-none rounded transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                  spot.decision === 'generate'
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
-                }`}
+              <ToggleGroupItem
+                value="generate"
+                variant="solid-primary"
+                className="gap-1.5 text-xs font-semibold [&_svg:not([class*='size-'])]:size-3.5"
               >
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <CheckCircle2 aria-hidden="true" />
                 <span>บรรยาย</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={spot.decision === 'skip'}
-                onClick={() =>
-                  onUpdate({
-                    ...spot,
-                    decision: 'skip',
-                    is_edited: true,
-                  })
-                }
-                className={`video-control px-2.5 text-xs font-semibold leading-none rounded transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                  spot.decision === 'skip'
-                    ? 'bg-slate-700 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
-                }`}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="skip"
+                variant="solid-muted"
+                className="gap-1.5 text-xs font-semibold [&_svg:not([class*='size-'])]:size-3.5"
               >
-                <MinusCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <MinusCircle aria-hidden="true" />
                 <span>ข้าม</span>
-              </button>
-            </fieldset>
+              </ToggleGroupItem>
+            </ToggleGroup>
           )}
           {(!isExpanded || spot.decision === 'pending') && (
-            <span
-              className={`tag font-medium ${
+            <Badge
+              variant={
                 isBatchProcessing
-                  ? 'border-brand-200 bg-brand-100 text-brand-900'
+                  ? 'info-strong'
                   : spot.decision === 'pending'
-                  ? 'border-amber-200 bg-amber-100/80 text-amber-900'
+                  ? 'warning'
                   : spot.decision === 'generate'
-                  ? 'border-brand-200 bg-brand-50 text-brand-800'
-                  : 'border-slate-300 bg-slate-200/75 text-slate-700'
-              }`}
+                  ? 'info'
+                  : 'secondary'
+              }
+              className={spot.decision === 'skip' ? 'text-muted-foreground' : undefined}
             >
-              {isBatchProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : spot.decision === 'pending' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : spot.decision === 'generate' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <MinusCircle className="h-3.5 w-3.5" aria-hidden="true" />}
+              {isBatchProcessing ? (
+                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ) : spot.decision === 'pending' ? (
+                <Clock aria-hidden="true" />
+              ) : spot.decision === 'generate' ? (
+                <CheckCircle2 aria-hidden="true" />
+              ) : (
+                <MinusCircle aria-hidden="true" />
+              )}
               {statusLabel}
-            </span>
+            </Badge>
           )}
           {issues?.map((issue) => (
-            <span key={issue} className="tag border-amber-300 bg-amber-100 font-semibold text-amber-900">
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+            <Badge key={issue} variant="warning-strong">
+              <AlertTriangle aria-hidden="true" />
               {SPOT_ISSUE_LABELS[issue]}
-            </span>
+            </Badge>
           ))}
           {!isExpanded && isOverDurationWarning && (
-            <span className="tag border-slate-300 bg-slate-100 font-medium text-slate-700">
-              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+            <Badge variant="secondary">
+              <Clock aria-hidden="true" />
               {SPOT_CHECK_LABELS.over_duration}
-            </span>
+            </Badge>
           )}
-          {!isExpanded && spot.is_edited && <span className="text-slate-500">แก้ไขแล้ว</span>}
+          {!isExpanded && spot.is_edited && <span className="text-muted-foreground">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
             <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
               <span className="h-1.5 w-1.5 rounded-full bg-brand-600" aria-hidden="true" />
@@ -398,22 +448,19 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       {isExpanded && <>
         {/* Timestamp Validation Error */}
         {timestampError && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            role="alert"
-            className="alert-error mb-2 items-center gap-1.5 px-2.5 py-1.5 text-xs"
-          >
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span>{timestampError}</span>
-          </div>
+          <Alert variant="destructive" onClick={(e) => e.stopPropagation()} className="mb-2 items-center py-1.5 text-xs">
+            <AlertTriangle className="size-3.5" aria-hidden="true" />
+            <AlertDescription className="text-xs">{timestampError}</AlertDescription>
+          </Alert>
         )}
 
         {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
         {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
           {spot.decision === 'generate' ? (
             <div className="space-y-2">
-              <textarea
+              <Textarea
                 ref={textareaRef}
+                variant="script"
                 rows={2}
                 aria-label={`บทบรรยายที่ ${spotOrder}`}
                 value={spot.text}
@@ -425,18 +472,17 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   })
                 }
                 placeholder="เขียนบทบรรยายภาพ"
-                className="w-full resize-none rounded-md border border-slate-300 bg-white px-3 py-2.5 font-script text-script font-normal tracking-normal text-slate-900 placeholder:text-slate-500 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:cursor-not-allowed"
               />
 
               {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
               <div className="space-y-1.5">
-                <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-150 ${
                       isOverDurationWarning
-                        ? 'bg-amber-500'
+                        ? 'bg-warning-foreground'
                         : speechRatio > 0.85
-                        ? 'bg-amber-400'
+                        ? 'bg-warning-strong-border'
                         : 'bg-brand-600'
                     }`}
                     style={{
@@ -445,13 +491,13 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 tabular-nums">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span
                       className={
                         isOverDurationWarning
-                          ? 'text-amber-800 font-medium'
-                          : 'text-slate-700 font-medium'
+                          ? 'text-warning-foreground font-medium'
+                          : 'text-secondary-foreground font-medium'
                       }
                     >
                       พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
@@ -459,45 +505,47 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
                         <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
                       )}
                     </span>
-                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <span aria-hidden="true" className="text-muted-foreground/60">·</span>
                     <span>{spot.text.trim().length} อักษร</span>
                     {spot.is_edited && <>
-                      <span aria-hidden="true" className="text-slate-300">·</span>
+                      <span aria-hidden="true" className="text-muted-foreground/60">·</span>
                       <span>แก้ไขแล้ว</span>
                     </>}
                   </div>
 
                   {isTimestampsModified && (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={handleResetTimestamps}
                       title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
-                      className="compact-action -mr-2 inline-flex items-center gap-1 rounded-md px-2 font-sans text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+                      className="-mr-2"
                     >
-                      <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                      <RotateCcw data-icon="inline-start" aria-hidden="true" />
                       <span>คืนเวลาเดิม</span>
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             </div>
           ) : hasSavedText ? (
             <div className="space-y-2">
-              <textarea
+              <Textarea
                 ref={textareaRef}
+                variant="script"
                 rows={2}
                 disabled
                 aria-label={`บทบรรยายที่ ${spotOrder} (ข้ามช่วงนี้)`}
                 value={spot.text}
-                className="w-full resize-none rounded-md border border-slate-200 bg-slate-100/80 px-3 py-2 font-script text-script font-normal tracking-normal text-slate-400 cursor-not-allowed"
               />
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
                 {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 py-1 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 py-1 text-xs text-muted-foreground">
               <span>
                 {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
               </span>
@@ -523,10 +571,10 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
         <p
           className={`line-clamp-2 ${
             spot.decision === 'generate'
-              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-800'
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-foreground'
               : hasSavedText
-              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-slate-400'
-              : 'text-sm leading-relaxed text-slate-500'
+              ? 'max-w-[75ch] font-script text-script font-normal tracking-normal text-muted-foreground'
+              : 'text-sm leading-relaxed text-muted-foreground'
           }`}
         >
           {spot.decision === 'generate'
@@ -538,7 +586,7 @@ const SpotBlockItem: React.FC<SpotBlockItemProps> = ({
       )}
     </div>
   );
-};
+}, areSpotBlockPropsEqual);
 
 export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   spots,
@@ -547,6 +595,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   emptyState,
   errorMessage,
   onRetryVad,
+  onRetryJobSave,
+  preparationTitle,
   mode,
   speechSegments,
   videoDurationMs,
@@ -559,20 +609,40 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
 }) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingClickAnchorRef = useRef<{ spotId: string; topBefore: number } | null>(null);
+  const selectedSpotIdRef = useRef(selectedSpotId);
+  selectedSpotIdRef.current = selectedSpotId;
+  const onSelectSpotRef = useRef(onSelectSpot);
+  onSelectSpotRef.current = onSelectSpot;
+  const onUpdateSpotRef = useRef(onUpdateSpot);
+  onUpdateSpotRef.current = onUpdateSpot;
+  const filterModeRef = useRef(filterMode);
+  filterModeRef.current = filterMode;
 
-  const handleListSelectSpot = (spotId: string, seekToStart = false) => {
+  const registerItemRef = useCallback((spotId: string, el: HTMLDivElement | null) => {
+    itemRefs.current[spotId] = el;
+  }, []);
+
+  const handleListSelectSpot = useCallback((spotId: string, seekToStart = false) => {
     const el = itemRefs.current[spotId];
-    if (el && spotId !== selectedSpotId) {
+    if (el && spotId !== selectedSpotIdRef.current) {
       pendingClickAnchorRef.current = {
         spotId,
         topBefore: el.getBoundingClientRect().top,
       };
     }
-    onSelectSpot(spotId, seekToStart);
-  };
+    onSelectSpotRef.current(spotId, seekToStart);
+  }, []);
+
+  const handleSpotUpdate = useCallback((updatedSpot: ADSpot) => {
+    if (filterModeRef.current === 'skip' && updatedSpot.decision === 'generate') {
+      setFilterMode('all');
+    }
+    onUpdateSpotRef.current(updatedSpot);
+  }, []);
 
   // Preserve visual position when clicking inside the list; auto-scroll only for external selection (timeline / shortcuts)
   useLayoutEffect(() => {
@@ -655,25 +725,15 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return (Object.keys(SPOT_CHECK_LABELS) as SpotCheck[]).filter((check) => counts.has(check)).map((check) => ({ check, count: counts.get(check)! }));
   }, [spotChecks]);
   const hasTimingIssue = spotIssues.size > 0;
-  const checkMenuRef = useRef<HTMLDetailsElement | null>(null);
 
-  useEffect(() => {
-    const dismissCheckMenu = (event: PointerEvent | KeyboardEvent) => {
-      const menu = checkMenuRef.current;
-      const isEscape = event instanceof KeyboardEvent && event.key === 'Escape';
-      if (!menu?.open || (event instanceof KeyboardEvent && !isEscape)) return;
-      if (isEscape || !menu.contains(event.target as Node)) {
-        menu.open = false;
-        if (isEscape) menu.querySelector('summary')?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', dismissCheckMenu);
-    document.addEventListener('keydown', dismissCheckMenu);
-    return () => {
-      document.removeEventListener('pointerdown', dismissCheckMenu);
-      document.removeEventListener('keydown', dismissCheckMenu);
-    };
-  }, []);
+  const filterLabels: Record<FilterMode, string> = {
+    all: `ทั้งหมด (${spots.length})`,
+    generate: `มีบทบรรยาย (${generatedCount})`,
+    pending: `รอสร้าง (${pendingCount})`,
+    skip: `ข้ามการบรรยาย (${skippedCount})`,
+    edited: `แก้ไขแล้ว (${editedCount})`,
+    needs_check: `ต้องตรวจ (${spotChecks.size})`,
+  };
 
   const jumpToNextCheck = (check: SpotCheck) => {
     const from = spots.findIndex((spot) => spot.spot_id === selectedSpotId);
@@ -684,7 +744,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       setFilterMode('needs_check');
       setSearchQuery('');
     }
-    if (checkMenuRef.current) checkMenuRef.current.open = false;
     onSelectSpot(target.spot_id, true);
   };
 
@@ -712,72 +771,103 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   return (
     <section
       aria-label="บทบรรยาย"
-      className="flex flex-col lg:h-full min-h-0 bg-white lg:overflow-hidden"
+      className="flex flex-col lg:h-full min-h-0 bg-card lg:overflow-hidden"
     >
       <h1 className="sr-only">บทบรรยายภาพ</h1>
       {spots.length > 0 && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
-            <input
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
+          <InputGroup className="flex-1">
+            <InputGroupAddon align="inline-start">
+              <Search className="size-3.5" aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              ref={searchInputRef}
               type="search"
               aria-label="ค้นหาบทบรรยายหรือเวลา"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="ค้นหาบทหรือเวลา…"
-              className="field w-full py-1.5 pl-8 pr-2.5 text-xs"
+              className="text-xs md:text-xs [&::-webkit-search-cancel-button]:hidden"
             />
-          </div>
-          <label htmlFor="spot-filter" className="sr-only">แสดง</label>
-          <div className="relative w-36 shrink-0 sm:w-40">
-          <select
-            id="spot-filter"
+            {searchQuery && (
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  size="icon-xs"
+                  aria-label="ล้างคำค้นหา"
+                  onClick={() => {
+                    setSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                >
+                  <X aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
+          <Select
             value={filterMode}
-            onChange={(event) => setFilterMode(event.target.value as FilterMode)}
-            className="field menu-select w-full cursor-pointer py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-800 hover:bg-slate-50"
+            onValueChange={(value) => {
+              if (value) setFilterMode(value as FilterMode);
+            }}
           >
-            <option value="all">ทั้งหมด ({spots.length})</option>
-            <option value="generate">มีบทบรรยาย ({generatedCount})</option>
-            <option value="pending">รอสร้าง ({pendingCount})</option>
-            <option value="skip">ข้ามการบรรยาย ({skippedCount})</option>
-            <option value="edited">แก้ไขแล้ว ({editedCount})</option>
-            <option value="needs_check">ต้องตรวจ ({spotChecks.size})</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
-          </div>
+            <SelectTrigger id="spot-filter" aria-label="แสดง" className="w-36 shrink-0 text-xs font-medium sm:w-40">
+              <SelectValue>
+                {(value: FilterMode | null) => (value ? filterLabels[value] : filterLabels.all)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-44">
+              {(Object.entries(filterLabels) as [FilterMode, string][]).map(([value, label]) => (
+                <SelectItem key={value} value={value} className="text-xs">
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {spotChecks.size > 0 && (
-            <details ref={checkMenuRef} className="group relative shrink-0">
-              <summary className={`flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold [&::-webkit-details-marker]:hidden ${
-                hasTimingIssue ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 group-open:bg-amber-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 group-open:bg-slate-100'
-              }`}>
-                {hasTimingIssue ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant={hasTimingIssue ? 'warning' : 'outline'}
+                    className="shrink-0 gap-1.5 px-2.5 text-xs font-semibold"
+                  />
+                }
+              >
+                {hasTimingIssue ? <AlertTriangle className="size-3.5" aria-hidden="true" /> : <Clock className="size-3.5" aria-hidden="true" />}
                 ต้องตรวจ <span className="tabular-nums">{spotChecks.size}</span>
-                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
-              </summary>
-              <div className="menu-panel z-40 right-0 w-72 p-1.5 text-xs">
-                <p className="px-2.5 pb-1 pt-1 text-slate-500">กดเพื่อไปบรรทัดถัดไปของแต่ละแบบ</p>
-                {checkCounts.map(({ check, count }) => (
-                  <button key={check} type="button" onClick={() => jumpToNextCheck(check)} className="menu-item justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      {check === 'over_duration'
-                        ? <Clock className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
-                        : <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />}
-                      <span className={check === 'over_duration' ? 'text-slate-700' : 'font-medium text-slate-900'}>
-                        {SPOT_CHECK_LABELS[check]}
-                        {check === 'over_duration' && <span className="block font-normal text-slate-500">ใช้ได้ถ้าเป็น Extended AD</span>}
+                <ChevronDown className="size-3.5 transition-transform group-aria-expanded/button:rotate-180" aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>กดเพื่อไปบรรทัดถัดไปของแต่ละแบบ</DropdownMenuLabel>
+                  {checkCounts.map(({ check, count }) => (
+                    <DropdownMenuItem key={check} onClick={() => jumpToNextCheck(check)} className="justify-between gap-3 py-1.5 text-xs">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {check === 'over_duration'
+                          ? <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          : <AlertTriangle className="size-3.5 shrink-0 text-warning-foreground" aria-hidden="true" />}
+                        <span className={check === 'over_duration' ? 'text-foreground' : 'font-medium text-foreground'}>
+                          {SPOT_CHECK_LABELS[check]}
+                          {check === 'over_duration' && <span className="block font-normal text-muted-foreground">ใช้ได้ถ้าเป็น Extended AD</span>}
+                        </span>
                       </span>
-                    </span>
-                    <span className="tabular-nums text-slate-600">{count}</span>
-                  </button>
-                ))}
-                <div className="my-1.5 border-t border-slate-200" />
-                <button type="button" onClick={() => {
-                  setFilterMode('needs_check');
-                  setSearchQuery('');
-                  if (checkMenuRef.current) checkMenuRef.current.open = false;
-                }} className="menu-item font-semibold text-brand-700 hover:text-brand-800">แสดงเฉพาะบรรทัดที่ต้องตรวจ</button>
-              </div>
-            </details>
+                      <span className="tabular-nums text-muted-foreground">{count}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="primary"
+                  onClick={() => {
+                    setFilterMode('needs_check');
+                    setSearchQuery('');
+                  }}
+                  className="py-1.5 text-xs"
+                >
+                  แสดงเฉพาะบรรทัดที่ต้องตรวจ
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       )}
@@ -787,58 +877,93 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       <div ref={listScrollRef} className="flex-1 min-h-0 bg-canvas lg:overflow-y-auto">
         {spots.length === 0 ? (
           emptyState === 'preparing' ? (
-            <div role="status" className="divide-y divide-slate-200 border-b border-slate-200 bg-white">
-              <div className="flex items-center gap-2 bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-600" aria-hidden="true" />
-                <span>กำลังตรวจช่วงเสียงพูดเพื่อสร้างรายการบทบรรยาย…</span>
-              </div>
-              {[74, 58, 82, 52].map((secondLineWidth, idx) => (
+            <div className="flex h-full min-h-full flex-col">
+              <div aria-hidden="true" className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
+                <div data-slot="skeleton" className="soft-shimmer h-9 flex-1 rounded-lg bg-muted/70" />
                 <div
-                  key={idx}
-                  aria-hidden="true"
-                  style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
-                  className="px-4 py-3.5"
-                >
-                  <div className="mb-2.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="soft-shimmer h-4 w-12 rounded bg-slate-200/80" />
-                      <div className="soft-shimmer h-3.5 w-28 rounded bg-slate-100" />
-                      <div className="soft-shimmer h-4 w-10 rounded bg-slate-100" />
-                    </div>
-                    <div className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
-                  </div>
-                  <div className="w-full space-y-2">
-                    <div className="soft-shimmer h-3.5 w-full rounded bg-slate-100" />
-                    <div className="soft-shimmer h-3.5 rounded bg-slate-100/70" style={{ width: `${secondLineWidth}%` }} />
-                  </div>
+                  data-slot="skeleton"
+                  style={{ '--shimmer-delay': '120ms' } as React.CSSProperties}
+                  className="soft-shimmer h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40"
+                />
+              </div>
+              <div role="status" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
+                <div className="flex shrink-0 items-center gap-2 border-b border-border bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
+                  <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
                 </div>
-              ))}
+                <div className="min-h-0 flex-1 divide-y divide-border overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)]">
+                  {[74, 58, 82, 52, 68, 86, 60].map((secondLineWidth, idx) => (
+                    <div
+                      key={idx}
+                      aria-hidden="true"
+                      style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
+                      className="px-4 py-3.5"
+                    >
+                      <div className="mb-2.5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div data-slot="skeleton" className="soft-shimmer h-4 w-12 rounded bg-border/80" />
+                          <div data-slot="skeleton" className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
+                          <div data-slot="skeleton" className="soft-shimmer h-4 w-10 rounded bg-muted" />
+                        </div>
+                        <div data-slot="skeleton" className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
+                      </div>
+                      <div className="w-full space-y-2">
+                        <div data-slot="skeleton" className="soft-shimmer h-3.5 w-full rounded bg-muted" />
+                        <div data-slot="skeleton" className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div aria-hidden="true" className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <div data-slot="skeleton" className="soft-shimmer h-4 w-24 rounded bg-muted" />
+                  <div
+                    data-slot="skeleton"
+                    style={{ '--shimmer-delay': '100ms' } as React.CSSProperties}
+                    className="soft-shimmer h-4 w-20 rounded bg-muted"
+                  />
+                </div>
+                <div
+                  data-slot="skeleton"
+                  style={{ '--shimmer-delay': '180ms' } as React.CSSProperties}
+                  className="soft-shimmer h-4 w-32 rounded bg-muted"
+                />
+              </div>
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
-              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-red-600 mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-slate-300 mb-2" aria-hidden="true" />}
-              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-slate-900">
-                {emptyState === 'failed' ? 'ยังตรวจเสียงไม่สำเร็จ' : 'ไม่พบช่วงสำหรับบรรยาย'}
+              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-destructive mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-muted-foreground/60 mb-2" aria-hidden="true" />}
+              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
+                {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
               </p>
-              <p className="text-sm text-slate-600 mt-2 max-w-sm leading-relaxed">
-                {emptyState === 'failed' ? 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ' : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+              <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
+                {emptyState === 'failed'
+                  ? (onRetryJobSave
+                    ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
+                    : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
+                  : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
               </p>
-              {emptyState === 'failed' && <button type="button" onClick={onRetryVad} className="btn-primary mt-5 px-4 py-2 text-sm">ลองตรวจเสียงอีกครั้ง</button>}
+              {emptyState === 'failed' && (
+                <Button onClick={onRetryJobSave ?? onRetryVad} className="mt-5">
+                  {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
+                </Button>
+              )}
               {emptyState === 'failed' && errorMessage && (
-                <details className="mt-4 w-full max-w-sm text-left text-sm text-slate-600">
-                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-slate-900">รายละเอียดข้อผิดพลาด</summary>
-                  <p className="mt-2 rounded-md bg-slate-50 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+                <details className="mt-4 w-full max-w-sm text-left text-sm text-muted-foreground">
+                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-foreground">รายละเอียดข้อผิดพลาด</summary>
+                  <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
                 </details>
               )}
             </div>
           )
         ) : filteredSpots.length === 0 ? (
-          <div className="py-12 px-6 text-center text-sm text-slate-600 space-y-3">
+          <div className="py-12 px-6 text-center text-sm text-muted-foreground space-y-3">
             <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>
-            <button type="button" onClick={() => { setFilterMode('all'); setSearchQuery(''); }} className="px-3 py-2 border border-slate-300 rounded font-medium hover:bg-slate-50 cursor-pointer">ล้างตัวกรองและคำค้นหา</button>
+            <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
           </div>
         ) : (
-          <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-slate-200 border-b border-slate-200 bg-white">
+          <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-border border-b border-border bg-card">
             {filteredSpots.map((spot) => {
               const globalIdx = spotOrder.get(spot.spot_id)!;
               const isPlayingNow =
@@ -855,15 +980,8 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   timingContext={timingContext}
                   checks={spotChecks.get(spot.spot_id)}
                   onSelect={handleListSelectSpot}
-                  onUpdate={(updatedSpot) => {
-                    if (filterMode === 'skip' && updatedSpot.decision === 'generate') {
-                      setFilterMode('all');
-                    }
-                    onUpdateSpot(updatedSpot);
-                  }}
-                  itemRef={(el) => {
-                    itemRefs.current[spot.spot_id] = el;
-                  }}
+                  onUpdate={handleSpotUpdate}
+                  registerItemRef={registerItemRef}
                 />
               );
             })}
@@ -872,13 +990,16 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       </div>
 
       {/* 3. Compact Editor Shortcut Footer */}
-      {spots.length > 0 && <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 shrink-0">
-        <span>
-          <strong className="font-mono text-slate-700">Alt + ↑/↓</strong> เลือกช่วง ·{' '}
-          <strong className="font-mono text-slate-700">Alt + P</strong> เล่น/หยุด
+      {spots.length > 0 && <div className="px-4 py-2.5 border-t border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground shrink-0">
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs leading-none font-medium text-secondary-foreground">Alt + ↑/↓</kbd>
+          <span>เลือกช่วง</span>
+          <span aria-hidden="true" className="text-border">·</span>
+          <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs leading-none font-medium text-secondary-foreground">Alt + P</kbd>
+          <span>เล่น/หยุด</span>
         </span>
-        <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-red-700' : ''}`}>
-          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-700" aria-hidden="true" />
+        <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
+          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
             : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
             : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
@@ -889,9 +1010,9 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               : 'บันทึกบนเซิร์ฟเวอร์แล้ว'}
           </span>
           {saveStatus === 'error' && (
-            <button type="button" onClick={onRetrySave} disabled={isAnalyzing} className="font-semibold underline cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">
+            <Button variant="link" size="xs" onClick={onRetrySave} disabled={isAnalyzing} className="h-auto px-0 font-semibold underline">
               ลองบันทึกอีกครั้ง
-            </button>
+            </Button>
           )}
         </div>
       </div>}

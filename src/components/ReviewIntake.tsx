@@ -1,102 +1,291 @@
-import { useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { AlertCircle, ArrowLeft, FileText, FileVideo, Play } from 'lucide-react';
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { AlertCircle, FileText, FileVideo, Upload, X } from 'lucide-react';
 import type { VideoValidationIssue } from '../types/ad';
-import { JobStorageManager } from './JobStorageManager';
-import { isMp4Url } from '../utils/byteSource';
+import { fileNameFromUrl, isMp4Url } from '../utils/byteSource';
+import { formatFileSize } from '../utils/formatters';
+import { defaultJobTitle } from '../utils/jobValidation';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type IntakeControls, type ReviewDraft } from './IntakeShell';
+import { isMp4File } from '../utils/videoValidator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Field, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 
-export function ReviewIntake({ headerActionsElement, checkingFileName, errorMessage, validationIssues, onProcess, onBack }: {
-  headerActionsElement: HTMLDivElement | null;
+export function ReviewIntake({ checkingFileName, errorMessage, validationIssues, onProcess, draft, setDraft, intake, onBack }: {
   checkingFileName: string | null;
   errorMessage: string | null;
   validationIssues: VideoValidationIssue[];
-  onProcess: (video: File | string, srt: File) => void;
+  onProcess: (video: File | string, srt: File, title: string) => void;
+  draft: ReviewDraft;
+  setDraft: Dispatch<SetStateAction<ReviewDraft>>;
+  intake: IntakeControls;
   onBack: () => void;
 }) {
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const srtInputRef = useRef<HTMLInputElement | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
-  const [srt, setSrt] = useState<File | null>(null);
-  const [videoLink, setVideoLink] = useState('');
+  const reviewLink = useRef<HTMLInputElement | null>(null);
+  const restoreLinkFocus = useRef(false);
+  const attachReviewLink = useCallback((element: HTMLInputElement | null) => {
+    reviewLink.current = element;
+    if (!element || !restoreLinkFocus.current) return;
+    restoreLinkFocus.current = false;
+    element.focus();
+  }, []);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const { video, srt, link: videoLink, title: typedTitle } = draft;
+  const [draggingTarget, setDraggingTarget] = useState<'video' | 'srt' | null>(null);
   const link = videoLink.trim();
-  const linkInvalid = link !== '' && !isMp4Url(link);
-  const chosenVideo: File | string | null = link ? (linkInvalid ? null : link) : video;
+  const isIncompleteProtocolPrefix = /^(?:h|ht|htt|http|https|https?:|https?:\/|https?:\/\/)$/i.test(link);
+  const linkInvalid = link !== '' && !isIncompleteProtocolPrefix && !isMp4Url(link);
+  const chosenVideo: File | string | null = link ? (isMp4Url(link) ? link : null) : video;
+  // The title follows the chosen video until the author types their own.
+  const title = typedTitle ?? (typeof chosenVideo === 'string' ? defaultJobTitle(fileNameFromUrl(chosenVideo)) : chosenVideo ? defaultJobTitle(chosenVideo.name) : '');
   const blockingIssues = validationIssues.filter((issue) => issue.severity === 'error');
 
-  const fileButton = (label: string, file: File | null, onClick: () => void, Icon: typeof FileVideo) => (
-    <button type="button" onClick={onClick} className="flex min-h-14 w-full items-center gap-3 rounded-md border border-slate-300 bg-white px-4 py-3 text-left text-sm hover:border-brand-500 hover:bg-brand-50 cursor-pointer">
-      <Icon className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />
-      <span className="min-w-0">
-        <span className="block font-semibold text-slate-900">{label}</span>
-        <span className="block [overflow-wrap:anywhere] text-slate-600">{file ? file.name : 'ยังไม่ได้เลือกไฟล์'}</span>
-      </span>
-    </button>
-  );
+  const clearInputError = () => {
+    setInputError(null);
+    intake.onInputChange();
+  };
+
+  const stageFile = (target: 'video' | 'srt', files: FileList | null) => {
+    const selection = target === 'video'
+      ? selectIntakeFile(files, isMp4File, 'กรุณาเลือกไฟล์วิดีโอ MP4')
+      : selectIntakeFile(files, (file) => /\.srt$/i.test(file.name) || ['text/plain', 'application/x-subrip'].includes(file.type), 'กรุณาเลือกไฟล์ SRT');
+    if (!selection) return;
+    clearInputError();
+    if (selection.kind === 'invalid') {
+      setInputError(selection.message);
+    } else if (target === 'video') {
+      setDraft((current) => ({ ...current, video: selection.file, link: '' }));
+      restoreLinkFocus.current = false;
+    } else {
+      setDraft((current) => ({ ...current, srt: selection.file }));
+    }
+  };
+
+  const updateLink = (value: string) => {
+    clearInputError();
+    setDraft((current) => ({ ...current, link: value }));
+  };
+
+  const handleDragOver = (target: 'video' | 'srt') => (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingTarget(target);
+  };
+
+  const handleDragLeave = (target: 'video' | 'srt') => (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingTarget((prev) => (prev === target ? null : prev));
+  };
+
+  const handleDrop = (target: 'video' | 'srt') => (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingTarget(null);
+    stageFile(target, event.dataTransfer.files);
+  };
+
+  const errorAlert = (inputError || errorMessage || blockingIssues.length > 0) ? (
+    <Alert ref={focusIntakeFeedback} tabIndex={-1} variant="destructive">
+      <AlertCircle />
+      <AlertTitle>{inputError || errorMessage ? 'ไม่สามารถเปิดงานตรวจแก้ได้' : 'วิดีโอไม่ผ่านสเปค'}</AlertTitle>
+      <AlertDescription>
+        {inputError || errorMessage ? <p>{inputError || errorMessage}</p> : (
+          <ul className="list-disc pl-5">
+            {blockingIssues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issue.message}</li>)}
+          </ul>
+        )}
+      </AlertDescription>
+    </Alert>
+  ) : null;
 
   return (
-    <section className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0">
-      {headerActionsElement && createPortal(
-        <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
-        headerActionsElement
-      )}
-      <button type="button" onClick={onBack} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />เลือกโหมดอื่น
-      </button>
-      <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">แก้ไข SRT ที่มีอยู่</h1>
-      <p className="mt-3 text-base text-slate-600 leading-relaxed">ระบบสแกนเสียงพูดบนเครื่องของคุณ แล้วเปิดบทใน SRT ให้แก้เทียบกับวิดีโอ ไม่ส่งวิดีโอขึ้นเซิร์ฟเวอร์</p>
+    <IntakeShell
+      title="เริ่มงานบทบรรยายภาพ"
+      description="สร้างบทบรรยายจากวิดีโอ หรือตรวจแก้ไฟล์ SRT ที่มีอยู่"
+      modeSwitch={intake.modeSwitch}
+    >
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/mp4,.mp4"
+        className="hidden"
+        aria-label="เลือกวิดีโอ MP4"
+        onChange={(event) => {
+          stageFile('video', event.target.files);
+          event.target.value = '';
+        }}
+      />
+      <input
+        ref={srtInputRef}
+        type="file"
+        accept=".srt,application/x-subrip,text/plain"
+        className="hidden"
+        aria-label="เลือกไฟล์ SRT"
+        onChange={(event) => {
+          stageFile('srt', event.target.files);
+          event.target.value = '';
+        }}
+      />
 
       {checkingFileName ? (
-        <div className="mt-7 w-full max-w-lg mx-auto">
-          <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-slate-700">{checkingFileName}</p>
-          <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'กำลังอ่านไฟล์ก่อนเปิดพื้นที่ทำงาน' }} />
+        <div className="w-full">
+          <VideoProcessingStatus
+            fileName={checkingFileName}
+            feedback={{ title: 'กำลังตรวจสอบวิดีโอและ SRT', description: 'อ่านไฟล์และตรวจความพร้อม' }}
+            onCancel={intake.onCancelCheck}
+          />
+          {errorAlert && <div className="mt-4">{errorAlert}</div>}
         </div>
       ) : (
-        <div className="mt-7 flex flex-col gap-3">
-          <input ref={videoInputRef} type="file" accept="video/mp4,.mp4" className="hidden" aria-label="เลือกวิดีโอ MP4" onChange={(event) => setVideo(event.target.files?.[0] ?? null)} />
-          <input ref={srtInputRef} type="file" accept=".srt,application/x-subrip,text/plain" className="hidden" aria-label="เลือกไฟล์ SRT" onChange={(event) => setSrt(event.target.files?.[0] ?? null)} />
-          {fileButton('วิดีโอ MP4', video, () => videoInputRef.current?.click(), FileVideo)}
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-semibold text-slate-900">หรือวางลิงก์วิดีโอ .mp4</span>
-            <input
-              type="url"
-              inputMode="url"
-              value={videoLink}
-              onChange={(event) => setVideoLink(event.target.value)}
-              placeholder="https://…/video.mp4"
-              aria-invalid={linkInvalid}
-              aria-describedby="review-link-hint"
-              className="field px-3 py-2.5 text-sm"
-            />
-            <span id="review-link-hint" className={linkInvalid ? 'text-red-700' : 'text-slate-600'}>
-              {linkInvalid ? 'ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4' : 'ถ้าวางลิงก์ ระบบใช้ลิงก์แทนไฟล์ และเล่นวิดีโอจากลิงก์โดยไม่ดาวน์โหลดเก็บ'}
-            </span>
-          </label>
-          {fileButton('ไฟล์ SRT', srt, () => srtInputRef.current?.click(), FileText)}
-          <p className="text-sm text-slate-600">MP4 ที่มีเสียง AAC · ทุกความละเอียด · ไม่เกิน 60 นาที</p>
-          <button
-            type="button"
-            disabled={!chosenVideo || !srt}
-            onClick={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt); }}
-            className="btn-primary mt-2 inline-flex items-center justify-center gap-2 self-start px-6 py-3 text-sm"
+        <FieldGroup className="gap-5">
+          <Field
+            data-invalid={linkInvalid || undefined}
+            aria-labelledby={video ? 'review-video-label' : undefined}
           >
-            <Play className="h-4 w-4" aria-hidden="true" />ประมวลผล
-          </button>
-        </div>
-      )}
-
-      {(errorMessage || blockingIssues.length > 0) && (
-        <div role="alert" className="alert-error mt-4 p-3 text-sm">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
-          <div className="min-w-0">
-            {errorMessage ? <p>{errorMessage}</p> : (
-              <ul className="list-disc space-y-1 pl-5">
-                {blockingIssues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issue.message}</li>)}
-              </ul>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              {video
+                ? <FieldTitle id="review-video-label">วิดีโอ MP4</FieldTitle>
+                : <FieldLabel htmlFor="review-link">วิดีโอ MP4</FieldLabel>}
+              <span id="review-video-requirements" className="text-xs text-muted-foreground">
+                เสียง AAC · ทุกความละเอียด · ไม่เกิน 60 นาที
+              </span>
+            </div>
+            {video ? (
+              <IntakeDropzone
+                file={video}
+                isDragging={draggingTarget === 'video'}
+                onDragOver={handleDragOver('video')}
+                onDragLeave={handleDragLeave('video')}
+                onDrop={handleDrop('video')}
+                onPick={() => videoInputRef.current?.click()}
+                onClear={() => {
+                  clearInputError();
+                  restoreLinkFocus.current = true;
+                  setDraft((current) => ({ ...current, video: null }));
+                  if (videoInputRef.current) videoInputRef.current.value = '';
+                }}
+                icon={<FileVideo className="size-5" />}
+                emptyTitle="วางไฟล์ MP4 ที่นี่"
+                fileSubtitle={`${formatFileSize(video.size)} · MP4`}
+                pickLabel="เลือกวิดีโอ"
+                clearLabel="ล้างวิดีโอ MP4"
+                pickDescribedBy="review-video-requirements"
+              />
+            ) : (
+              <div
+                onDragOver={handleDragOver('video')}
+                onDragLeave={handleDragLeave('video')}
+                onDrop={handleDrop('video')}
+                className={`flex flex-col gap-2 rounded-lg transition-colors sm:flex-row sm:items-center ${
+                  draggingTarget === 'video' ? 'bg-brand-50 p-1.5 -m-1.5 outline-1 outline-dashed outline-brand-500' : ''
+                }`}
+              >
+                <InputGroup className="w-full min-w-0 flex-1">
+                  <InputGroupInput
+                    ref={attachReviewLink}
+                    id="review-link"
+                    type="url"
+                    inputMode="url"
+                    value={videoLink}
+                    onChange={(event) => updateLink(event.target.value)}
+                    placeholder="https://…/video.mp4"
+                    aria-invalid={linkInvalid}
+                    aria-describedby={linkInvalid ? 'review-link-feedback review-video-requirements' : 'review-video-requirements'}
+                  />
+                  {videoLink && (
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        size="icon-xs"
+                        aria-label="ล้างลิงก์วิดีโอ"
+                        onClick={() => { updateLink(''); reviewLink.current?.focus(); }}
+                      >
+                        <X aria-hidden="true" />
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  )}
+                </InputGroup>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => videoInputRef.current?.click()}
+                  aria-describedby="review-video-requirements"
+                  className="h-auto min-h-9 w-full max-w-full shrink-0 whitespace-normal py-2 pointer-coarse:min-h-11 sm:w-auto"
+                >
+                  <Upload data-icon="inline-start" aria-hidden="true" />
+                  เลือกไฟล์จากเครื่อง
+                </Button>
+              </div>
             )}
-          </div>
-        </div>
+            {!video && linkInvalid && (
+              <FieldError id="review-link-feedback" role="status">
+                ลิงก์ต้องขึ้นต้นด้วย http หรือ https และลงท้ายด้วย .mp4
+              </FieldError>
+            )}
+          </Field>
+
+          <Field aria-labelledby="review-srt-label">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <FieldTitle id="review-srt-label">ไฟล์ SRT</FieldTitle>
+              <span id="review-srt-requirements" className="text-xs text-muted-foreground">
+                UTF-8 หรือ Windows-874
+              </span>
+            </div>
+            <IntakeDropzone
+              file={srt}
+              isDragging={draggingTarget === 'srt'}
+              onDragOver={handleDragOver('srt')}
+              onDragLeave={handleDragLeave('srt')}
+              onDrop={handleDrop('srt')}
+              onPick={() => srtInputRef.current?.click()}
+              onClear={() => {
+                clearInputError();
+                setDraft((current) => ({ ...current, srt: null }));
+                if (srtInputRef.current) srtInputRef.current.value = '';
+              }}
+              icon={<FileText className="size-5" />}
+              emptyTitle="วางไฟล์ SRT ที่นี่"
+              fileSubtitle={srt ? `${formatFileSize(srt.size)} · SRT` : ''}
+              pickLabel="เลือกไฟล์ SRT"
+              clearLabel="ล้างไฟล์ SRT"
+              pickDescribedBy="review-srt-requirements"
+            />
+          </Field>
+
+          <Field>
+            <div className="flex items-baseline justify-between gap-2">
+              <FieldLabel htmlFor="review-title">ชื่องาน</FieldLabel>
+              <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
+            </div>
+            <Input
+              id="review-title"
+              type="text"
+              value={title}
+              maxLength={120}
+              onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
+              placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
+            />
+          </Field>
+
+          {errorAlert}
+
+          <p className="text-sm text-muted-foreground">
+            วิดีโอจะเล่นบนเครื่องของคุณโดยไม่อัปโหลดขึ้นเซิร์ฟเวอร์ และบันทึกเฉพาะบทบรรยายที่ตรวจแก้
+          </p>
+
+          <IntakeFooter
+            actionLabel="เริ่มตรวจแก้"
+            hint={chosenVideo && srt ? 'พร้อมเริ่มตรวจแก้' : !chosenVideo && !srt ? 'เลือกวิดีโอ MP4 และไฟล์ SRT เพื่อเริ่ม' : !chosenVideo ? 'เลือกวิดีโอ MP4 หรือวางลิงก์เพื่อเริ่ม' : 'เลือกไฟล์ SRT เพื่อเริ่ม'}
+            disabled={!chosenVideo || !srt || Boolean(inputError) || blockingIssues.length > 0 || !intake.canProcess}
+            onCancel={onBack}
+            onAction={() => { if (chosenVideo && srt) onProcess(chosenVideo, srt, title); }}
+          />
+        </FieldGroup>
       )}
-    </section>
+    </IntakeShell>
   );
 }

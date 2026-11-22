@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_AD_ANALYSIS_SETTINGS, DEFAULT_VAD_CONFIG, type PersistedJobState } from '../types/ad';
-import { validateEditedSpots, validateJobInitialization, validateReviewJobCreation } from './jobValidation';
+import { validateEditedSpots, validateJobInitialization, validateReviewJobCreation, resolveJobTitle } from './jobValidation';
 
 const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate' as const, text: 'บท', is_edited: false };
 const input = () => ({
@@ -75,4 +75,18 @@ test('Review Mode saves text edits on imported lines as they are, and checks ret
   assert.equal(validateEditedSpots([{ ...reviewSpot, start_ms: 6200, duration_ms: 300 }], reviewJob).success, false, 'retimed line must last 500 ms');
   const generateJob = { ...reviewJob, mode: 'generate' } as PersistedJobState;
   assert.equal(validateEditedSpots([{ ...reviewSpot, text: 'แก้คำผิด' }], generateJob).success, false);
+});
+
+test('a Job Title defaults to the video file name without its extension', () => {
+  assert.deepEqual(resolveJobTitle(undefined, 'สารคดี ตอนที่ 3.mp4'), { success: true, title: 'สารคดี ตอนที่ 3' });
+  assert.deepEqual(resolveJobTitle('   ', 'clip.MP4'), { success: true, title: 'clip' });
+  assert.deepEqual(resolveJobTitle('  ชื่อที่ตั้งเอง  ', 'clip.mp4'), { success: true, title: 'ชื่อที่ตั้งเอง' });
+  assert.deepEqual(resolveJobTitle(undefined, `${'ก'.repeat(130)}.mp4`), { success: true, title: 'ก'.repeat(120) }, 'a long file name is cut to fit');
+});
+
+test('a Job Title the author types must be text of at most 120 characters', () => {
+  assert.equal(resolveJobTitle('ก'.repeat(120), 'clip.mp4').success, true);
+  assert.equal(resolveJobTitle('ก'.repeat(121), 'clip.mp4').success, false);
+  assert.equal(resolveJobTitle(42, 'clip.mp4').success, false);
+  assert.equal(resolveJobTitle('  ').success, false, 'a rename cannot clear the title');
 });

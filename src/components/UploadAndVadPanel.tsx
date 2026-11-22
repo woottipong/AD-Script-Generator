@@ -1,17 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { JobStorageManager } from './JobStorageManager';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
+import { isMp4File } from '../utils/videoValidator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   Clock,
-  FileText,
+  Download,
+  Ellipsis,
   FileVideo,
-  Layers,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -32,13 +45,14 @@ import {
   formatCompactTime,
   formatFileSize,
 } from '../utils/formatters';
+import { defaultJobTitle } from '../utils/jobValidation';
 
 const batchColors = {
   pending: {
-    surface: 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50',
-    foreground: 'text-slate-900',
-    secondary: 'text-slate-600',
-    badge: 'bg-amber-100 text-amber-900',
+    surface: 'border-border bg-card hover:border-warning-strong-border hover:bg-warning',
+    foreground: 'text-foreground',
+    secondary: 'text-muted-foreground',
+    badge: 'bg-warning-strong text-warning-strong-foreground',
   },
   processing: {
     surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
@@ -47,22 +61,24 @@ const batchColors = {
     badge: 'bg-brand-800 text-white',
   },
   completed: {
-    surface: 'border-brand-200 bg-white hover:border-brand-300 hover:bg-brand-50',
-    foreground: 'text-slate-900',
-    secondary: 'text-slate-600',
-    badge: 'bg-emerald-100 text-emerald-900',
+    surface: 'border-brand-200 bg-card hover:border-brand-300 hover:bg-brand-50',
+    foreground: 'text-foreground',
+    secondary: 'text-muted-foreground',
+    badge: 'bg-brand-100 text-brand-900',
   },
   failed: {
-    surface: 'border-red-300 bg-red-50 hover:border-red-400 hover:bg-red-100',
-    foreground: 'text-red-950',
-    secondary: 'text-red-800',
-    badge: 'bg-red-100 text-red-900',
+    surface: 'border-error-border bg-error-surface hover:bg-destructive/15',
+    foreground: 'text-error-foreground',
+    secondary: 'text-error-foreground',
+    badge: 'bg-destructive/15 text-error-foreground',
   },
 };
 
 interface UploadAndVadPanelProps {
   mode: JobMode;
-  onChangeMode: () => void;
+  intake: IntakeControls;
+  draft: GenerateDraft;
+  setDraft: React.Dispatch<React.SetStateAction<GenerateDraft>>;
   headerActionsElement: HTMLDivElement | null;
   checkingFileName: string | null;
   processingFeedback: ProcessingFeedback | null;
@@ -73,11 +89,12 @@ interface UploadAndVadPanelProps {
   vadOutput: VADOutput | null;
   batches: AnalysisBatch[];
   spots: ADSpot[];
-  onSelectFile: (file: File) => void;
+  onSelectFile: (file: File, title?: string) => void;
   onRunVad: () => void;
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
   onResetJob: () => void;
+  onOpenJobList: () => void;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onExportSrt: () => void;
   errorMessage: string | null;
@@ -85,7 +102,9 @@ interface UploadAndVadPanelProps {
 
 export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   mode,
-  onChangeMode,
+  intake,
+  draft,
+  setDraft,
   headerActionsElement,
   checkingFileName,
   processingFeedback,
@@ -101,21 +120,21 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onStartGeminiAnalysis,
   onRetryFailedBatches,
   onResetJob,
+  onOpenJobList,
   onSelectSpot,
   onExportSrt,
   errorMessage,
 }) => {
   const isReview = mode === 'review';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const videoDetailsRef = useRef<HTMLDetailsElement | null>(null);
-  const managementRef = useRef<HTMLDetailsElement | null>(null);
-  const analysisDetailsRef = useRef<HTMLDivElement | null>(null);
-  const statusButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const { file: stagedFile, title: typedTitle } = draft;
+  const resolvedTitle = typedTitle ?? (stagedFile ? defaultJobTitle(stagedFile.name) : '');
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
-  const [isWideHeader, setIsWideHeader] = useState(false);
   const [activityElapsedMs, setActivityElapsedMs] = useState(0);
 
+  const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
   const isDetecting = status === 'DETECTING';
   const isAnalyzing = status === 'ANALYZING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
@@ -124,7 +143,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     : processingFeedback;
 
   useEffect(() => {
-    if (!activityFeedback?.title) {
+    if (!hasLoadedProject || !activityFeedback?.title) {
       setActivityElapsedMs(0);
       return;
     }
@@ -132,57 +151,31 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     setActivityElapsedMs(0);
     const timer = setInterval(() => setActivityElapsedMs(Date.now() - startedAt), 1000);
     return () => clearInterval(timer);
-  }, [activityFeedback?.title]);
+  }, [hasLoadedProject, activityFeedback?.title]);
 
-  useEffect(() => {
-    // Match keyboard order to the header layout without duplicating its controls.
-    const query = window.matchMedia('(min-width: 1024px)');
-    const updateLayout = () => setIsWideHeader(query.matches);
-    updateLayout();
-    query.addEventListener('change', updateLayout);
-    return () => query.removeEventListener('change', updateLayout);
-  }, []);
-
-  useEffect(() => {
-    const dismissDisclosures = (event: PointerEvent | KeyboardEvent) => {
-      const isEscape = event instanceof KeyboardEvent && event.key === 'Escape';
-      if (event instanceof KeyboardEvent && !isEscape) return;
-      if (isQueueExpanded && (isEscape || (!analysisDetailsRef.current?.contains(event.target as Node) && !statusButtonRef.current?.contains(event.target as Node)))) {
-        setIsQueueExpanded(false);
-        if (isEscape) statusButtonRef.current?.focus();
-      }
-      for (const disclosure of [videoDetailsRef.current, managementRef.current]) {
-        if (disclosure?.open && (isEscape || !disclosure.contains(event.target as Node))) {
-          disclosure.open = false;
-          if (isEscape) disclosure.querySelector('summary')?.focus();
-        }
-      }
-    };
-    document.addEventListener('pointerdown', dismissDisclosures);
-    document.addEventListener('keydown', dismissDisclosures);
-    return () => {
-      document.removeEventListener('pointerdown', dismissDisclosures);
-      document.removeEventListener('keydown', dismissDisclosures);
-    };
-  }, [isQueueExpanded]);
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (isBusy) return;
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) {
-      onSelectFile(droppedFile);
-    }
+  const stageVideo = (files: FileList | null) => {
+    const selection = selectIntakeFile(files, isMp4File, 'กรุณาเลือกไฟล์วิดีโอ MP4');
+    if (!selection) return;
+    intake.onInputChange();
+    setInputError(selection.kind === 'invalid' ? selection.message : null);
+    if (selection.kind === 'file') setDraft((current) => ({ ...current, file: selection.file }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      onSelectFile(selected);
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+    if (!isBusy) stageVideo(event.dataTransfer.files);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (hasLoadedProject) {
+      if (files?.[0]) onSelectFile(files[0]);
+    } else {
+      stageVideo(files);
     }
-    e.target.value = '';
+    event.target.value = '';
   };
 
   const speechDurationMs = vadOutput
@@ -222,216 +215,290 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     (!videoFile && batches.length > 0 && completedBatchesCount < batches.length);
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
-  const fileName = videoMetadata?.fileName || videoFile?.name || 'วิดีโอโปรเจกต์';
+  const showPrimaryGenerate = canShowGenerate && !isBusy && !isRegenerating;
+  const canExport = generatedSpotsCount > 0 && !isBusy;
+  const hasStatusError = Boolean(errorMessage) || failedBatchesCount > 0;
+  const idleStatus = hasStatusError
+    ? { full: 'ต้องตรวจสอบการทำงาน', compact: 'มีปัญหา' }
+    : isReview
+    ? { full: `ตรวจแก้ SRT · ${spots.length} บรรทัด`, compact: `${spots.length} บรรทัด` }
+    : status === 'READY'
+    ? { full: 'วิเคราะห์เสร็จแล้ว', compact: 'เสร็จแล้ว' }
+    : vadOutput?.candidate_spots.length === 0
+    ? { full: 'ไม่พบช่วงว่าง', compact: 'ไม่พบช่วงว่าง' }
+    : needsResume
+    ? { full: 'มีงานที่ยังไม่เสร็จ', compact: 'งานค้าง' }
+    : vadOutput
+    ? { full: `พร้อมสร้าง · ${vadOutput.candidate_spots.length} ช่วง`, compact: 'พร้อมสร้าง' }
+    : { full: 'กำลังเตรียมวิดีโอ', compact: 'เตรียมวิดีโอ' };
   const statusText = activityFeedback
     ? `${activityFeedback.title}${activityFeedback.percent !== undefined ? ` ${activityFeedback.percent}%` : ''}`
-    : errorMessage || failedBatchesCount > 0
-    ? 'ต้องตรวจสอบการทำงาน'
-    : isReview
-    ? `ตรวจแก้ SRT · ${spots.length} บรรทัด`
-    : status === 'READY'
-    ? 'วิเคราะห์เสร็จแล้ว'
-    : vadOutput?.candidate_spots.length === 0
-    ? 'ไม่พบช่วงว่าง'
-    : needsResume
-    ? 'มีงานที่ยังไม่เสร็จ'
-    : vadOutput
-    ? `พร้อมสร้าง · ${vadOutput.candidate_spots.length} ช่วง`
-    : 'กำลังเตรียมวิดีโอ';
-
-  const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
+    : idleStatus.full;
 
   // If no video is loaded yet, show a clean studio intake workspace bar
   if (!hasLoadedProject) {
+    const errorAlert = (inputError || errorMessage || hasBlockingErrors) ? (
+      <Alert id="upload-feedback" ref={focusIntakeFeedback} tabIndex={-1} variant="destructive">
+        <AlertCircle />
+        <AlertTitle>{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเลือกวิดีโอได้'}</AlertTitle>
+        <AlertDescription>
+          {inputError || errorMessage ? <p>{inputError || errorMessage}</p> : (
+            <ul className="list-disc pl-5">
+              {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
+                <li key={`${issue.field}-${index}`}>{issue.message}</li>
+              ))}
+            </ul>
+          )}
+          {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
+        </AlertDescription>
+      </Alert>
+    ) : null;
+
     return (
-      <section
-        className="w-[calc(100%_-_2rem)] max-w-4xl mx-auto my-8 sm:my-14 px-1 sm:px-0"
+      <IntakeShell
+        title="เริ่มงานบทบรรยายภาพ"
+        description="สร้างบทบรรยายจากวิดีโอ หรือตรวจแก้ไฟล์ SRT ที่มีอยู่"
+        modeSwitch={intake.modeSwitch}
       >
-        {headerActionsElement && createPortal(
-          <div className="col-start-2 row-start-1 justify-self-end lg:col-start-3"><JobStorageManager /></div>,
-          headerActionsElement
-        )}
         <input
           ref={fileInputRef}
           type="file"
           accept="video/mp4,.mp4"
-          aria-invalid={hasBlockingErrors}
           disabled={Boolean(checkingFileName)}
           onChange={handleFileChange}
           className="hidden"
+          aria-label="เลือกวิดีโอ MP4"
         />
 
-        <button type="button" onClick={onChangeMode} className="mb-5 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 cursor-pointer">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />เลือกโหมดอื่น
-        </button>
-        <div className="mb-7">
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-tight">สร้างบทบรรยายภาพ</h1>
-          <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">ระบบหาช่วงว่างบนเครื่องของคุณ</p>
-        </div>
-        <div className="flex flex-col gap-7">
-          <div>
-            {checkingFileName ? (
-              <div className="w-full max-w-lg mx-auto">
-                <p className="mb-3 [overflow-wrap:anywhere] text-sm font-medium text-slate-700">{checkingFileName}</p>
-                <VideoProcessingStatus feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง ก่อนเปิดพื้นที่ทำงาน' }} />
+        {checkingFileName ? (
+          <div className="w-full">
+            <VideoProcessingStatus
+              fileName={checkingFileName}
+              feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              onCancel={intake.onCancelCheck}
+            />
+            {errorAlert && <div className="mt-4">{errorAlert}</div>}
+          </div>
+        ) : (
+          <FieldGroup className="gap-5">
+            <Field aria-labelledby="generate-video-label">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
+                <span id="upload-requirements" className="text-xs text-muted-foreground">
+                  480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
+                </span>
               </div>
-            ) : <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragging(false);
-              }}
-              onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-lg p-6 sm:p-10 transition-colors flex flex-col items-center text-center gap-5 ${
-                isDragging
-                  ? 'border-brand-500 bg-brand-50'
-                  : 'border-slate-300 hover:border-slate-500 bg-white'
+              <IntakeDropzone
+                file={stagedFile}
+                isDragging={isDragging}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                }}
+                onDrop={handleDrop}
+                onPick={() => fileInputRef.current?.click()}
+                onClear={() => {
+                  setDraft((current) => ({ ...current, file: null }));
+                  setInputError(null);
+                  intake.onInputChange();
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                icon={<FileVideo className="size-5" />}
+                emptyTitle="วางไฟล์ MP4 ที่นี่"
+                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
+                pickLabel="เลือกวิดีโอ"
+                clearLabel="ล้างไฟล์วิดีโอ"
+                pickDescribedBy={errorAlert ? 'upload-requirements upload-feedback' : 'upload-requirements'}
+              />
+            </Field>
+
+            <Field>
+              <div className="flex items-baseline justify-between gap-2">
+                <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
+                <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
+              </div>
+              <Input
+                id="generate-title"
+                type="text"
+                value={resolvedTitle}
+                maxLength={120}
+                onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
+                placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
+              />
+            </Field>
+
+            {errorAlert}
+            <p className="text-sm text-muted-foreground">
+              ระบบจะตรวจเสียงบนเครื่องแล้วบันทึกวิดีโอไว้บนเซิร์ฟเวอร์ คุณเลือกเริ่มสร้างบทด้วย AI ได้ในหน้าตัดต่อ
+            </p>
+
+            <IntakeFooter
+              actionLabel="ตรวจเสียงและเตรียมงาน"
+              hint={stagedFile ? 'พร้อมตรวจเสียงและเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
+              disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
+              onCancel={onOpenJobList}
+              onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
+            />
+          </FieldGroup>
+        )}
+      </IntakeShell>
+    );
+  }
+
+  const workflowActions = (
+    <div className="flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+      <Popover open={isQueueExpanded} onOpenChange={setIsQueueExpanded}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="lg"
+              aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
+              className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:has-data-[icon=inline-end]:pr-1.5 lg:max-w-[27rem] pointer-coarse:h-11 ${
+                hasStatusError
+                  ? 'border border-error-border bg-error-surface text-error-foreground not-disabled:hover:bg-destructive/15'
+                  : activityFeedback
+                  ? 'border border-brand-200 bg-brand-50 text-brand-950 not-disabled:hover:bg-brand-100'
+                  : 'border border-border/80 bg-muted/40 text-foreground/85 not-disabled:hover:border-input not-disabled:hover:bg-muted/70'
               }`}
-            >
-              <div className="min-w-0">
-                  <p className="text-base font-semibold text-slate-900">
-                    ลากวิดีโอ MP4 มาวางที่นี่
+            />
+          }
+        >
+          {isBusy ? (
+            <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
+          ) : hasStatusError ? (
+            <AlertCircle data-icon="inline-start" className="max-sm:hidden text-error-foreground" aria-hidden="true" />
+          ) : status === 'READY' || isReview ? (
+            <CheckCircle2 data-icon="inline-start" className="max-sm:hidden text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <Clock data-icon="inline-start" className="max-sm:hidden text-warning-foreground" aria-hidden="true" />
+          )}
+          {activityFeedback ? (
+            <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
+              <span className="truncate font-semibold">{activityFeedback.title}</span>
+              {isAnalyzing && batches.length > 0 && processingBatch && (
+                <span className="hidden md:inline text-brand-800">· ชุด {processingBatch.batch_index}/{batches.length}</span>
+              )}
+              {activityFeedback.percent !== undefined && (
+                <span className="font-semibold text-brand-800">· {activityFeedback.percent}%</span>
+              )}
+              <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
+            </span>
+          ) : (
+            <span role="status" className="min-w-0 truncate text-left font-medium">
+              <span className="hidden sm:inline">{idleStatus.full}</span>
+              <span className="sm:hidden">{idleStatus.compact}</span>
+            </span>
+          )}
+          <ChevronDown data-icon="inline-end" className={`text-muted-foreground transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </PopoverTrigger>
+        <PopoverContent align="end" aria-labelledby="analysis-details-title" className={`w-[calc(100vw-1.5rem)] gap-0 p-0 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}>
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-card px-4 pb-1 pt-3">
+              <h2 id="analysis-details-title" className="font-semibold text-foreground">รายละเอียดการทำงาน</h2>
+              <Button variant="ghost" size="icon-sm" className="-mr-1" onClick={() => setIsQueueExpanded(false)} aria-label="ปิดรายละเอียดการทำงาน">
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="space-y-3 px-4 pb-4 pt-2">
+              {activityFeedback && (
+                <p className="leading-relaxed text-muted-foreground">
+                  {activityFeedback.detail || activityFeedback.description}
+                </p>
+              )}
+              {vadOutput ? (
+                <dl className={`grid gap-x-6 gap-y-2 text-muted-foreground ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
+                  <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-foreground">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
+                  {isReview
+                    ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-foreground">{spots.length} บรรทัด</dd></>
+                    : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-foreground">{vadOutput.candidate_spots.length} ช่วง</dd></>}
+                  <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-foreground">{formatCompactTime(nonSpeechDurationMs)}</dd>
+                </dl>
+              ) : <p className="text-muted-foreground">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
+              {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
+                <p className="text-xs leading-relaxed text-muted-foreground">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
+              )}
+            </div>
+            {batches.length > 0 && (
+              <div className="border-t border-border px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <h3 className="text-xs font-semibold text-foreground">คิววิเคราะห์</h3>
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+                    <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
+                    <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
+                    <span className={pendingBatchesCount > 0 ? 'font-medium text-warning-foreground' : undefined}>รอคิว {pendingBatchesCount}</span>
+                    {failedBatchesCount > 0 && <span className="font-medium text-destructive">ไม่สำเร็จ {failedBatchesCount}</span>}
                   </p>
-                  <p id="upload-requirements" className="text-sm text-slate-600 mt-2 leading-relaxed">
-                    ความสูง 480p · H.264 + AAC · ไม่เกิน 30 นาที และ 2 GB
-                  </p>
-              </div>
-
-              <div className="flex flex-wrap justify-center items-center gap-3">
-                <button type="button" onClick={() => fileInputRef.current?.click()} aria-describedby={errorMessage || hasBlockingErrors ? 'upload-requirements upload-feedback' : 'upload-requirements'} className="btn-primary flex items-center gap-2 px-6 py-3 text-sm">
-                  <Upload className="w-4 h-4" aria-hidden="true" />
-                  เลือกวิดีโอ
-                </button>
-              </div>
-            </div>}
-
-            {(errorMessage || hasBlockingErrors) && (
-              <div id="upload-feedback" role="alert" className="alert-error mt-3 p-3 text-sm">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p className="font-semibold">{hasBlockingErrors ? 'วิดีโอไม่ผ่านสเปค' : 'ไม่สามารถเปิดวิดีโอได้'}</p>
-                  {errorMessage ? <p className="mt-1">{errorMessage}</p> : (
-                    <ul className="mt-1 list-disc pl-5 space-y-1">
-                      {validationIssues.filter((issue) => issue.severity === 'error').map((issue, index) => (
-                        <li key={`${issue.field}-${index}`}>{issue.message}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {hasBlockingErrors && <p className="mt-2">กรุณาเลือกวิดีโอที่ตรงตามสเปคด้านบน</p>}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
+                <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+                  {batches.map((batch) => {
+                    const firstSpotId = batch.candidate_spots[0]?.spot_id;
+                    const colors = batchColors[batch.status];
+                    return (
+                      <button
+                        key={batch.batch_id}
+                        type="button"
+                        disabled={!firstSpotId}
+                        onClick={() => { if (firstSpotId) onSelectSpot(firstSpotId, true); }}
+                        aria-label={`ชุดที่ ${batch.batch_index} · ${formatCompactTime(batch.batch_start_ms)} ถึง ${formatCompactTime(batch.batch_end_ms)} · ${batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}`}
+                        className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 text-left text-xs transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${colors.surface} ${colors.foreground}`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
+                          <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
+                          {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
+        </PopoverContent>
+      </Popover>
 
-          <div className="text-sm leading-relaxed text-slate-600">
-            <p>เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
-          </div>
-        </div>
-
-      </section>
-    );
-  }
-
-  const projectControls = (
-    <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
-      <details ref={videoDetailsRef} name="project-header" className="group relative min-w-0 flex-1 basis-36 lg:max-w-xs">
-        <summary aria-label={`รายละเอียดวิดีโอ: ${fileName}`} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
-          <FileVideo className="w-4 h-4 shrink-0" aria-hidden="true" />
-          <span className="truncate font-medium">{fileName}</span>
-          <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
-        </summary>
-        <div className="menu-panel left-0 w-80 p-4 lg:left-auto lg:right-0">
-          <p className="[overflow-wrap:anywhere] font-semibold text-slate-900">{fileName}</p>
-          {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-slate-600">
-            <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-slate-900">{videoMetadata.width} × {videoMetadata.height}</dd>
-            <dt>ความยาว</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(totalDurationMs)}</dd>
-            {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-slate-900">{formatFileSize(videoMetadata.fileSize)}</dd></>}
-          </dl>}
-        </div>
-      </details>
-
-      <button
-        ref={statusButtonRef}
-        type="button"
-        onClick={() => setIsQueueExpanded((prev) => !prev)}
-        aria-expanded={isQueueExpanded}
-        aria-controls="analysis-details"
-        aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
-        className={`flex min-h-10 max-w-full items-center gap-2 rounded-md px-3 py-2 text-xs font-medium cursor-pointer transition-colors ${
-          errorMessage || failedBatchesCount > 0
-            ? 'bg-red-50 text-red-800 hover:bg-red-100'
-            : activityFeedback
-            ? 'border border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
-            : status === 'READY' || !vadOutput?.candidate_spots.length
-            ? 'border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-            : 'bg-brand-50 text-brand-900 hover:bg-brand-100'
-        }`}
-      >
-        {isBusy ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-brand-700" aria-hidden="true" />
-        ) : (
-          <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-        )}
-        {activityFeedback ? (
-          <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
-            <span className="truncate font-semibold">{activityFeedback.title}</span>
-            {isAnalyzing && batches.length > 0 && processingBatch && (
-              <span className="hidden md:inline text-brand-800">· ชุด {processingBatch.batch_index}/{batches.length}</span>
-            )}
-            {activityFeedback.percent !== undefined && (
-              <span className="font-semibold text-brand-800">· {activityFeedback.percent}%</span>
-            )}
-            <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
-          </span>
-        ) : (
-          <span role="status" className="min-w-0 text-left">{statusText}</span>
-        )}
-        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
-      </button>
-
-      {canShowGenerate && !isBusy && !isRegenerating && (
-        <button type="button" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="btn-primary flex min-h-10 grow items-center justify-center gap-2 whitespace-nowrap px-4 py-2 text-sm sm:grow-0">
-          <Sparkles className="w-4 h-4" aria-hidden="true" />
+      {showPrimaryGenerate ? (
+        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
+          <Sparkles data-icon="inline-start" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
-        </button>
+        </Button>
+      ) : canExport && (
+        <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
+          <Download data-icon="inline-start" aria-hidden="true" />
+          ส่งออก SRT
+        </Button>
       )}
-
-      {generatedSpotsCount > 0 && !isBusy && (
-        <button
-          type="button"
-          onClick={onExportSrt}
-          className={`flex min-h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer ${
-            canShowGenerate && !isRegenerating
-              ? 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-50'
-              : 'btn-primary'
-          }`}
-        >
-          <FileText className="w-4 h-4" aria-hidden="true" />
-          <span>ส่งออก SRT</span>
-        </button>
-      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="จัดการงาน" className="size-10 text-muted-foreground not-disabled:hover:text-foreground pointer-coarse:size-11" />}>
+          <Ellipsis aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          {!isReview && (
+            <>
+              <DropdownMenuGroup>
+                {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><Download aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
-  );
-
-  const managementMenu = (
-    <details key="project-management" ref={managementRef} name="project-header" className="group relative col-start-2 row-start-1 justify-self-end lg:col-start-3">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 group-open:border-brand-300 group-open:bg-brand-50 group-open:text-brand-900 [&::-webkit-details-marker]:hidden">
-        จัดการ <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
-      </summary>
-      <div onClick={(event) => { if ((event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[data-job-storage]') && managementRef.current) managementRef.current.open = false; }} className="menu-panel right-0 w-60 p-1.5">
-        {canShowGenerate && isRegenerating && <button type="button" onClick={generateAd} disabled={isBusy} className="menu-item"><Sparkles className="w-4 h-4" aria-hidden="true" />สร้างบทบรรยายใหม่</button>}
-        {!isReview && videoFile && <button type="button" onClick={onRunVad} disabled={!canRunVad} className="menu-item"><RefreshCw className="w-4 h-4" aria-hidden="true" />สแกนเสียงใหม่</button>}
-        {!isReview && <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><Upload className="w-4 h-4" aria-hidden="true" />เปลี่ยนวิดีโอ</button>}
-        {(!isReview || (canShowGenerate && isRegenerating)) && <div className="my-1.5 border-t border-slate-200" />}
-        <button type="button" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting} className="menu-item"><RotateCcw className="w-4 h-4" aria-hidden="true" />เริ่มงานใหม่</button>
-        <div data-job-storage><JobStorageManager /></div>
-      </div>
-    </details>
   );
 
   // Keep project controls in the header and processing details beside the workspace.
@@ -447,22 +514,14 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         className="hidden"
       />
 
-      {headerActionsElement && createPortal(
-        isWideHeader ? [projectControls, managementMenu] : [managementMenu, projectControls],
-        headerActionsElement
-      )}
+      {headerActionsElement && createPortal(workflowActions, headerActionsElement)}
 
       {/* Validation Issues or Error Banner */}
       {(validationIssues.length > 0 || errorMessage) && !(status === 'FAILED' && !vadOutput) && (
-        <div role={errorMessage || hasBlockingErrors ? 'alert' : 'status'} className={`px-4 py-3 border-t flex flex-wrap items-center justify-between gap-2 text-sm ${errorMessage || hasBlockingErrors ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>
-              {errorMessage ||
-                validationIssues.map((i) => i.message).join(' · ')}
-            </span>
-          </div>
-        </div>
+        <Alert variant={errorMessage || hasBlockingErrors ? 'destructive' : 'warning'} placement="strip" role={errorMessage || hasBlockingErrors ? 'alert' : 'status'} className="border-t">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>{errorMessage || validationIssues.map((i) => i.message).join(' · ')}</AlertDescription>
+        </Alert>
       )}
 
       {activityFeedback && (
@@ -496,81 +555,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </div>
       )}
 
-      <div
-        id="analysis-details"
-        ref={analysisDetailsRef}
-        role="region"
-        aria-labelledby="analysis-details-title"
-        hidden={!isQueueExpanded}
-        className={`menu-panel z-40 left-3 right-3 sm:left-auto sm:right-4 ${batches.length > 0 ? 'sm:w-[36rem]' : 'sm:w-80'}`}
-      >
-        <div className="max-h-[50vh] overflow-y-auto rounded-lg">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white px-4 pb-1 pt-3">
-            <h2 id="analysis-details-title" className="font-semibold text-slate-900">รายละเอียดการทำงาน</h2>
-            <button type="button" onClick={() => { setIsQueueExpanded(false); statusButtonRef.current?.focus(); }} aria-label="ปิดรายละเอียดการทำงาน" title="ปิดรายละเอียด (Esc)" className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-brand-700 cursor-pointer">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="space-y-3 px-4 pb-4 pt-2">
-            {activityFeedback && (
-              <p className="leading-relaxed text-slate-600">
-                {activityFeedback.detail || activityFeedback.description}
-              </p>
-            )}
-            {vadOutput ? (
-              <dl className={`grid gap-x-6 gap-y-2 text-slate-600 ${batches.length > 0 ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr]'}`}>
-                <dt>เสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.speech_segments.length} ช่วง · {speechPercent}%</dd>
-                {isReview
-                  ? <><dt>บรรทัดใน SRT</dt><dd className="text-right tabular-nums text-slate-900">{spots.length} บรรทัด</dd></>
-                  : <><dt>ช่วงสำหรับบรรยาย</dt><dd className="text-right tabular-nums text-slate-900">{vadOutput.candidate_spots.length} ช่วง</dd></>}
-                <dt>เวลาที่ไม่มีเสียงพูด</dt><dd className="text-right tabular-nums text-slate-900">{formatCompactTime(nonSpeechDurationMs)}</dd>
-              </dl>
-            ) : <p className="text-slate-600">ผลตรวจเสียงและช่วงสำหรับบรรยายจะแสดงเมื่อตรวจเสร็จ</p>}
-            {!isReview && videoFile && vadOutput && vadOutput.candidate_spots.length > 0 && status !== 'READY' && !isBusy && (
-              <p className="text-xs leading-relaxed text-slate-600">เมื่อกดสร้างบทบรรยาย วิดีโอจะถูกส่งไปวิเคราะห์ด้วย Google Gemini</p>
-            )}
-          </div>
-          {batches.length > 0 && (
-            <div className="border-t border-slate-200 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <h3 className="text-xs font-semibold text-slate-900">คิววิเคราะห์</h3>
-                <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-600">
-                  <span className={completedBatchesCount > 0 ? 'font-medium text-brand-800' : undefined}>เสร็จ {completedBatchesCount}/{batches.length}</span>
-                  <span className={processingBatch ? 'font-medium text-brand-800' : undefined}>กำลังทำ {processingBatch ? 1 : 0}</span>
-                  <span className={pendingBatchesCount > 0 ? 'font-medium text-amber-800' : undefined}>รอคิว {pendingBatchesCount}</span>
-                  {failedBatchesCount > 0 && <span className="font-medium text-red-700">ไม่สำเร็จ {failedBatchesCount}</span>}
-                </p>
-              </div>
-              <p className="mt-1 text-xs text-slate-600">เลือกชุดเพื่อไปยังช่วงบรรยายแรกของชุดนั้น</p>
-              <div className={`mt-2 grid gap-1.5 ${batches.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-                {batches.map((batch) => {
-                  const firstSpotId = batch.candidate_spots[0]?.spot_id;
-                  const colors = batchColors[batch.status];
-                  return (
-                    <button
-                      key={batch.batch_id}
-                      type="button"
-                      disabled={!firstSpotId}
-                      onClick={() => { if (firstSpotId) onSelectSpot(firstSpotId, true); }}
-                      aria-label={`ชุดที่ ${batch.batch_index} · ${formatCompactTime(batch.batch_start_ms)} ถึง ${formatCompactTime(batch.batch_end_ms)} · ${batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}`}
-                      className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border px-3 py-2 text-left text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-60 ${colors.surface} ${colors.foreground}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
-                        <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
-                      </div>
-                      <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
-                        {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
-                        {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </section>
   );
 };

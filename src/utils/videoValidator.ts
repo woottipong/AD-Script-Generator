@@ -1,4 +1,3 @@
-import { createFile } from 'mp4box';
 import { JobMode, VideoMetadata, VideoValidationIssue } from '../types/ad';
 import type { ByteSource } from './byteSource';
 
@@ -92,6 +91,10 @@ export async function checkBrowserCompatibility(): Promise<BrowserCompatibilityR
   }
 }
 
+export function isMp4File(file: Pick<ByteSource, 'name' | 'type'>): boolean {
+  return file.name.toLowerCase().endsWith('.mp4') || file.type === 'video/mp4' || file.type === 'application/mp4';
+}
+
 /**
  * Inspects MP4 container metadata by streaming 1 MB chunks using mp4box.js
  * without loading the entire 2 GB file into memory.
@@ -115,9 +118,7 @@ export async function validateAndInspectMp4File(
   const checkGenerateFormat = (options.mode ?? 'generate') === 'generate';
 
   // 1. Validate file extension & MIME type
-  const isMp4Name = file.name.toLowerCase().endsWith('.mp4');
-  const isMp4Mime = file.type === 'video/mp4' || file.type === 'application/mp4' || (file.type === '' && isMp4Name);
-  if (!isMp4Name && !isMp4Mime) {
+  if (!isMp4File(file)) {
     issues.push({
       field: 'format',
       severity: 'error',
@@ -269,6 +270,7 @@ export async function validateAndInspectMp4File(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function parseMp4HeaderChunked(file: ByteSource): Promise<any> {
   const CHUNK_SIZE = 1024 * 1024; // 1 MB chunks
+  const { createFile } = await import('mp4box');
   const mp4boxfile = createFile();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

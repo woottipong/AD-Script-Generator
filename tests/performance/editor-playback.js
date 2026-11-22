@@ -3,7 +3,7 @@ async page => {
   const results = [];
   for (let run = 0; run < 5; run++) {
     for (const [version, port] of [['baseline', 4174], ['candidate', 4175]]) {
-      await page.goto(`http://127.0.0.1:${port}/`);
+      await page.goto(`http://127.0.0.1:${port}/jobs/benchmark`);
       await page.getByRole('list', { name: 'รายการช่วงบรรยาย' }).waitFor();
       const count = await page.getByRole('listitem').count();
       if (count !== 300) throw new Error(`Expected 300 spots, found ${count}`);
