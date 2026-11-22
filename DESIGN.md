@@ -133,7 +133,7 @@ The system is intentionally flat and restrained. Structure comes from crisp 1px 
 - Flat 1px hairline architecture where elevation shadows appear only on floating overlays and popovers.
 - Zero-shift asynchronous feedback via a compact header status pill and a 3px Material Design 3 hairline progress bar.
 
-## Brand
+### Brand Marks
 
 - **Name:** `TCC Envisio`, always with the `TCC` house mark. `TCC` takes `brand-700`, `Envisio` takes `slate-900`, both 700 weight.
 - **Tagline (Job List and intake navbar, page title):** `สร้างและตรวจแก้บทบรรยายภาพ`, 13px 500 `slate-600`, hidden below `sm`. It names what the app does and changes only when capabilities change (for example `เขียนบท สร้างเสียง ส่งออกงานบรรยายภาพ` once voice generation ships).
@@ -193,10 +193,10 @@ The palette pairs a single broadcast cerulean UI accent with cool paper and dark
 
 Desktop-first NLE split workspace locked to the viewport (`100dvh`, `overflow-hidden` at `lg: 1024px+`) while degrading cleanly to a vertical scroll stack on smaller screens.
 
-- **Top Command Navbar (`min-h-16` / 64px):** A white bar with a 1px cerulean hairline bottom border. In the editor, the Job List logo link sits beside the editable Job Title and a bordered `(i)` video metadata chip (`h-7 rounded-md` showing inline duration on `sm+` and resolution height on `md+`). A quiet status disclosure pill and the `จัดการงาน` ellipsis flank the primary action (`สร้างบทบรรยายภาพ`, `ทำต่อจากชุดที่ค้าง`, or `ส่งออก SRT`). On narrow screens, the actions move to a second row and use shorter status labels.
+- **Top Command Navbar (`min-h-16` / 64px):** A white bar with a 1px cerulean hairline bottom border. On the Job List and `/new`, the logo and wordmark sit left. In the editor, the logo link sits beside the editable Job Title and the `(i)` video metadata chip, while the status pill and the `จัดการงาน` ellipsis flank the primary action (`สร้างบทบรรยายภาพ`, `ทำต่อจากชุดที่ค้าง`, or `ส่งออก SRT`). The Account Menu always closes the bar on the right; in the editor it hides below `sm` (640px), where sign-out stays reachable from the Job List. On narrow screens, editor actions move to a second row and use shorter status labels.
 - **Hairline Progress Track (`3px`):** Anchored flush to the bottom edge of the navbar (`position: absolute; top: 0`) so processing states consume `0px` of vertical workspace height and cause zero layout shift.
 - **Left Pane (`6 cols` on `lg`):** Unobstructed dark video monitor starting directly beneath the navbar (no redundant pane header), floating Broadcast CC Pill at the bottom edge of the video frame, pure-white transport control bar (`-5s`, `-1s`, Play/Pause, `+1s`, `+5s`, prev/next spot, soft-active Loop/CC/Mute toggles, timecode), slim muted timeline utility bar (`ช่วง X/Y`, conditional `xl:flex` square decision swatches, live hover/drag timecode, conditional `ซูมช่วงนี้`/`พอดี` + zoom controls), and an edge-to-edge 3-track timeline (`คลื่นเสียง` 56px, `เสียงพูด` 28px, `บรรยาย` 56px).
-- **Right Pane (`6 cols` on `lg`):** Compact single-row Search + Filter + conditional `ต้องตรวจ` toolbar (`44px` / `py-2`) above an edge-to-edge white editorial list (`divide-y divide-border`) resting on `cool-paper-canvas` below the final item.
+- **Right Pane (`6 cols` on `lg`):** The single-row editor search toolbar (`44px`) above an edge-to-edge white editorial list resting on `cool-paper-canvas` below the final item.
 - **Touch & Pointer Rhythm:** Minimum interactive target height is `36px` (`2.25rem`) on desktop (`32px` for compact video transport buttons) and automatically expands to `44px` (`2.75rem`) on coarse pointers (`@media (pointer: coarse)`).
 
 ## Elevation & Depth
@@ -221,7 +221,7 @@ Compact, utilitarian corner radii keep dense workstation controls crisp without 
 
 ## Components
 
-All UI controls come from the **shadcn/ui** component library in `src/components/ui` (style `base-nova` on `@base-ui/react`), themed exclusively through the semantic CSS tokens in `src/index.css`: `--primary` (`studio-cerulean`), `--foreground`, `--muted-foreground`, and `--placeholder` (slate inks), `--stage` (`broadcast-slate`), `--border` and `--input` (hairline and control strokes), `--ring` (`studio-cerulean-active`), `--warning*` (amber warning pair), `--destructive` and `--error-*` (error red), and `--radius` (`0.5rem` / `8px` for `rounded-lg` controls and dialogs, `6.4px` for `rounded-md` micro-badges). Call sites pass layout classes via `className` and pick a semantic variant (with the navbar status pill's state-tinted surface in `UploadAndVadPanel` as the intentional exception). Every interactive button and link uses the app-wide 2px `studio-cerulean-active` focus outline with a 3px offset (`:focus-visible`), while text inputs and textareas keep their border-shift and ring focus.
+All UI controls come from the **shadcn/ui** component library in `src/components/ui` (style `base-nova` on `@base-ui/react`), themed only through the semantic CSS tokens in `src/index.css` that Colors and Shapes name. Call sites pass layout classes via `className` and pick a semantic variant (the navbar status pill's state-tinted surface in `UploadAndVadPanel` is the intentional exception). Every interactive button and link uses the app-wide 2px `studio-cerulean-active` focus outline with a 3px offset (`:focus-visible`), while text inputs and textareas keep their border-shift and ring focus.
 
 ### Buttons & Toggles
 Compact, tactile controls with clear visual hierarchy between primary project actions, quiet utility controls, and stateful toggles.
@@ -247,7 +247,8 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 ### Overlays, Menus & Dialogs
 - **Menus (`DropdownMenu`):** White surface, `ring-1 ring-foreground/10`, Overlay Elevation shadow (`shadow-md`), keyboard navigation, Escape and outside-click dismissal, and focus return for the `จัดการงาน` navbar menu and `ต้องตรวจ` jump menu. Uses `DropdownMenuItem variant="primary"` for primary filter links and `variant="destructive"` for delete actions.
 - **Disclosures (`Popover`) & Video Metadata `(i)` Chip:** White surface with Overlay Elevation shadow for the `ข้อมูลวิดีโอ` metadata popover and `รายละเอียดการทำงาน` queue panel. The navbar trigger is a bordered `(i)` chip (`h-7 rounded-md border-border/70 bg-muted/40`, expanding to `44px` on coarse pointers) showing the `Info` icon plus inline duration (`sm+`) and resolution height (`· 480p`, `md+`). Hover/focus previews the original filename and `duration · resolution (W × H)` in a `Tooltip`; click/tap opens the `Popover` adding file size.
-- **Confirmations (`AlertDialog`):** The Job List confirms file and Job deletion in its own modal. The workspace shares an app-level confirmation for leaving unsaved edits and resetting or replacing a video.
+- **Account Menu (`DropdownMenu`, `AccountMenu`):** A muted `CircleUser` ghost icon button (`icon-lg`, `40px`) at the right end of the navbar, named `บัญชี <email>`. The menu (`w-64`, aligned end) opens on the Author's name (`text-sm font-semibold`, `foreground`) above their email (`text-xs`, `muted-foreground`), both truncating, then a separator and the `ออกจากระบบ` item with a `LogOut` icon. Without a name from sign-in, the email stands alone.
+- **Confirmations (`AlertDialog`):** The Job List confirms file and Job deletion in its own modal. The workspace shares an app-level confirmation for leaving unsaved edits (including signing out), and for resetting or replacing a video.
 - **Tooltips (`Tooltip`):** Dark compact shortcut hints (`Alt + P`, `Alt + ↑/↓`, seek/zoom controls, `แก้ไขชื่อ`) replacing native browser `title` attributes across the header, transport, and zoom bar.
 
 ### Inputs, Search Toolbar & Forms
@@ -297,15 +298,11 @@ Floating closed-caption preview docked `12px` above the bottom edge of the video
 
 ## Do's and Don'ts
 
+The Named Rules above (Single-Accent, Dark-Stage Contrast, Tabular Timecode, Looped-Script, Flat-By-Default) are the primary guardrails; this list adds only what they do not cover.
+
 ### Do:
-- **Do** keep the left video monitor free of redundant pane titles or full-width progress banners so video height stays maximized.
-- **Do** place project-level commands (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `จัดการงาน`) in the top command navbar and reserve pane toolbars strictly for local filtering and playback.
-- **Do** use `tabular-nums` on every timecode, percentage, character count, and elapsed timer.
+- **Do** place project-level commands (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `จัดการงาน`) in the top command navbar and keep pane toolbars for local filtering and playback, so export never clips inside the half-width script bar.
 - **Do** honor `prefers-reduced-motion: reduce` by disabling spinner, shimmer, and progress-bar sweep animations.
-- **Do** keep Thai AD script inputs in `Sarabun` at `1rem` (`1.75` line-height) for sustained proofreading comfort.
 
 ### Don't:
-- **Don't** render full-width vertical progress banners above the workspace that shift the video player or duplicate the navbar status pill.
-- **Don't** overlay raw caption text on a fading black gradient over video; always use the translucent `Broadcast CC Pill` so white frames stay legible.
-- **Don't** use rainbow gradients, decorative drop shadows on docked panes/rows, or accent hues outside the cerulean UI / timeline-only Soft Indigo speech / amber warning / red error semantic set.
-- **Don't** cram project export buttons into the half-width script filter bar where they clip at standard desktop widths.
+- **Don't** add pane titles or full-width progress banners above the video monitor; they shrink the video and duplicate the navbar status pill and hairline bar.
