@@ -1,13 +1,17 @@
 import type { PersistedJobState } from '../types/ad';
 
+/** What `GET /api/jobs/:jobId?view=progress` returns: the Job without its VAD output and settings. */
+export type JobProgress = Pick<PersistedJobState,
+  'job_id' | 'status' | 'batches' | 'spots' | 'progress_stage' | 'progress_percent' | 'active_model' | 'error_message'>;
+
 export type JobPollEvent =
-  | { type: 'snapshot'; job: PersistedJobState }
+  | { type: 'snapshot'; job: JobProgress }
   | { type: 'ready' }
   | { type: 'failed'; message: string }
   | { type: 'start-unconfirmed'; message: string }
   | { type: 'disconnected' };
 
-type JobPollResponse = { job?: PersistedJobState; isRunning?: boolean; error?: string };
+type JobPollResponse = { job?: JobProgress; isRunning?: boolean; error?: string };
 
 export async function pollJob(options: {
   jobId: string;
@@ -31,7 +35,7 @@ export async function pollJob(options: {
     if (token.aborted) return;
 
     try {
-      const response = await request(`/api/jobs/${encodeURIComponent(jobId)}`);
+      const response = await request(`/api/jobs/${encodeURIComponent(jobId)}?view=progress`);
       const data = await parseResponse(response);
       if (token.aborted) return;
       if (!response.ok || data?.job?.job_id !== jobId || !Array.isArray(data.job.batches) || !Array.isArray(data.job.spots)) {

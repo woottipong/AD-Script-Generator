@@ -253,6 +253,11 @@ export function createJobStore(dataDir: string) {
     return found ? metaFromRow(found) : null;
   }
 
+  /** The Job's AD Spots in order, without reading its VAD file. */
+  function loadSpots(jobId: string): ADSpot[] {
+    return isJobId(jobId) ? (selectSpots.all(jobId) as JobRow[]).map(spotFromRow) : [];
+  }
+
   /** A Job without a readable VAD file is reported as missing; a database failure still throws. */
   function load(jobId: string): PersistedJobState | null {
     const found = row(jobId);
@@ -264,8 +269,7 @@ export function createJobStore(dataDir: string) {
       if (isMissing(err) || err instanceof SyntaxError) return null;
       throw err;
     }
-    const spots = (selectSpots.all(jobId) as JobRow[]).map(spotFromRow);
-    return { ...metaFromRow(found), vad_output: vadOutput, spots } as PersistedJobState;
+    return { ...metaFromRow(found), vad_output: vadOutput, spots: loadSpots(jobId) } as PersistedJobState;
   }
 
   /** VAD output never changes after the Job is created, so only the first save writes its file. */
@@ -387,5 +391,5 @@ export function createJobStore(dataDir: string) {
     db.close();
   }
 
-  return { dirOf, exists, loadMeta, load, save, rename, list, deleteJob, updateOwnerEmail, close };
+  return { dirOf, exists, loadMeta, loadSpots, load, save, rename, list, deleteJob, updateOwnerEmail, close };
 }

@@ -65,7 +65,7 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
     const request = route.request();
     const url = request.url();
     if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false } });
-    if (url.endsWith('/api/jobs/job_fixture') && request.method() === 'GET') {
+    if (new URL(url).pathname === '/api/jobs/job_fixture' && request.method() === 'GET') {
       return route.fulfill({ json: { job, isRunning: false } });
     }
     if (url.endsWith('/start')) {

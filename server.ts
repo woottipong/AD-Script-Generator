@@ -33,6 +33,7 @@ import { BatchSpotResult, buildBatchPrompt, parseBatchResponse, parseGeminiError
 import { mountAuth, readAuthConfig, type AuthConfig } from './src/utils/auth';
 import { fetchGoogleDriveSrt, GoogleDriveSrtError } from './src/utils/googleDriveSrt';
 import type { AuthorSession } from './src/utils/session';
+import type { JobProgress } from './src/utils/jobPolling';
 
 // Without its sign-in settings the server would serve every Job to anyone, so it refuses to start.
 let authConfig: AuthConfig;
@@ -680,6 +681,20 @@ async function startServer() {
 
   // 3. GET /api/jobs/:jobId — Fetch specific job state (used by fast client polling)
   app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
+    // Polling asks for `view=progress`, which skips reading the VAD file on every poll.
+    if (req.query.view === 'progress') {
+      const meta = store.loadMeta(req.params.jobId);
+      if (!meta) {
+        res.status(404).json({ error: JOB_NOT_FOUND });
+        return;
+      }
+      const { job_id, status, batches, progress_stage, progress_percent, active_model, error_message } = meta;
+      const job: JobProgress = {
+        job_id, status, batches, spots: store.loadSpots(job_id), progress_stage, progress_percent, active_model, error_message,
+      };
+      res.json({ job, isRunning: activeProcessingLock?.jobId === job_id });
+      return;
+    }
     const job = store.load(req.params.jobId);
     if (!job) {
       res.status(404).json({ error: JOB_NOT_FOUND });

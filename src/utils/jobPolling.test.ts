@@ -29,6 +29,7 @@ test('polls until ready, resumes an idle job once and keeps the start error unti
   });
   assert.equal(calls.filter((call) => call.startsWith('POST')).length, 1);
   assert.ok(calls.every((call) => call.includes('job%201')));
+  assert.ok(calls.filter((call) => call.startsWith('GET')).every((call) => call.endsWith('?view=progress')));
   assert.equal(events.filter((event) => event.type === 'start-unconfirmed').length, 3);
   assert.equal(events.at(-1)?.type, 'ready');
   assert.deepEqual(waits, [1400, 1400, 1400, 1400, 1400]);

@@ -71,6 +71,8 @@ test('a Generate Mode job round-trips through the database and its VAD file', wi
   assert.equal(meta?.title, 'งาน job_gen');
   assert.deepEqual(meta?.video_source, job.video_source);
   assert.equal(store.loadMeta('job_missing'), null);
+  assert.deepEqual(store.loadSpots('job_gen'), job.spots, 'spots load alone in their saved order');
+  assert.deepEqual(store.loadSpots('job_missing'), []);
 }));
 
 test('a Review Mode job round-trips, including its SRT source and optional spot fields', withStore((store) => {

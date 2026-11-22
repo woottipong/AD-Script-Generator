@@ -159,6 +159,10 @@ for (const route of ['single batch', 'background'] as const) for (const mode of 
       assert.equal(saved.job.status, mode === 'success' ? 'READY' : 'FAILED');
       assert.equal(saved.job.spots[1].text, 'manual edit');
       assert.equal(saved.job.spots[1].start_ms, 7200);
+      const progress = await (await request('?view=progress')).json();
+      assert.equal(progress.job.vad_output, undefined, 'the progress view leaves out the VAD output');
+      assert.deepEqual([progress.job.status, progress.job.spots, progress.job.batches, progress.isRunning],
+        [saved.job.status, saved.job.spots, saved.job.batches, false]);
       assert.equal(saved.job.batches[0].status, mode === 'success' ? 'completed' : 'failed');
       assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
       assert.equal(saved.job.gemini_file_name, undefined);
