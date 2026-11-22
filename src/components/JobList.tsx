@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -38,11 +41,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from 'cn';
 
@@ -55,9 +59,27 @@ const UPDATED_AT_FORMAT = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium'
 
 const MODE_LABEL: Record<JobMode, string> = { generate: 'สร้างบทบรรยาย', review: 'ตรวจแก้ SRT' };
 
+type ModeFilter = 'all' | JobMode;
+type SortField = 'updated_at' | 'name' | 'duration' | 'spots';
+type SortDirection = 'asc' | 'desc';
+
+const DEFAULT_SORT_DIRECTION: Record<SortField, SortDirection> = {
+  updated_at: 'desc',
+  name: 'asc',
+  duration: 'desc',
+  spots: 'desc',
+};
+
+const SKELETON_ROWS: readonly { title: string; subtitle: string | null }[] = [
+  { title: 'w-56', subtitle: 'w-36' },
+  { title: 'w-44', subtitle: null },
+  { title: 'w-64', subtitle: 'w-40' },
+  { title: 'w-48', subtitle: null },
+];
+
 type JobVisualState = {
   label: string;
-  variant: 'info' | 'info-strong' | 'destructive' | 'warning';
+  variant: 'secondary' | 'info' | 'info-strong' | 'destructive' | 'warning';
   icon: LucideIcon;
   tileIcon: LucideIcon;
   tileClass: string;
@@ -106,7 +128,7 @@ function jobVisualState(job: StoredJob): JobVisualState {
   if (job.status === 'READY') {
     return {
       label: 'พร้อมแก้',
-      variant: 'info',
+      variant: 'secondary',
       icon: CheckCircle2,
       tileIcon: modeIcon,
       tileClass: job.mode === 'review'
@@ -127,13 +149,56 @@ function jobVisualState(job: StoredJob): JobVisualState {
 
 function ModeTag({ mode, className }: { mode: JobMode; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 text-xs font-medium text-secondary-foreground', className)}>
+    <span className={cn('inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground', className)}>
       <span
         aria-hidden="true"
-        className={`size-1.5 shrink-0 rounded-full ${mode === 'generate' ? 'bg-brand-600' : 'bg-muted-foreground'}`}
+        className={`size-1.5 shrink-0 rounded-full ${mode === 'generate' ? 'bg-brand-500/80' : 'bg-muted-foreground/50'}`}
       />
       {MODE_LABEL[mode]}
     </span>
+  );
+}
+
+function SortableColumnButton({
+  label,
+  field,
+  activeField,
+  direction,
+  align = 'left',
+  disabled = false,
+  onSort,
+}: {
+  label: string;
+  field: SortField;
+  activeField: SortField;
+  direction: SortDirection;
+  align?: 'left' | 'right';
+  disabled?: boolean;
+  onSort: (field: SortField) => void;
+}) {
+  const isActive = activeField === field;
+  const Icon = isActive ? (direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onSort(field)}
+      className={cn(
+        'group/sort inline-flex min-h-6 items-center gap-1 rounded-sm py-0.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:min-h-11',
+        !disabled && 'hover:text-foreground',
+        align === 'right' && 'ml-auto flex-row-reverse',
+        isActive ? 'text-foreground' : 'text-muted-foreground',
+      )}
+    >
+      <span>{label}</span>
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          'size-3.5 shrink-0 transition-opacity',
+          isActive ? 'opacity-100' : 'opacity-0 group-hover/sort:opacity-70 group-focus-visible/sort:opacity-70',
+        )}
+      />
+    </button>
   );
 }
 
@@ -141,7 +206,7 @@ function JobStatusBadge({ status, name }: { status: JobVisualState; name: string
   const StatusIcon = status.icon;
   const badge = (
     <Badge variant={status.variant} className="h-auto min-h-5 max-w-full whitespace-normal text-left tabular-nums">
-      <StatusIcon className={status.spinning ? 'animate-spin' : undefined} aria-hidden="true" />
+      <StatusIcon className={status.spinning ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
       {status.label}
       {status.errorDetails && <ChevronDown aria-hidden="true" />}
     </Badge>
@@ -205,6 +270,9 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
   const [loading, setLoading] = useState(true);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [query, setQuery] = useState('');
+  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
+  const [sortField, setSortField] = useState<SortField>('updated_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
   const searchInput = useRef<HTMLInputElement>(null);
   const emptyNewJobButton = useRef<HTMLButtonElement>(null);
@@ -266,10 +334,60 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
     return () => window.clearTimeout(timer);
   }, [hasProcessingJobs, loading, loadJobs]);
 
+  const allJobs = jobs ?? [];
+  const { generateCount, reviewCount } = useMemo(() => {
+    let generate = 0;
+    let review = 0;
+    for (const job of jobs ?? []) {
+      if (job.is_upload) continue;
+      if (job.mode === 'generate') generate++;
+      else if (job.mode === 'review') review++;
+    }
+    return { generateCount: generate, reviewCount: review };
+  }, [jobs]);
+
   const searchTerm = query.trim().toLocaleLowerCase('th-TH');
-  const matchingJobs = (jobs ?? []).filter((job) =>
-    !searchTerm || [jobName(job), job.file_name].some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm))
-  );
+  const isFiltered = Boolean(searchTerm) || modeFilter !== 'all';
+  const matchingJobs = useMemo(() => {
+    const filtered = (jobs ?? []).filter((job) => {
+      if (modeFilter !== 'all' && (job.is_upload || job.mode !== modeFilter)) return false;
+      if (!searchTerm) return true;
+      return [jobName(job), job.file_name].some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
+    });
+    return filtered.sort((a, b) => {
+      let delta = 0;
+      if (sortField === 'name') {
+        delta = jobName(a).localeCompare(jobName(b), 'th-TH', { numeric: true, sensitivity: 'base' });
+      } else if (sortField === 'duration') {
+        const aVal = !a.is_upload && typeof a.duration_ms === 'number' ? a.duration_ms : -1;
+        const bVal = !b.is_upload && typeof b.duration_ms === 'number' ? b.duration_ms : -1;
+        delta = aVal - bVal;
+      } else if (sortField === 'spots') {
+        const aVal = typeof a.spot_count === 'number' ? a.spot_count : -1;
+        const bVal = typeof b.spot_count === 'number' ? b.spot_count : -1;
+        delta = aVal - bVal;
+      } else {
+        const aTime = Date.parse(a.updated_at);
+        const bTime = Date.parse(b.updated_at);
+        delta = (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+      }
+      return sortDirection === 'asc' ? delta : -delta;
+    });
+  }, [jobs, modeFilter, searchTerm, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(DEFAULT_SORT_DIRECTION[field]);
+    }
+    setPage(1);
+  };
+
+  const ariaSortFor = (field: SortField): 'ascending' | 'descending' | 'none' =>
+    sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
+
   const pageCount = Math.max(1, Math.ceil(matchingJobs.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -319,7 +437,9 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
             <h1 id="job-list-heading" className="text-2xl font-semibold leading-tight tracking-tight text-foreground">
               รายการงาน
             </h1>
-            {jobs && jobs.length > 0 && (
+            {jobs === null && !fetchError ? (
+              <Skeleton aria-hidden="true" className="h-5 w-16 border border-border/60 bg-secondary" />
+            ) : jobs && jobs.length > 0 && (
               <Badge variant="secondary" className="tabular-nums">
                 {jobs.length} รายการ
               </Badge>
@@ -343,7 +463,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   />
                 }
               >
-                <RefreshCw className={loading ? 'animate-spin' : undefined} aria-hidden="true" />
+                <RefreshCw className={loading ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
               </TooltipTrigger>
               <TooltipContent>รีเฟรชรายการงาน</TooltipContent>
             </Tooltip>
@@ -384,28 +504,6 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
         </Alert>
       )}
 
-      {Boolean(jobs?.length) && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <InputGroup className="w-full sm:w-80">
-            <InputGroupAddon><Search aria-hidden="true" /></InputGroupAddon>
-            <InputGroupInput
-              ref={searchInput}
-              type="search"
-              aria-label="ค้นหาชื่องานหรือชื่อไฟล์"
-              placeholder="ค้นหาชื่องานหรือชื่อไฟล์"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-            />
-          </InputGroup>
-          <p role="status" className={searchTerm ? 'text-sm text-muted-foreground' : 'sr-only'}>
-            {searchTerm ? `พบ ${matchingJobs.length} รายการ` : ''}
-          </p>
-        </div>
-      )}
-
       {jobs?.length === 0 ? (
         <Empty className="border bg-card py-16">
           <EmptyHeader>
@@ -420,169 +518,299 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
             </Button>
           </EmptyContent>
         </Empty>
-      ) : jobs && matchingJobs.length === 0 ? (
-        <Empty className="border bg-card py-12">
-          <EmptyHeader>
-            <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
-            <EmptyTitle>ไม่พบงานที่ตรงกับการค้นหา</EmptyTitle>
-            <EmptyDescription>ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button variant="outline" onClick={() => { setQuery(''); searchInput.current?.focus(); }}>
-              ล้างการค้นหา
-            </Button>
-          </EmptyContent>
-        </Empty>
       ) : (jobs || !fetchError) && (
         <div className="@container overflow-hidden rounded-lg border bg-card">
-          <Table aria-label="งานที่บันทึกไว้" aria-busy={loading} className="table-fixed">
-            <TableHeader className="bg-muted/50">
-              <TableRow className="hover:bg-transparent">
-                <TableHead scope="col" className="px-4 py-2.5 text-xs font-semibold text-muted-foreground @min-[42rem]:pl-5">ชื่องาน</TableHead>
-                <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
-                <TableHead scope="col" className="hidden w-44 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
-                <TableHead scope="col" className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">ความยาว</TableHead>
-                <TableHead scope="col" className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">บทบรรยาย</TableHead>
-                <TableHead scope="col" className="hidden w-36 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">แก้ล่าสุด</TableHead>
-                <TableHead scope="col" className="hidden w-36 px-4 text-right text-xs font-semibold text-muted-foreground @min-[42rem]:table-cell @min-[42rem]:pr-5">การทำงาน</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs === null
-                ? Array.from({ length: 3 }, (_, index) => (
-                  <TableRow key={index} aria-hidden="true" className="hover:bg-transparent">
-                    <TableCell colSpan={7} className="px-4 py-4">
-                      <Skeleton className="h-5 w-64 max-w-full" />
-                      <Skeleton className="mt-2 h-3 w-40 max-w-full" />
-                    </TableCell>
+          {jobs === null ? (
+            <div aria-hidden="true" className="flex flex-col gap-3 border-b bg-card px-4 py-3 @min-[42rem]:flex-row @min-[42rem]:flex-wrap @min-[42rem]:items-center @min-[42rem]:justify-between @min-[42rem]:px-5">
+              <Skeleton className="h-9 w-full @min-[42rem]:w-80" />
+              <Skeleton className="h-8 w-64 max-w-full" />
+            </div>
+          ) : Boolean(jobs.length) && (
+            <div className="flex flex-col gap-3 border-b bg-card px-4 py-3 @min-[42rem]:flex-row @min-[42rem]:flex-wrap @min-[42rem]:items-center @min-[42rem]:justify-between @min-[42rem]:px-5">
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <InputGroup className="w-full bg-background @min-[42rem]:w-80">
+                  <InputGroupAddon><Search aria-hidden="true" /></InputGroupAddon>
+                  <InputGroupInput
+                    ref={searchInput}
+                    type="search"
+                    aria-label="ค้นหาชื่องานหรือชื่อไฟล์"
+                    placeholder="ค้นหาชื่องานหรือชื่อไฟล์"
+                    className="[&::-webkit-search-cancel-button]:hidden"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setPage(1);
+                    }}
+                  />
+                  {query && (
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        size="icon-xs"
+                        aria-label="ล้างคำค้นหา"
+                        onClick={() => {
+                          setQuery('');
+                          setPage(1);
+                          searchInput.current?.focus();
+                        }}
+                      >
+                        <X aria-hidden="true" />
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  )}
+                </InputGroup>
+                <p role="status" className={isFiltered ? 'text-xs text-muted-foreground tabular-nums' : 'sr-only'}>
+                  {isFiltered ? `พบ ${matchingJobs.length} รายการ` : ''}
+                </p>
+              </div>
+              <ToggleGroup
+                appearance="segmented"
+                aria-label="กรองตามโหมด"
+                value={[modeFilter]}
+                onValueChange={(next) => {
+                  const chosen = next[0] as ModeFilter | undefined;
+                  if (!chosen) return;
+                  setModeFilter(chosen);
+                  setPage(1);
+                }}
+                className="max-w-full flex-wrap"
+              >
+                {([
+                  ['all', 'ทั้งหมด', allJobs.length],
+                  ['generate', MODE_LABEL.generate, generateCount],
+                  ['review', MODE_LABEL.review, reviewCount],
+                ] as const).map(([value, label, count]) => (
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    size="sm"
+                    className="h-7 gap-1.5 rounded-[5px] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
+                  >
+                    <span>{label}</span>
+                    <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+          )}
+
+          {jobs && matchingJobs.length === 0 ? (
+            <Empty className="py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
+                <EmptyTitle>{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'ไม่มีงานในโหมดนี้'}</EmptyTitle>
+                <EmptyDescription>
+                  {searchTerm ? 'ลองใช้ชื่ออื่นหรือค้นหาด้วยชื่อไฟล์ต้นฉบับ' : 'สลับตัวกรองโหมดเพื่อดูรายการงานอื่น'}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setQuery('');
+                    setModeFilter('all');
+                    setPage(1);
+                    searchInput.current?.focus();
+                  }}
+                >
+                  {searchTerm ? 'ล้างการค้นหา' : 'แสดงทั้งหมด'}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : (
+            <>
+              <Table aria-label="งานที่บันทึกไว้" aria-busy={loading} className="table-fixed">
+                <TableHeader className="bg-muted/50">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead scope="col" aria-sort={ariaSortFor('name')} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground @min-[42rem]:pl-5">
+                      <SortableColumnButton label="ชื่องาน" field="name" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
+                    <TableHead scope="col" className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
+                    <TableHead scope="col" aria-sort={ariaSortFor('duration')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
+                      <SortableColumnButton label="ความยาว" field="duration" activeField={sortField} direction={sortDirection} align="right" disabled={jobs === null} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSortFor('spots')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
+                      <SortableColumnButton label="บทบรรยาย" field="spots" activeField={sortField} direction={sortDirection} align="right" disabled={jobs === null} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSortFor('updated_at')} className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">
+                      <SortableColumnButton label="แก้ล่าสุด" field="updated_at" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead scope="col" className="hidden w-28 px-4 text-right text-xs font-semibold text-muted-foreground @min-[42rem]:table-cell @min-[42rem]:pr-5">การทำงาน</TableHead>
                   </TableRow>
-                ))
-                : pageJobs.map((job) => {
-                  const name = jobName(job);
-                  const status = jobVisualState(job);
-                  const TileIcon = status.tileIcon;
-                  const updated = formatUpdatedAt(job.updated_at);
-                  const uploadSize = job.is_upload ? formatFileSize(job.size_bytes) : '';
-                  const href = jobPath(job.job_id);
-                  const statusNode = <JobStatusBadge status={status} name={name} />;
-                  const deleteButton = (
-                    <Button
-                      variant="ghost-destructive"
-                      size="icon"
-                      disabled={job.is_processing}
-                      onClick={() => {
-                        setDeleteMessage('');
-                        setPendingDelete(job);
-                      }}
-                      aria-label={job.is_upload ? `ลบ${name} ${describeUpload(job)}` : `ลบงาน ${name}`}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </Button>
-                  );
-                  const actions = (
-                    <div className="flex items-center gap-1 @min-[42rem]:justify-end">
-                      {!job.is_upload && (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <a
-                                href={href}
-                                onClick={(event) => openJobLink(event, job.job_id)}
-                                aria-label={`เปิดงาน ${name}`}
-                                className={cn(
-                                  buttonVariants({ variant: 'ghost', size: 'icon' }),
-                                  'text-primary not-disabled:hover:bg-accent not-disabled:hover:text-primary pointer-coarse:size-11',
-                                )}
-                              />
-                            }
-                          >
-                            <ArrowRight strokeWidth={2.5} aria-hidden="true" />
-                          </TooltipTrigger>
-                          <TooltipContent>เปิดงาน</TooltipContent>
-                        </Tooltip>
-                      )}
-                      <Tooltip>
-                        <TooltipTrigger render={job.is_processing ? <span className="inline-flex">{deleteButton}</span> : deleteButton} />
-                        <TooltipContent>{job.is_processing ? 'กำลังประมวลผลอยู่ จึงยังลบไม่ได้' : 'ลบ'}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  );
-                  return (
-                    <TableRow key={job.job_id} className={status.rowClass}>
-                      <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:pl-5">
-                        <div className="flex items-start gap-3 @min-[54rem]:items-center">
-                          <span
-                            aria-hidden="true"
-                            className={`hidden size-9 shrink-0 items-center justify-center rounded-md border @min-[42rem]:inline-flex ${status.tileClass}`}
-                          >
-                            <TileIcon className="size-4" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            {job.is_upload ? (
-                              <p className="font-medium text-foreground [overflow-wrap:anywhere]">{name}</p>
-                            ) : (
-                              <a
-                                href={href}
-                                onClick={(event) => openJobLink(event, job.job_id)}
-                                className="inline-flex min-h-6 max-w-full items-center rounded-sm font-medium text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-primary hover:underline pointer-coarse:min-h-11"
-                              >
-                                {name}
-                              </a>
-                            )}
-                            {job.is_upload ? (
-                              <p className="text-xs text-muted-foreground tabular-nums">
-                                {uploadSize}
-                                {updated && <time dateTime={job.updated_at} className="before:mx-1.5 before:content-['·'] @min-[54rem]:hidden">{updated}</time>}
-                              </p>
-                            ) : job.title && job.title !== defaultJobTitle(job.file_name) && (
-                              <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{job.file_name}</p>
-                            )}
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @min-[54rem]:hidden">
-                              {statusNode}
-                              {!job.is_upload && job.mode && <ModeTag mode={job.mode} />}
+                </TableHeader>
+                <TableBody>
+                  {jobs === null
+                    ? SKELETON_ROWS.map((row, index) => (
+                      <TableRow key={index} aria-hidden="true" className="hover:bg-transparent">
+                        <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:pl-5">
+                          <div className="flex min-h-10 items-start gap-3 @min-[54rem]:items-center">
+                            <Skeleton className="hidden size-9 shrink-0 rounded-md @min-[42rem]:block" />
+                            <div className="min-w-0 flex-1">
+                              <Skeleton className={cn('h-4 max-w-full', row.title)} />
+                              {row.subtitle && <Skeleton className={cn('mt-1.5 h-3 max-w-full', row.subtitle)} />}
+                              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 @min-[54rem]:hidden">
+                                <Skeleton className="h-5 w-20" />
+                                <Skeleton className="h-3.5 w-20" />
+                              </div>
                             </div>
                           </div>
+                          <div className="mt-2 flex items-center gap-1 border-t border-border/60 pt-1 @min-[42rem]:hidden">
+                            <Skeleton className="size-9 rounded-md" />
+                            <Skeleton className="size-9 rounded-md" />
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden px-3 @min-[54rem]:table-cell">
+                          <Skeleton className="h-3.5 w-20" />
+                        </TableCell>
+                        <TableCell className="hidden px-3 @min-[54rem]:table-cell">
+                          <Skeleton className="h-5 w-20" />
+                        </TableCell>
+                        <TableCell className="hidden px-3 text-right @min-[66rem]:table-cell">
+                          <Skeleton className="ml-auto h-3.5 w-11" />
+                        </TableCell>
+                        <TableCell className="hidden px-3 text-right @min-[66rem]:table-cell">
+                          <Skeleton className="ml-auto h-3.5 w-10" />
+                        </TableCell>
+                        <TableCell className="hidden px-3 @min-[54rem]:table-cell">
+                          <Skeleton className="h-3.5 w-28" />
+                        </TableCell>
+                        <TableCell className="hidden px-4 py-3.5 @min-[42rem]:table-cell @min-[42rem]:pr-5">
+                          <div className="flex items-center justify-end gap-1">
+                            <Skeleton className="size-9 rounded-md" />
+                            <Skeleton className="size-9 rounded-md" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                    : pageJobs.map((job) => {
+                      const name = jobName(job);
+                      const status = jobVisualState(job);
+                      const TileIcon = status.tileIcon;
+                      const updated = formatUpdatedAt(job.updated_at);
+                      const uploadSize = job.is_upload ? formatFileSize(job.size_bytes) : '';
+                      const href = jobPath(job.job_id);
+                      const statusNode = <JobStatusBadge status={status} name={name} />;
+                      const deleteButton = (
+                        <Button
+                          variant="ghost-destructive"
+                          size="icon"
+                          disabled={job.is_processing}
+                          onClick={() => {
+                            setDeleteMessage('');
+                            setPendingDelete(job);
+                          }}
+                          aria-label={job.is_upload ? `ลบ${name} ${describeUpload(job)}` : `ลบงาน ${name}`}
+                          className="text-muted-foreground/70 pointer-coarse:size-11"
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </Button>
+                      );
+                      const actions = (
+                        <div className="flex items-center gap-1 @min-[42rem]:justify-end">
+                          {!job.is_upload && (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <a
+                                    href={href}
+                                    onClick={(event) => openJobLink(event, job.job_id)}
+                                    aria-label={`เปิดงาน ${name}`}
+                                    className={cn(
+                                      buttonVariants({ variant: 'ghost', size: 'icon' }),
+                                      'text-primary not-disabled:hover:bg-accent not-disabled:hover:text-primary pointer-coarse:size-11',
+                                    )}
+                                  />
+                                }
+                              >
+                                <ArrowRight strokeWidth={2.5} aria-hidden="true" />
+                              </TooltipTrigger>
+                              <TooltipContent>เปิดงาน</TooltipContent>
+                            </Tooltip>
+                          )}
+                          <Tooltip>
+                            <TooltipTrigger render={job.is_processing ? <span className="inline-flex">{deleteButton}</span> : deleteButton} />
+                            <TooltipContent>{job.is_processing ? 'กำลังประมวลผลอยู่ จึงยังลบไม่ได้' : 'ลบ'}</TooltipContent>
+                          </Tooltip>
                         </div>
-                        <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
-                      </TableCell>
-                      <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
-                        {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="hidden px-3 whitespace-normal @min-[54rem]:table-cell">
-                        {statusNode}
-                      </TableCell>
-                      <TableCell className="hidden px-3 text-right font-mono text-xs text-muted-foreground tabular-nums @min-[66rem]:table-cell">
-                        {formatDuration(job)}
-                      </TableCell>
-                      <TableCell className="hidden px-3 text-right text-xs tabular-nums @min-[66rem]:table-cell">
-                        {typeof job.spot_count === 'number' && job.spot_count > 0
-                          ? <span>{job.spot_count} จุด</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="hidden px-3 text-xs whitespace-normal text-muted-foreground tabular-nums @min-[54rem]:table-cell">
-                        {updated && <time dateTime={job.updated_at}>{updated}</time>}
-                      </TableCell>
-                      <TableCell className="hidden px-4 py-3.5 @min-[42rem]:table-cell @min-[42rem]:pr-5">{actions}</TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-          {pageCount > 1 && (
-            <nav aria-label="หน้ารายการงาน" className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 @min-[42rem]:px-5">
-              <p className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
-                {pageStart + 1}–{pageStart + pageJobs.length} จาก {matchingJobs.length} รายการ
-              </p>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="icon-sm" aria-label="หน้าก่อนหน้า" disabled={currentPage === 1} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => setPage(currentPage - 1)}>
-                  <ChevronLeft aria-hidden="true" />
-                </Button>
-                <span className="px-2 text-xs text-muted-foreground tabular-nums">หน้า {currentPage} / {pageCount}</span>
-                <Button variant="outline" size="icon-sm" aria-label="หน้าถัดไป" disabled={currentPage === pageCount} focusableWhenDisabled className="aria-disabled:opacity-50" onClick={() => setPage(currentPage + 1)}>
-                  <ChevronRight aria-hidden="true" />
-                </Button>
-              </div>
-            </nav>
+                      );
+                      return (
+                        <TableRow key={job.job_id} className={status.rowClass}>
+                          <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:pl-5">
+                            <div className="flex min-h-10 items-start gap-3 @min-[54rem]:items-center">
+                              <span
+                                aria-hidden="true"
+                                className={`hidden size-9 shrink-0 items-center justify-center rounded-md border @min-[42rem]:inline-flex ${status.tileClass}`}
+                              >
+                                <TileIcon className="size-4" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                {job.is_upload ? (
+                                  <p className="font-medium text-foreground [overflow-wrap:anywhere]">{name}</p>
+                                ) : (
+                                  <a
+                                    href={href}
+                                    onClick={(event) => openJobLink(event, job.job_id)}
+                                    className="inline-flex min-h-6 max-w-full items-center rounded-sm font-medium text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-primary hover:underline pointer-coarse:min-h-11"
+                                  >
+                                    {name}
+                                  </a>
+                                )}
+                                {job.is_upload ? (
+                                  <p className="text-xs text-muted-foreground tabular-nums">
+                                    {uploadSize}
+                                    {updated && <time dateTime={job.updated_at} className="before:mx-1.5 before:content-['·'] @min-[54rem]:hidden">{updated}</time>}
+                                  </p>
+                                ) : job.title && job.title !== defaultJobTitle(job.file_name) && (
+                                  <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{job.file_name}</p>
+                                )}
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @min-[54rem]:hidden">
+                                  {statusNode}
+                                  {!job.is_upload && job.mode && <ModeTag mode={job.mode} />}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
+                          </TableCell>
+                          <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
+                            {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="hidden px-3 whitespace-normal @min-[54rem]:table-cell">
+                            {statusNode}
+                          </TableCell>
+                          <TableCell className="hidden px-3 text-right font-mono text-xs text-muted-foreground tabular-nums @min-[66rem]:table-cell">
+                            {formatDuration(job)}
+                          </TableCell>
+                          <TableCell className="hidden px-3 text-right text-xs text-muted-foreground tabular-nums @min-[66rem]:table-cell">
+                            {typeof job.spot_count === 'number' && job.spot_count > 0
+                              ? <span>{job.spot_count} จุด</span>
+                              : <span>—</span>}
+                          </TableCell>
+                          <TableCell className="hidden px-3 text-xs whitespace-normal text-muted-foreground tabular-nums @min-[54rem]:table-cell">
+                            {updated && <time dateTime={job.updated_at}>{updated}</time>}
+                          </TableCell>
+                          <TableCell className="hidden px-4 py-3.5 @min-[42rem]:table-cell @min-[42rem]:pr-5">{actions}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+              {pageCount > 1 && (
+                <nav aria-label="หน้ารายการงาน" className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 @min-[42rem]:px-5">
+                  <p className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
+                    {pageStart + 1}–{pageStart + pageJobs.length} จาก {matchingJobs.length} รายการ
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon-sm" aria-label="หน้าก่อนหน้า" disabled={currentPage === 1} focusableWhenDisabled className="aria-disabled:opacity-50 pointer-coarse:size-11" onClick={() => setPage(currentPage - 1)}>
+                      <ChevronLeft aria-hidden="true" />
+                    </Button>
+                    <span className="px-2 text-xs text-muted-foreground tabular-nums">หน้า {currentPage} / {pageCount}</span>
+                    <Button variant="outline" size="icon-sm" aria-label="หน้าถัดไป" disabled={currentPage === pageCount} focusableWhenDisabled className="aria-disabled:opacity-50 pointer-coarse:size-11" onClick={() => setPage(currentPage + 1)}>
+                      <ChevronRight aria-hidden="true" />
+                    </Button>
+                  </div>
+                </nav>
+              )}
+            </>
           )}
         </div>
       )}

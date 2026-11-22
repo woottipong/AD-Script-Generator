@@ -2,10 +2,15 @@ async page => {
   await page.unrouteAll({ behavior: 'wait' });
   let created = null;
   let patched = null, renamed = null;
+  let rejectCreation = false;
+  let releaseCreation;
+  const creationPending = new Promise(resolve => { releaseCreation = resolve; });
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs/review') && request.method() === 'POST') {
+      if (rejectCreation) return route.fulfill({ status: 500, json: { error: 'บันทึกงานตรวจแก้ไม่สำเร็จ' } });
       created = request.postDataJSON();
+      await creationPending;
       return route.fulfill({ json: { job: { ...created, job_id: 'job_review_fixture', schema_version: 3, title: created.title, mode: 'review', status: 'READY', batches: [], created_at: '2026-11-20T00:00:00Z', updated_at: '2026-11-20T00:00:00Z' }, isRunning: false } });
     }
     if (url.endsWith('/api/jobs/job_review_fixture') && request.method() === 'PATCH') {
@@ -36,14 +41,26 @@ async page => {
   await titleField.fill('ตรวจบท ตอนที่ 1');
   await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles('/tmp/ad-review-1080p.mp4');
   assert(await titleField.inputValue() === 'ตรวจบท ตอนที่ 1', 'Choosing the video again keeps a typed title');
-  await process.click();
   const firstLine = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
-  await firstLine.waitFor({ timeout: 60000 });
-  for (let i = 0; i < 100 && !created; i++) await page.waitForTimeout(50);
-  assert(created, 'Review Mode job was created on the server');
-  assert(created.title === 'ตรวจบท ตอนที่ 1', 'The typed Job Title is sent when the Job is created');
+  const editingTitle = page.getByRole('textbox', { name: 'ชื่องาน', exact: true });
+  try {
+    await process.click();
+    await firstLine.waitFor({ timeout: 60000 });
+    for (let i = 0; i < 100 && !created; i++) await page.waitForTimeout(50);
+    assert(created, 'Review Mode job was sent to the server');
+    assert(created.title === 'ตรวจบท ตอนที่ 1', 'The typed Job Title is sent when the Job is created');
+    await page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1', exact: true }).click();
+    await editingTitle.fill('ตรวจบท ตอนที่ 1 ระหว่างสร้าง');
+    await editingTitle.press('Tab');
+    assert(!(await editingTitle.isEditable()) && renamed === null, 'Leaving the title field queues the rename until the Job exists');
+  } finally {
+    releaseCreation();
+  }
   for (let i = 0; i < 100 && new URL(page.url()).pathname !== '/jobs/job_review_fixture'; i++) await page.waitForTimeout(50);
   assert(new URL(page.url()).pathname === '/jobs/job_review_fixture', 'The new Job opens at its own URL');
+  const queuedTitle = page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1 ระหว่างสร้าง', exact: true });
+  await queuedTitle.waitFor();
+  assert(renamed === 'ตรวจบท ตอนที่ 1 ระหว่างสร้าง', 'The queued title saves once the server creates the Job');
   assert(created.video_source.kind === 'local_file' && created.video_source.file_name === 'ad-review-1080p.mp4', 'Video source is the local file');
   assert(created.video_metadata.height === 1080, '1080p video is accepted');
   assert(created.vad_output.waveform && created.vad_output.waveform.peaksBase64.length > 0, 'Audio of a moov-at-end MP4 was decoded');
@@ -96,13 +113,33 @@ async page => {
   for (let i = 0; i < 100 && !patched; i++) await page.waitForTimeout(50);
   assert(patched && patched[0].text === 'ชายเปิดประตูห้อง', 'Text edit is saved to the Review Mode job');
   await page.getByText('บันทึกบนเซิร์ฟเวอร์แล้ว').waitFor();
-  await page.getByRole('button', { name: 'รายละเอียดงาน: ตรวจบท ตอนที่ 1' }).click();
-  const rename = page.locator('#job-title');
-  await rename.fill('ตรวจบท ตอนที่ 1 (แก้)');
-  await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
+  await queuedTitle.click();
+  await editingTitle.fill('ตรวจบท ตอนที่ 1 (แก้)');
+  await editingTitle.press('Tab');
   await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
   assert(renamed === 'ตรวจบท ตอนที่ 1 (แก้)', 'Renaming in the editor saves the Job Title');
-  assert(await page.getByRole('button', { name: 'รายละเอียดงาน: ตรวจบท ตอนที่ 1 (แก้)' }).count() === 1, 'The header shows the new title');
-  await page.keyboard.press('Escape');
-  return { titled: true, renamed: true, modeChooser: true, reviewJobCreated: true, generateHidden: true, warnings: warningCount, skippedReported: true, savedEdit: true };
+  assert(await page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1 (แก้)', exact: true }).isVisible(), 'The header shows the new title');
+
+  rejectCreation = true;
+  await page.goto('http://127.0.0.1:4173/new');
+  await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
+  await page.getByLabel('เลือกไฟล์ SRT').setInputFiles('/tmp/ad-review.srt');
+  await page.getByText('ad-review.srt', { exact: true }).waitFor();
+  await page.getByLabel('เลือกวิดีโอ MP4').setInputFiles('/tmp/ad-review-1080p.mp4');
+  await page.getByText('ad-review-1080p.mp4', { exact: true }).waitFor();
+  await process.click();
+  await page.getByText(/บันทึกงานตรวจแก้ไม่สำเร็จ/).waitFor({ timeout: 60000 });
+  const header = page.getByRole('banner');
+  await header.getByRole('button', { name: 'เปลี่ยนชื่องาน: ad-review-1080p', exact: true }).click();
+  await editingTitle.fill('ชื่องานเฉพาะในหน้านี้');
+  await editingTitle.press('Tab');
+  const localTitle = header.getByRole('button', { name: 'เปลี่ยนชื่องาน: ชื่องานเฉพาะในหน้านี้', exact: true });
+  const localNotice = localTitle.getByText('ชื่ออยู่เฉพาะในหน้านี้', { exact: true });
+  await localNotice.waitFor();
+  await localTitle.click();
+  await editingTitle.fill('ชื่อที่ยกเลิก');
+  await editingTitle.press('Escape');
+  await localNotice.waitFor();
+  assert(renamed === 'ตรวจบท ตอนที่ 1 (แก้)' && new URL(page.url()).pathname === '/new', 'Cancelling an edit keeps the original local-only title');
+  return { titled: true, renamed: true, localTitleRestored: true, modeChooser: true, reviewJobCreated: true, generateHidden: true, warnings: warningCount, skippedReported: true, savedEdit: true };
 }

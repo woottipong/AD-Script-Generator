@@ -130,7 +130,7 @@ The system is intentionally flat and restrained. Structure comes from crisp 1px 
 ## Brand
 
 - **Name:** `TCC Envisio`, always with the `TCC` house mark. `TCC` takes `brand-700`, `Envisio` takes `slate-900`, both 700 weight.
-- **Tagline (navbar, page title):** `สร้างและตรวจแก้บทบรรยายภาพ`, 13px 500 `slate-600`, hidden below `sm`. It names what the app does and changes only when capabilities change (for example `เขียนบท สร้างเสียง ส่งออกงานบรรยายภาพ` once voice generation ships).
+- **Tagline (Job List and intake navbar, page title):** `สร้างและตรวจแก้บทบรรยายภาพ`, 13px 500 `slate-600`, hidden below `sm`. It names what the app does and changes only when capabilities change (for example `เขียนบท สร้างเสียง ส่งออกงานบรรยายภาพ` once voice generation ships).
 - **Slogan (README, meta description, presentations):** `ให้ทุกภาพมีเสียงเล่า`. It stays out of the working UI.
 - **Logo:** a `brand-700` rounded-square tile (16px radius on a 64 grid) holding a white camera-viewfinder frame around a soundwave, with the centre bar in `sky-300` (`#7dd3fc`) marking the narration cue. `public/logo.svg` is the full mark (navbar, touch icon); `public/icon.svg` and `favicon.ico` are a simplified three-bar cut with heavier strokes so the tab icon stays legible at 16px.
 
@@ -171,7 +171,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 
 ### Hierarchy
 - **Headline** (600, `1.5rem` / 24px, line-height `1.25`): Page headings (`รายการงาน` and `/new` intake heading `เริ่มงานบทบรรยายภาพ`), paired with a concise `text-sm` `muted-foreground` subtitle.
-- **Title** (700, `1rem` / 16px, line-height `1.35`): Navbar wordmark (`TCC Envisio`, with `TCC` in `brand-700` and the tagline `สร้างและตรวจแก้บทบรรยายภาพ` beneath in 13px `slate-500`) and dialog/empty-state headings.
+- **Title** (700, `1rem` / 16px, line-height `1.35`): The editable Job Title in the editor navbar, the TCC Envisio wordmark in the Job List and intake, and dialog and empty-state headings.
 - **Script Body** (400, `1rem` / 16px, line-height `1.75`): Editable Thai AD script textareas and preview text.
 - **Body** (400, `0.9375rem` / 15px, line-height `1.5`): General UI descriptions, intake guidance, and validation messages.
 - **Label** (500, `0.8125rem` / 13px, line-height `1.5`): Buttons, status pills, filter selects, search inputs, and spot metadata.
@@ -186,7 +186,7 @@ The palette pairs a single broadcast cerulean accent with cool paper and darkroo
 
 Desktop-first NLE split workspace locked to the viewport (`100dvh`, `overflow-hidden` at `lg: 1024px+`) while degrading cleanly to a vertical scroll stack on smaller screens.
 
-- **Top Command Navbar (`min-h-16` / 64px):** Sticky white bar with a 1px cerulean hairline bottom border. Left holds the logo and wordmark; right holds the video file disclosure, live Status Pill, primary project CTA (`สร้างบทบรรยายภาพ` before generation, `ส่งออก SRT` once spots exist), and the `จัดการ` menu.
+- **Top Command Navbar (`min-h-16` / 64px):** A white bar with a 1px cerulean hairline bottom border. In the editor, the Job List logo link sits beside the editable Job Title and the video information icon. A quiet status disclosure and the `จัดการงาน` ellipsis flank the primary action (`สร้างบทบรรยายภาพ`, `ทำต่อจากชุดที่ค้าง`, or `ส่งออก SRT`). On narrow screens, the actions move to a second row and use shorter status labels.
 - **Hairline Progress Track (`3px`):** Anchored flush to the bottom edge of the navbar (`position: absolute; top: 0`) so processing states consume `0px` of vertical workspace height and cause zero layout shift.
 - **Left Pane (`6 cols` on `lg`):** Unobstructed dark video monitor starting directly beneath the navbar (no redundant pane header), floating Broadcast CC Pill at the bottom edge of the video frame, pure-white transport control bar (`-5s`, `-1s`, Play/Pause, `+1s`, `+5s`, prev/next spot, soft-active Loop/CC/Mute toggles, timecode), slim cool-slate timeline utility bar (`ช่วง X/Y`, 3-dot legend, live hover/drag timecode, Zoom controls), and an edge-to-edge 3-track timeline (`คลื่นเสียง` 56px, `เสียงพูด` 28px, `บรรยาย` 56px).
 - **Right Pane (`6 cols` on `lg`):** Compact single-row Search + Filter toolbar (`44px` / `py-2`) above an edge-to-edge white editorial list (`divide-y divide-slate-200`) resting on `cool-paper-canvas` below the final item.
@@ -236,13 +236,13 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 - **Inline & Strip Notices (`Alert`):** `variant="destructive"` (error surface, ink, and border) for blocking validation and timestamp errors; `variant="warning"` (amber surface, ink, and border) for non-blocking notices; `placement="strip"` (full-width flush bar under the navbar, paired with `Collapsible` when details expand) for unfinished analysis, local video relink prompts, and unimported SRT lines.
 
 ### Overlays, Menus & Dialogs
-- **Menus (`DropdownMenu`):** White surface, `ring-1 ring-foreground/10`, Overlay Elevation shadow (`shadow-md`), keyboard navigation, Escape/outside-click dismissal, and focus return (`จัดการ` navbar menu and editor `ต้องตรวจ` jump menu). Uses `DropdownMenuItem variant="primary"` for primary filter links and `variant="destructive"` for delete actions.
-- **Disclosures (`Popover`):** White surface with Overlay Elevation shadow for structured header panels (`รายละเอียดงาน` with inline rename form and video metadata; `รายละเอียดการทำงาน` status pill queue panel). Triggers carry a `ChevronDown` that rotates 180° when open.
+- **Menus (`DropdownMenu`):** White surface, `ring-1 ring-foreground/10`, Overlay Elevation shadow (`shadow-md`), keyboard navigation, Escape and outside-click dismissal, and focus return for the `จัดการงาน` navbar menu and `ต้องตรวจ` jump menu. Uses `DropdownMenuItem variant="primary"` for primary filter links and `variant="destructive"` for delete actions.
+- **Disclosures (`Popover`):** White surface with Overlay Elevation shadow for the `ข้อมูลวิดีโอ` metadata popover and `รายละเอียดการทำงาน` queue panel. The information icon previews the original filename and duration on hover or focus and opens the full details on click or tap.
 - **Confirmations (`AlertDialog`):** The Job List confirms file and Job deletion in its own modal. The workspace shares an app-level confirmation for leaving unsaved edits and resetting or replacing a video.
 - **Tooltips (`Tooltip`):** Dark compact shortcut hints (`Alt + P`, `Alt + ↑/↓`, seek/zoom controls) replacing native browser `title` attributes across the player transport and zoom bar.
 
 ### Inputs, Search Toolbar & Forms
-- **Form Fields (`Field` + `Input`):** `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` structure intake inputs and the header rename form. `Input` uses `pure-surface` fill, `1px` `border-input`, `6px` radius, `36px` (`h-9`) height, shifting border to `studio-cerulean-active` with a matching ring on focus.
+- **Form Fields (`Field` + `Input`):** `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` structure intake inputs. `Input` uses `pure-surface` fill, `1px` `border-input`, `6px` radius, and `36px` (`h-9`) height, with a focus ring. Hovering over the editor Job Title shows a subtle border and the `แก้ไขชื่อ` tooltip. Activating it opens a field with the same typography and inset. Enter or leaving the field saves an edited title. Escape discards the draft. A check marks server acknowledgement. Local-only titles keep a visible label. Save errors appear beneath the header without changing its height.
 - **Search & Filter Toolbar (`InputGroup` + `Select`):** Single-row `44px` editorial bar inside the right pane. `InputGroup` (`flex-1`, `36px` height) houses a leading `14px` magnifying glass `InputGroupAddon` and `InputGroupInput` (`type="search"`). Beside it sits a `Select` (`w-36 sm:w-40`, `36px` `SelectTrigger` with `SelectContent` popup) filtering spots (`ทั้งหมด`, `มีบทบรรยาย`, `รอสร้าง`, `ข้ามการบรรยาย`, `แก้ไขแล้ว`, `ต้องตรวจ`) with live counts.
 - **Script Textarea (`Textarea`):** `variant="default"` uses `field-sizing-content` for standard forms; `variant="script"` enforces the Looped-Script Rule (`Sarabun` `1rem / 1.75` line-height), disables automatic field-sizing in favour of `useLayoutEffect` auto-grow with scroll compensation, softens focus to a `2px` `brand-100` ring, and renders skipped drafts in a disabled muted surface (`bg-muted/80 text-slate-400`) so authors never mistake a skipped draft for deleted work.
 
@@ -254,7 +254,7 @@ Compact, tactile controls with clear visual hierarchy between primary project ac
 
 ### Status Pill & Hairline Progress Bar
 Zero-shift asynchronous status indicator combining a compact header `Button` (`PopoverTrigger` opening `รายละเอียดการทำงาน`) with an edge-pinned `3px` progress line.
-- **Pill Style:** Active processing uses `studio-cerulean-tint` background, `1px solid studio-cerulean-border`, `studio-cerulean-ink` text, `6px` radius, `40px` height (`size="lg"`), displaying spinner, task title, active batch index, percentage, and elapsed time in `tabular-nums`. Completed (`READY`) state steps down to calm neutral slate (`bg-slate-100 border-slate-200 text-slate-700`) so `ส่งออก SRT` remains the single cerulean CTA on the navbar.
+- **Pill Style:** The 44px status button shows the task, spinner, and available progress. Batch index, percentage, and elapsed time use `tabular-nums`. Active processing uses the tinted brand surface. Idle statuses use muted text on the navbar.
 - **Hairline Bar:** `3px` track flush beneath the navbar. Uses a Material Design 3 two-segment indeterminate sweep at `0%` / unknown progress, transitioning to a determinate cerulean gradient fill with a soft shimmer sweep and leading highlight when `> 0%`. Respects `prefers-reduced-motion: reduce`.
 
 ### Script Spot Row
@@ -279,7 +279,7 @@ Floating closed-caption preview docked `12px` above the bottom edge of the video
 
 ### Do:
 - **Do** keep the left video monitor free of redundant pane titles or full-width progress banners so video height stays maximized.
-- **Do** place project-level deliverables (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `จัดการ`) in the top command navbar and reserve pane toolbars strictly for local filtering and playback.
+- **Do** place project-level commands (`สร้างบทบรรยายภาพ`, `ส่งออก SRT`, `จัดการงาน`) in the top command navbar and reserve pane toolbars strictly for local filtering and playback.
 - **Do** use `tabular-nums` on every timecode, percentage, character count, and elapsed timer.
 - **Do** honor `prefers-reduced-motion: reduce` by disabling spinner and progress-bar sweep animations.
 - **Do** keep Thai AD script inputs in `Sarabun` at `1rem` (`1.75` line-height) for sustained proofreading comfort.

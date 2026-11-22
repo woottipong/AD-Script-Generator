@@ -10,6 +10,7 @@ async page => {
     { job_id: 'job_upload', file_name: 'อัปโหลดไม่เสร็จ (job_upload)', updated_at: '2026-11-17T03:00:00Z', size_bytes: 99, is_upload: true, is_processing: false },
   ];
   let deleted = [], listFails = false, listRequests = 0, nextListResponse;
+  let renameRequests = 0, nextRenameResponse;
   await page.route('**/api/**', async route => {
     const request = route.request(), url = request.url();
     if (url.endsWith('/api/jobs')) {
@@ -22,6 +23,10 @@ async page => {
     }
     if (url.endsWith('/api/jobs/job_old') && request.method() === 'GET') return route.fulfill({ json: { job, isRunning: false } });
     if (url.endsWith('/api/jobs/job_old') && request.method() === 'PATCH') {
+      renameRequests++;
+      const pending = nextRenameResponse;
+      nextRenameResponse = undefined;
+      if (pending && !(await pending)) return route.fulfill({ status: 500, json: { error: 'บันทึกชื่อไม่สำเร็จ' } });
       job.title = request.postDataJSON().title;
       jobs = jobs.map((item) => item.job_id === 'job_old' ? { ...item, title: job.title } : item);
       return route.fulfill({ json: { job } });
@@ -36,11 +41,21 @@ async page => {
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
 
+  let releaseInitialList;
+  nextListResponse = new Promise(resolve => { releaseInitialList = resolve; });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('http://127.0.0.1:4173/');
   const list = page.getByRole('table', { name: 'งานที่บันทึกไว้' });
+  const skeletons = page.locator('[data-slot="skeleton"]');
+  await list.waitFor();
+  await skeletons.first().waitFor();
+  assert(await list.getAttribute('aria-busy') === 'true', 'Initial list load marks the table busy');
+  assert(await skeletons.filter({ visible: true }).count() >= 4, 'Initial loading renders visible skeleton placeholders');
+  assert(await list.getByRole('link').count() === 0, 'No job links appear while loading skeletons are shown');
+  releaseInitialList();
   const listed = () => page.getByRole('link', { name: /^เปิดงาน (old\.mp4|งานเก่าที่เปลี่ยนชื่อ)$/ }).first().waitFor();
   await listed();
+  assert(await skeletons.count() === 0, 'Skeleton placeholders clear once jobs load');
   const rows = list.locator('tbody tr');
   assert(await rows.count() === 4, 'Every Job and Unfinished Upload is listed');
   const heightOf = async (locator) => Math.round((await locator.boundingBox()).height);
@@ -59,6 +74,26 @@ async page => {
   assert((await uploadRow.innerText()).includes('0.1 KB'), 'An upload shows its size before deletion');
 
   const search = page.getByRole('searchbox', { name: 'ค้นหาชื่องานหรือชื่อไฟล์' });
+  const modeGroup = page.getByRole('group', { name: 'กรองตามโหมด' });
+  await modeGroup.getByRole('button', { name: /ตรวจแก้ SRT/ }).click();
+  assert(await rows.count() === 1 && (await rows.first().textContent()).includes('บทเรียนที่ 1'), 'Mode filter narrows to Review Mode Jobs');
+  await modeGroup.getByRole('button', { name: /ทั้งหมด/ }).click();
+  assert(await rows.count() === 4, 'All mode filter restores every Job');
+
+  const durationHeader = list.getByRole('columnheader', { name: 'ความยาว' });
+  await durationHeader.getByRole('button', { name: 'ความยาว' }).click();
+  assert(await durationHeader.getAttribute('aria-sort') === 'descending' && (await rows.first().textContent()).includes('old.mp4'), 'Sorting by duration puts the longest Job first');
+  await durationHeader.getByRole('button', { name: 'ความยาว' }).click();
+  assert(await durationHeader.getAttribute('aria-sort') === 'ascending' && (await rows.first().textContent()).includes('#upload'), 'Toggling duration sort puts the shortest or unmeasured row first');
+  const updatedHeader = list.getByRole('columnheader', { name: 'แก้ล่าสุด' });
+  await updatedHeader.getByRole('button', { name: 'แก้ล่าสุด' }).click();
+  assert(await updatedHeader.getAttribute('aria-sort') === 'descending' && (await rows.first().textContent()).includes('old.mp4'), 'Sorting by last updated restores newest-first order');
+
+  await search.fill('lesson');
+  assert(await rows.count() === 1, 'Search filters matching Jobs');
+  await page.locator('button[aria-label="ล้างคำค้นหา"]').click();
+  assert(await search.inputValue() === '' && await search.evaluate(el => el === document.activeElement) && await rows.count() === 4, 'Clear-search button empties and focuses the field and restores all rows');
+
   const uploadDelete = page.getByRole('button', { name: /^ลบไฟล์อัปโหลด #upload ขนาด 0\.1 KB อัปเดตล่าสุด/ });
   const refresh = page.getByRole('button', { name: 'รีเฟรชรายการงาน' });
   const confirmDialog = page.getByRole('alertdialog', { name: 'ยืนยันการลบงาน' });
@@ -108,21 +143,88 @@ async page => {
 
   await page.getByRole('link', { name: 'เปิดงาน old.mp4' }).click();
   await line.waitFor();
-  const details = page.getByRole('button', { name: 'รายละเอียดงาน: old' });
-  await details.click();
-  await page.locator('#job-title').fill('งานเก่าที่เปลี่ยนชื่อ');
-  await page.getByRole('button', { name: 'บันทึกชื่อ' }).click();
-  await page.getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว').waitFor();
+  const header = page.getByRole('banner');
+  const headerHeights = async () => {
+    const heights = [];
+    for (const width of [320, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      heights.push(await heightOf(header));
+    }
+    return heights.join(', ');
+  };
+  const idleHeaderHeights = await headerHeights();
+  const titleButton = page.getByRole('button', { name: 'เปลี่ยนชื่องาน: old', exact: true });
+  const rename = page.getByRole('textbox', { name: 'ชื่องาน', exact: true });
+  const idleBorder = await titleButton.evaluate(el => getComputedStyle(el).borderColor);
+  await titleButton.hover();
+  await page.getByRole('tooltip').filter({ hasText: /^แก้ไขชื่อ$/ }).waitFor();
+  assert(await titleButton.evaluate(el => getComputedStyle(el).borderColor) !== idleBorder, 'Hover reveals a border around the title');
+  await titleButton.focus();
+  await titleButton.press('Enter');
+  assert(await rename.evaluate(el => el === document.activeElement), 'Opening inline rename focuses the title field');
+  await rename.fill('ชื่อที่ยกเลิก');
+  const info = page.getByRole('button', { name: 'ข้อมูลวิดีโอ', exact: true });
+  assert(await header.getByRole('button', { name: /^(บันทึกชื่อ|ยกเลิกการเปลี่ยนชื่อ)$/ }).count() === 0, 'The title editor has no confirmation buttons');
+  await rename.press('Escape');
+  await rename.waitFor({ state: 'hidden' });
+  assert(await titleButton.evaluate(el => el === document.activeElement), 'Escape discards the draft and returns focus to the title');
+  assert(renameRequests === 0, 'Cancelling rename sends no PATCH');
+
+  await titleButton.click();
+  assert(await rename.inputValue() === 'old', 'Reopening rename starts with the saved title');
+  await rename.fill('งานเก่าที่เปลี่ยนชื่อ');
+  let finishRename;
+  nextRenameResponse = new Promise(resolve => { finishRename = resolve; });
+  try {
+    await header.click({ position: { x: 700, y: 24 } });
+    await page.getByText('กำลังบันทึกชื่อ…', { exact: true }).waitFor();
+    assert(!(await rename.isEditable()), 'The title stays read-only while saving');
+    const savingHeights = await headerHeights();
+    assert(savingHeights === idleHeaderHeights, `Saving a title must keep the header height at 320px and 1440px (${idleHeaderHeights} → ${savingHeights})`);
+  } finally {
+    finishRename(false);
+  }
+  await page.getByText('บันทึกชื่อไม่สำเร็จ', { exact: true }).waitFor();
+  assert(await rename.inputValue() === 'งานเก่าที่เปลี่ยนชื่อ', 'A failed save keeps the typed title');
+  assert(await headerHeights() === idleHeaderHeights, 'A failed rename does not expand the header');
+  const logo = header.getByRole('link', { name: 'TCC Envisio รายการงาน' });
+  await logo.click();
+  const leaveTitle = page.getByRole('alertdialog', { name: 'กลับไปรายการงาน?' });
+  await leaveTitle.getByText('ชื่องานที่แก้ยังไม่ได้บันทึกและจะหายไป', { exact: true }).waitFor();
+  await leaveTitle.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
+  await leaveTitle.waitFor({ state: 'hidden' });
+  assert(await rename.inputValue() === 'งานเก่าที่เปลี่ยนชื่อ', 'Staying in the editor preserves the failed rename draft');
+  await rename.press('Enter');
+  const saveAcknowledgement = header.getByRole('status').getByText('บันทึกชื่อบนเซิร์ฟเวอร์แล้ว', { exact: true });
+  await saveAcknowledgement.waitFor();
+  assert(await headerHeights() === idleHeaderHeights, 'A saved title does not expand the header');
+  assert(renameRequests === 2, 'Retry submits exactly one new rename request');
+  const renamedTitle = page.getByRole('button', { name: 'เปลี่ยนชื่องาน: งานเก่าที่เปลี่ยนชื่อ', exact: true });
+  assert(await renamedTitle.getAttribute('aria-describedby') === await saveAcknowledgement.getAttribute('id'), 'The title exposes the server acknowledgement');
+  assert(await renamedTitle.evaluate(el => el === document.activeElement), 'Successful rename returns focus to the new title');
+
+  const summary = page.getByRole('tooltip').filter({ hasText: 'old.mp4' });
+  await info.hover();
+  await summary.getByText('old.mp4', { exact: true }).waitFor();
+  assert(await info.getAttribute('aria-describedby') === await summary.getAttribute('id'), 'The info button describes the hover summary');
+  await page.mouse.move(0, 150);
+  await summary.waitFor({ state: 'hidden' });
+  await renamedTitle.focus();
+  await page.keyboard.press('Tab');
+  await summary.getByText('old.mp4', { exact: true }).waitFor();
+  await info.click();
+  const videoDetails = page.getByRole('dialog', { name: 'ข้อมูลวิดีโอ', exact: true });
+  await videoDetails.getByText('old.mp4', { exact: true }).waitFor();
+  await videoDetails.getByText('854 × 480', { exact: true }).waitFor();
   await page.keyboard.press('Escape');
-  await page.locator('#job-title').waitFor({ state: 'hidden' });
-  const renamedDetails = page.getByRole('button', { name: 'รายละเอียดงาน: งานเก่าที่เปลี่ยนชื่อ' });
-  assert(await renamedDetails.evaluate((el) => el === document.activeElement), 'Escape closes the Job details and returns focus to its button');
+  await videoDetails.waitFor({ state: 'hidden' });
+  assert(await info.evaluate(el => el === document.activeElement), 'Escape returns focus to the video information button');
   const statusPill = page.getByRole('button', { name: /ดูรายละเอียดการทำงาน$/ });
   await statusPill.click();
   await page.getByRole('heading', { name: 'รายละเอียดการทำงาน' }).waitFor();
   await page.keyboard.press('Escape');
   await page.getByRole('heading', { name: 'รายละเอียดการทำงาน' }).waitFor({ state: 'hidden' });
-  await page.getByRole('link', { name: 'TCC Envisio รายการงาน' }).click();
+  await logo.click();
   await listed();
   assert(new URL(page.url()).pathname === '/', 'The logo leads back to the Job List');
   await page.getByRole('link', { name: 'เปิดงาน งานเก่าที่เปลี่ยนชื่อ' }).waitFor();

@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
@@ -22,10 +22,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Ellipsis,
   FileText,
   FileVideo,
-  Layers,
-  List,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -96,8 +95,6 @@ interface UploadAndVadPanelProps {
   onRetryFailedBatches: () => void;
   onResetJob: () => void;
   onOpenJobList: () => void;
-  jobTitle: string;
-  onRenameJob: (title: string) => Promise<'saved' | 'local'>;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
   onExportSrt: () => void;
   errorMessage: string | null;
@@ -124,34 +121,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onRetryFailedBatches,
   onResetJob,
   onOpenJobList,
-  jobTitle,
-  onRenameJob,
   onSelectSpot,
   onExportSrt,
   errorMessage,
 }) => {
   const isReview = mode === 'review';
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [titleDraft, setTitleDraft] = useState(jobTitle);
-  const [renameState, setRenameState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'local' | 'error'; message?: string }>({ status: 'idle' });
-  useEffect(() => {
-    setTitleDraft(jobTitle);
-  }, [jobTitle]);
-  const renameJob = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setRenameState({ status: 'saving' });
-    try {
-      setRenameState({ status: await onRenameJob(titleDraft) });
-    } catch (err) {
-      setRenameState({ status: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
-  };
   const [isDragging, setIsDragging] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const { file: stagedFile, title: typedTitle } = draft;
   const resolvedTitle = typedTitle ?? (stagedFile ? defaultJobTitle(stagedFile.name) : '');
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
-  const [isWideHeader, setIsWideHeader] = useState(false);
   const [activityElapsedMs, setActivityElapsedMs] = useState(0);
 
   const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
@@ -172,16 +152,6 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     const timer = setInterval(() => setActivityElapsedMs(Date.now() - startedAt), 1000);
     return () => clearInterval(timer);
   }, [hasLoadedProject, activityFeedback?.title]);
-
-  useEffect(() => {
-    if (!hasLoadedProject) return;
-    // Match keyboard order to the header layout without duplicating its controls.
-    const query = window.matchMedia('(min-width: 1024px)');
-    const updateLayout = () => setIsWideHeader(query.matches);
-    updateLayout();
-    query.addEventListener('change', updateLayout);
-    return () => query.removeEventListener('change', updateLayout);
-  }, [hasLoadedProject]);
 
   const stageVideo = (files: FileList | null) => {
     const selection = selectIntakeFile(files, isMp4File, 'กรุณาเลือกไฟล์วิดีโอ MP4');
@@ -245,22 +215,25 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     (!videoFile && batches.length > 0 && completedBatchesCount < batches.length);
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
-  const fileName = videoMetadata?.fileName || videoFile?.name || 'วิดีโอโปรเจกต์';
+  const showPrimaryGenerate = canShowGenerate && !isBusy && !isRegenerating;
+  const canExport = generatedSpotsCount > 0 && !isBusy;
+  const hasStatusError = Boolean(errorMessage) || failedBatchesCount > 0;
+  const idleStatus = hasStatusError
+    ? { full: 'ต้องตรวจสอบการทำงาน', compact: 'มีปัญหา' }
+    : isReview
+    ? { full: `ตรวจแก้ SRT · ${spots.length} บรรทัด`, compact: `${spots.length} บรรทัด` }
+    : status === 'READY'
+    ? { full: 'วิเคราะห์เสร็จแล้ว', compact: 'เสร็จแล้ว' }
+    : vadOutput?.candidate_spots.length === 0
+    ? { full: 'ไม่พบช่วงว่าง', compact: 'ไม่พบช่วงว่าง' }
+    : needsResume
+    ? { full: 'มีงานที่ยังไม่เสร็จ', compact: 'งานค้าง' }
+    : vadOutput
+    ? { full: `พร้อมสร้าง · ${vadOutput.candidate_spots.length} ช่วง`, compact: 'พร้อมสร้าง' }
+    : { full: 'กำลังเตรียมวิดีโอ', compact: 'เตรียมวิดีโอ' };
   const statusText = activityFeedback
     ? `${activityFeedback.title}${activityFeedback.percent !== undefined ? ` ${activityFeedback.percent}%` : ''}`
-    : errorMessage || failedBatchesCount > 0
-    ? 'ต้องตรวจสอบการทำงาน'
-    : isReview
-    ? `ตรวจแก้ SRT · ${spots.length} บรรทัด`
-    : status === 'READY'
-    ? 'วิเคราะห์เสร็จแล้ว'
-    : vadOutput?.candidate_spots.length === 0
-    ? 'ไม่พบช่วงว่าง'
-    : needsResume
-    ? 'มีงานที่ยังไม่เสร็จ'
-    : vadOutput
-    ? `พร้อมสร้าง · ${vadOutput.candidate_spots.length} ช่วง`
-    : 'กำลังเตรียมวิดีโอ';
+    : idleStatus.full;
 
   // If no video is loaded yet, show a clean studio intake workspace bar
   if (!hasLoadedProject) {
@@ -374,67 +347,27 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
     );
   }
 
-  const projectControls = (
-    <div key="project-controls" className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:justify-end">
-      <Popover>
-        <PopoverTrigger render={<Button variant="ghost" size="lg" className="min-w-0 flex-1 basis-36 justify-start lg:max-w-xs" aria-label={`รายละเอียดงาน: ${jobTitle || fileName}`} />}>
-          <FileVideo data-icon="inline-start" aria-hidden="true" />
-          <span className="truncate">{jobTitle || fileName}</span>
-          <ChevronDown data-icon="inline-end" aria-hidden="true" />
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 gap-0 p-4">
-          <form onSubmit={(event) => void renameJob(event)} className="mb-2 flex flex-col gap-1.5 border-b border-border pb-4">
-            <Field data-invalid={renameState.status === 'error' || undefined}>
-              <FieldLabel htmlFor="job-title">ชื่องาน</FieldLabel>
-              <div className="flex gap-2">
-                <Input id="job-title" type="text" value={titleDraft} maxLength={120} onChange={(event) => { setTitleDraft(event.target.value); setRenameState({ status: 'idle' }); }} aria-invalid={renameState.status === 'error'} className="min-w-0 flex-1" />
-                <Button type="submit" disabled={!titleDraft.trim() || titleDraft.trim() === jobTitle || renameState.status === 'saving'}>บันทึกชื่อ</Button>
-              </div>
-              {renameState.status === 'error'
-                ? <FieldError>{renameState.message}</FieldError>
-                : (
-                  <FieldDescription role="status">
-                    {renameState.status === 'saving' ? 'กำลังบันทึกชื่อ…'
-                      : renameState.status === 'saved' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
-                      : renameState.status === 'local' ? 'ชื่อนี้จะบันทึกเมื่อสร้างงานบนเซิร์ฟเวอร์'
-                      : ''}
-                  </FieldDescription>
-                )}
-            </Field>
-          </form>
-          <p className="[overflow-wrap:anywhere] font-semibold text-foreground">{fileName}</p>
-          {videoMetadata && <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-muted-foreground">
-            <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-foreground">{videoMetadata.width} × {videoMetadata.height}</dd>
-            <dt>ความยาว</dt><dd className="text-right tabular-nums text-foreground">{formatCompactTime(totalDurationMs)}</dd>
-            {videoMetadata.fileSize > 0 && <><dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-foreground">{formatFileSize(videoMetadata.fileSize)}</dd></>}
-          </dl>}
-        </PopoverContent>
-      </Popover>
-
-      {/* The status pill (DESIGN › Status Pill) keeps its state colours; it opens the processing details below it. */}
+  const workflowActions = (
+    <div className="flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
       <Popover open={isQueueExpanded} onOpenChange={setIsQueueExpanded}>
         <PopoverTrigger
           render={
             <Button
-              variant="outline"
+              variant="ghost"
               size="lg"
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
-              className={`max-w-full text-xs ${
-                errorMessage || failedBatchesCount > 0
+              className={`h-11 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 lg:max-w-[27rem] ${
+                hasStatusError
                   ? 'border-transparent bg-error-surface text-error-foreground hover:bg-destructive/15'
                   : activityFeedback
                   ? 'border-brand-200 bg-brand-50 text-brand-950 hover:bg-brand-100'
-                  : status === 'READY' || !vadOutput?.candidate_spots.length
-                  ? 'border-border bg-secondary text-secondary-foreground hover:bg-muted/80'
-                  : 'border-transparent bg-brand-50 text-brand-900 hover:bg-brand-100'
+                  : 'text-muted-foreground'
               }`}
             />
           }
         >
-          {isBusy ? (
+          {isBusy && (
             <Loader2 data-icon="inline-start" className="animate-spin text-brand-700" aria-hidden="true" />
-          ) : (
-            <Layers data-icon="inline-start" aria-hidden="true" />
           )}
           {activityFeedback ? (
             <span role="status" className="flex min-w-0 items-center gap-1.5 tabular-nums text-left">
@@ -448,7 +381,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <span className="hidden sm:inline text-brand-800/80">· {formatCompactTime(activityElapsedMs)}</span>
             </span>
           ) : (
-            <span role="status" className="min-w-0 text-left">{statusText}</span>
+            <span role="status" className="min-w-0 truncate text-left">
+              <span className="hidden sm:inline">{idleStatus.full}</span>
+              <span className="sm:hidden">{idleStatus.compact}</span>
+            </span>
           )}
           <ChevronDown data-icon="inline-end" className={`transition-transform ${isQueueExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
         </PopoverTrigger>
@@ -522,46 +458,37 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </PopoverContent>
       </Popover>
 
-      {canShowGenerate && !isBusy && !isRegenerating && (
-        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="grow sm:grow-0">
+      {showPrimaryGenerate ? (
+        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-11 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs">
           <Sparkles data-icon="inline-start" aria-hidden="true" />
           {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
         </Button>
-      )}
-
-      {generatedSpotsCount > 0 && !isBusy && (
-        // One cerulean action in the navbar (DESIGN › Status Pill): export steps down to outline while generating is offered.
-        <Button size="lg" variant={canShowGenerate && !isRegenerating ? 'outline' : 'default'} onClick={onExportSrt}>
+      ) : canExport && (
+        <Button size="lg" onClick={onExportSrt} className="h-11 max-sm:gap-1 max-sm:px-2.5 max-sm:text-xs">
           <FileText data-icon="inline-start" aria-hidden="true" />
           ส่งออก SRT
         </Button>
       )}
-    </div>
-  );
-
-  const managementMenu = (
-    <DropdownMenu key="project-management">
-      <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="col-start-2 row-start-1 justify-self-end lg:col-start-3" />}>
-        จัดการ
-        <ChevronDown data-icon="inline-end" aria-hidden="true" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
-        {(canShowGenerate && isRegenerating) || !isReview ? (
-          <>
-            <DropdownMenuGroup>
-              {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
-              {!isReview && videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
-              {!isReview && <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-        <DropdownMenuGroup>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="จัดการงาน" className="size-11" />}>
+          <Ellipsis aria-hidden="true" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          {!isReview && (
+            <>
+              <DropdownMenuGroup>
+                {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><FileText aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
-          <DropdownMenuItem onClick={onOpenJobList}><List aria-hidden="true" />รายการงาน</DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 
   // Keep project controls in the header and processing details beside the workspace.
@@ -577,10 +504,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         className="hidden"
       />
 
-      {headerActionsElement && createPortal(
-        isWideHeader ? [projectControls, managementMenu] : [managementMenu, projectControls],
-        headerActionsElement
-      )}
+      {headerActionsElement && createPortal(workflowActions, headerActionsElement)}
 
       {/* Validation Issues or Error Banner */}
       {(validationIssues.length > 0 || errorMessage) && !(status === 'FAILED' && !vadOutput) && (

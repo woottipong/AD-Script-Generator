@@ -1,10 +1,13 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import { AlertOctagon, ChevronDown, FileVideo, ListX, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren } from 'react';
+import { AlertOctagon, Check, ChevronDown, FileVideo, Info, ListX, Pencil, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/ui/spinner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ADSpot,
   AnalysisBatch,
@@ -27,6 +30,7 @@ import {
 import {
   DEFAULT_ANALYSIS_BATCH_SECONDS,
   buildAnalysisBatches,
+  formatCompactTime,
   formatFileSize,
   formatTimestampDisplay,
   generateSrtContent,
@@ -171,6 +175,10 @@ async function uploadVideoInChunks(
 /** An SRT waiting for its video's audio scan to finish before it becomes a Review Mode Job. */
 type ReviewImport = { spots: ADSpot[]; srtFileName: string; videoSource: VideoSource; vadInput: ByteSourceInput; metadata: VideoMetadata };
 type GenerateIntake = { file: File; metadata: VideoMetadata };
+type TitleEditor =
+  | { kind: 'display' }
+  | { kind: 'editing' | 'queued' | 'saving'; draft: string }
+  | { kind: 'error'; draft: string; message: string };
 const EMPTY_GENERATE_DRAFT: GenerateDraft = { file: null, title: null };
 const EMPTY_REVIEW_DRAFT: ReviewDraft = { video: null, srt: null, link: '', title: null };
 
@@ -182,10 +190,21 @@ export default function App() {
   const [headerActionsElement, setHeaderActionsElement] = useState<HTMLDivElement | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
-  const [jobTitle, setJobTitle] = useState('');
-  // The title can change while the Job is still being created, so creation reads the latest one.
   const jobTitleRef = useRef('');
-  jobTitleRef.current = jobTitle;
+  const [jobTitle, setJobTitleState] = useState('');
+  const setJobTitle = useCallback((title: string) => {
+    jobTitleRef.current = title;
+    setJobTitleState(title);
+  }, []);
+  const [titleEditor, setTitleEditor] = useState<TitleEditor>({ kind: 'display' });
+  const [titleAcknowledgement, setTitleAcknowledgement] = useState<'server' | 'local' | null>(null);
+  const [showVideoSummary, setShowVideoSummary] = useState(false);
+  const workspaceVersion = useRef(0);
+  const [registeringJob, setRegisteringJob] = useState(false);
+  const registration = useRef<object | null>(null);
+  const titleSave = useRef<Promise<boolean> | null>(null);
+  const titleInput = useRef<HTMLInputElement | null>(null);
+  const restoreTitleFocus = useRef(false);
   /** The author named this not-yet-created Job, so a newly chosen video must not rename it. */
   const titleTypedRef = useRef(false);
   const [validationIssues, setValidationIssues] = useState<VideoValidationIssue[]>([]);
@@ -238,37 +257,58 @@ export default function App() {
     setSaveStatus('saved');
   }, [jobId, saveQueue]);
 
+  const registerJob = useCallback(async (endpoint: string, body: object, token: { aborted: boolean }) => {
+    const request = {};
+    registration.current = request;
+    setRegisteringJob(true);
+    try {
+      if (titleSave.current) await titleSave.current;
+      if (token.aborted) throw new DOMException('Cancelled', 'AbortError');
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, title: jobTitleRef.current }),
+      });
+      const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
+      return { response, data };
+    } finally {
+      if (registration.current === request) {
+        registration.current = null;
+        setRegisteringJob(false);
+      }
+    }
+  }, []);
+
+  const acknowledgeJobTitle = useCallback((title: string) => {
+    setJobTitle(title);
+    titleTypedRef.current = false;
+    setTitleAcknowledgement((current) => current === 'local' ? 'server' : current);
+  }, [setJobTitle]);
+
   const createReviewJob = useCallback(async (review: ReviewImport, output: VADOutput) => {
     const token = pollAbortRef.current;
     try {
-      const response = await fetch('/api/jobs/review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_metadata: review.metadata,
-          vad_config: output.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG,
-          vad_output: output,
-          video_source: review.videoSource,
-          srt_source: { file_name: review.srtFileName, cue_count: review.spots.length },
-          spots: review.spots,
-          title: jobTitleRef.current,
-        }),
-      });
-      const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
+      const { response, data } = await registerJob('/api/jobs/review', {
+        video_metadata: review.metadata,
+        vad_config: output.signal_analysis?.recommendedConfig || DEFAULT_VAD_CONFIG,
+        vad_output: output,
+        video_source: review.videoSource,
+        srt_source: { file_name: review.srtFileName, cue_count: review.spots.length },
+        spots: review.spots,
+      }, token);
       if (token.aborted) {
         if (data?.job?.job_id) discardCreatedJob(data.job.job_id);
         return;
       }
       if (!response.ok || !data?.job) throw new Error(data?.error || 'บันทึกงานตรวจแก้ SRT บนเซิร์ฟเวอร์ไม่สำเร็จ');
       setJobId(data.job.job_id);
-      setJobTitle(data.job.title);
-      titleTypedRef.current = false;
+      acknowledgeJobTitle(data.job.title);
       navigate(jobPath(data.job.job_id));
     } catch (err) {
       if (token.aborted) return;
       setErrorMessage(`${err instanceof Error ? err.message : String(err)} การแก้ไขจะอยู่ในหน้านี้เท่านั้น กรุณาส่งออก SRT ก่อนปิดหน้า`);
     }
-  }, [navigate]);
+  }, [acknowledgeJobTitle, navigate, registerJob]);
 
   const createGenerateJob = useCallback(async (generate: GenerateIntake, output: VADOutput) => {
     const token = pollAbortRef.current;
@@ -304,20 +344,14 @@ export default function App() {
       }
 
       setVadProgress({ stage: 'กำลังบันทึกงาน', phase: 'saving-job', percent: 0 });
-      const initRes = await fetch('/api/jobs/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          autoStart: false,
-          video_metadata: generate.metadata,
-          vad_config: effectiveVadConfig,
-          ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
-          vad_output: output,
-          title: jobTitleRef.current,
-        }),
-      });
-      const initData = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(initRes);
+      const { response: initRes, data: initData } = await registerJob('/api/jobs/init', {
+        uploadId,
+        autoStart: false,
+        video_metadata: generate.metadata,
+        vad_config: effectiveVadConfig,
+        ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
+        vad_output: output,
+      }, token);
       if (token.aborted) {
         if (initData?.job?.job_id) discardCreatedJob(initData.job.job_id);
         else if (uploadId) discardUnfinishedUpload(uploadId);
@@ -332,8 +366,7 @@ export default function App() {
       setVadProgress(null);
       setVadOutput(output);
       setJobId(savedJob.job_id);
-      setJobTitle(savedJob.title);
-      titleTypedRef.current = false;
+      acknowledgeJobTitle(savedJob.title);
       setSpots(savedJob.spots);
       setBatches(savedJob.batches);
       setSelectedSpotId(savedJob.spots[0]?.spot_id || null);
@@ -354,7 +387,7 @@ export default function App() {
       setStatus('FAILED');
       setErrorMessage(`บันทึกงานบนเซิร์ฟเวอร์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [navigate]);
+  }, [acknowledgeJobTitle, navigate, registerJob]);
 
   // Helper to get or initialize the Browser VAD Web Worker
   const getOrCreateWorker = useCallback(() => {
@@ -560,7 +593,7 @@ export default function App() {
         }
       })
       .catch(() => { if (!token.aborted) setJobLoad('failed'); });
-  }, [pollJobUntilComplete]);
+  }, [pollJobUntilComplete, setJobTitle]);
 
   // 1. Check Browser Compatibility & the Job named by the URL on Mount
   useEffect(() => {
@@ -600,6 +633,14 @@ export default function App() {
 
   const leaveCurrentJob = useCallback(() => {
     pollAbortRef.current.aborted = true;
+    workspaceVersion.current += 1;
+    titleSave.current = null;
+    registration.current = null;
+    restoreTitleFocus.current = false;
+    setRegisteringJob(false);
+    setTitleEditor({ kind: 'display' });
+    setTitleAcknowledgement(null);
+    setShowVideoSummary(false);
     intakeCheckAbort.current?.abort();
     intakeCheckAbort.current = null;
     setGenerateSaveFailure(null);
@@ -725,7 +766,7 @@ export default function App() {
     }
     setStatus('VIDEO_READY');
     startVad(vadInput);
-  }, [browserCompat, checkingFileName, leaveCurrentJob, clearVideo, startVad]);
+  }, [browserCompat, checkingFileName, leaveCurrentJob, clearVideo, setJobTitle, startVad]);
 
   // 2. Handle MP4 File Selection & Automatic Built-In VAD Execution
   const handleSelectFile = useCallback(
@@ -777,7 +818,7 @@ export default function App() {
         setStatus('FAILED');
       }
     },
-    [browserCompat, checkingFileName, videoMetadata, startVad, leaveCurrentJob, clearVideo, confirm]
+    [browserCompat, checkingFileName, videoMetadata, startVad, leaveCurrentJob, clearVideo, confirm, setJobTitle]
   );
 
   // 3. Trigger Browser Silero VAD manually if needed
@@ -926,21 +967,13 @@ export default function App() {
 
       await saveQueue.wait();
       if (token.aborted) return;
-      const initRes = await fetch('/api/jobs/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          video_metadata: videoMetadata,
-          vad_config: effectiveVadConfig,
-          ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
-          vad_output: vadOutput,
-          title: jobTitle,
-        }),
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const initData = await parseApiResponse<any>(initRes);
+      const { response: initRes, data: initData } = await registerJob('/api/jobs/init', {
+        uploadId,
+        video_metadata: videoMetadata,
+        vad_config: effectiveVadConfig,
+        ad_settings: DEFAULT_AD_ANALYSIS_SETTINGS,
+        vad_output: vadOutput,
+      }, token);
       if (initRes.ok && initData?.job) createdJob = true;
       // A Job created here is already analysing on the server, so it stays and shows in the Job List.
       if (token.aborted) return;
@@ -954,10 +987,9 @@ export default function App() {
         return;
       }
 
-      const initializedJob: PersistedJobState = initData.job;
+      const initializedJob = initData.job;
       setJobId(initializedJob.job_id);
-      setJobTitle(initializedJob.title);
-      titleTypedRef.current = false;
+      acknowledgeJobTitle(initializedJob.title);
       navigate(jobPath(initializedJob.job_id));
       setBatches(initializedJob.batches);
       setSpots(initializedJob.spots);
@@ -1069,14 +1101,20 @@ export default function App() {
     setSrtFileName(null);
     setJobTitle('');
     titleTypedRef.current = false;
-  }, [leaveCurrentJob, clearVideo]);
+  }, [leaveCurrentJob, clearVideo, setJobTitle]);
+
+  const displayedTitle = jobTitle || (videoMetadata ? defaultJobTitle(videoMetadata.fileName) : '');
+  const hasTitleDraft = titleEditor.kind !== 'display' && titleEditor.kind !== 'saving' &&
+    titleEditor.draft.trim() !== displayedTitle;
 
   /** Waits for saves already sent, then names what leaving would lose, if anything. */
   const leaveWarning = useCallback(async (): Promise<string | null> => {
     if (videoMetadata && !jobId) return 'งานนี้ยังไม่ได้บันทึกบนเซิร์ฟเวอร์และจะหายไป';
     if (!jobId) return null;
-    return (await saveQueue.wait()) === false ? 'การแก้ไขล่าสุดยังบันทึกไม่สำเร็จและจะหายไป' : null;
-  }, [videoMetadata, jobId, saveQueue]);
+    const [spotsSaved, titleSaved] = await Promise.all([saveQueue.wait(), titleSave.current]);
+    if (titleSaved === false || (titleSaved == null && hasTitleDraft)) return 'ชื่องานที่แก้ยังไม่ได้บันทึกและจะหายไป';
+    return spotsSaved === false ? 'การแก้ไขล่าสุดยังบันทึกไม่สำเร็จและจะหายไป' : null;
+  }, [videoMetadata, jobId, saveQueue, hasTitleDraft]);
 
   // Back and forward move between Jobs by URL, so the workspace follows whatever the URL now names.
   useEffect(() => {
@@ -1105,24 +1143,86 @@ export default function App() {
     restoreJob(openJobId);
   };
 
-  /** Before the Job exists the title is kept here and sent when it is created; afterwards the server stores it. */
-  const handleRenameJob = async (title: string): Promise<'saved' | 'local'> => {
-    const checked = resolveJobTitle(title);
-    if (!checked.success) throw new Error(checked.error);
+  const focusTitleButton = useCallback((button: HTMLButtonElement | null) => {
+    if (button && restoreTitleFocus.current) {
+      restoreTitleFocus.current = false;
+      button.focus();
+    }
+  }, []);
+  const focusTitleInput = useCallback((input: HTMLInputElement | null) => {
+    titleInput.current = input;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, []);
+  const closeTitleEditor = useCallback((restoreFocus: boolean) => {
+    restoreTitleFocus.current = restoreFocus && document.activeElement === titleInput.current;
+    setTitleEditor({ kind: 'display' });
+  }, []);
+  const saveTitle = useCallback((draft: string, restoreFocus: boolean) => {
+    if (titleSave.current) return;
+    if (!draft.trim() || draft.trim() === displayedTitle) {
+      closeTitleEditor(restoreFocus);
+      return;
+    }
+    if (registration.current) {
+      setTitleEditor({ kind: 'queued', draft });
+      return;
+    }
+    const checked = resolveJobTitle(draft);
+    if (!checked.success) {
+      setTitleEditor({ kind: 'error', draft, message: checked.error });
+      return;
+    }
     if (!jobId) {
       titleTypedRef.current = true;
       setJobTitle(checked.title);
-      return 'local';
+      setTitleAcknowledgement('local');
+      closeTitleEditor(restoreFocus);
+      return;
     }
-    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: checked.title }),
-    });
-    const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
-    if (!response.ok || data?.job?.job_id !== jobId) throw new Error(data?.error || 'บันทึกชื่องานไม่สำเร็จ กรุณาลองอีกครั้ง');
-    setJobTitle(data.job.title);
-    return 'saved';
+    const version = workspaceVersion.current;
+    setTitleEditor({ kind: 'saving', draft });
+    titleSave.current = (async () => {
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: checked.title }),
+        });
+        const data = await parseApiResponse<{ job?: PersistedJobState; error?: string }>(response);
+        if (workspaceVersion.current !== version) return false;
+        if (!response.ok || data?.job?.job_id !== jobId) throw new Error(data?.error || 'บันทึกชื่องานไม่สำเร็จ กรุณาลองอีกครั้ง');
+        setJobTitle(data.job.title);
+        setTitleAcknowledgement('server');
+        closeTitleEditor(restoreFocus);
+        return true;
+      } catch (err) {
+        if (workspaceVersion.current !== version) return false;
+        setTitleEditor({ kind: 'error', draft, message: err instanceof Error ? err.message : String(err) });
+        return false;
+      } finally {
+        if (workspaceVersion.current === version) titleSave.current = null;
+      }
+    })();
+  }, [closeTitleEditor, displayedTitle, jobId, setJobTitle]);
+
+  useEffect(() => {
+    if (titleEditor.kind === 'queued' && !registeringJob) saveTitle(titleEditor.draft, true);
+  }, [registeringJob, saveTitle, titleEditor]);
+
+  const handleTitleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (titleEditor.kind === 'display' || titleEditor.kind === 'saving') return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeTitleEditor(true);
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveTitle(titleEditor.draft, true);
+    }
   };
 
   // Navigate first so leaving the Job does not also push `/new` onto the history.
@@ -1198,24 +1298,119 @@ export default function App() {
     },
   };
   const processingFeedback = getProcessingFeedback(status, vadProgress, batches, errorMessage);
+  const videoDuration = videoMetadata ? formatCompactTime(vadOutput?.duration_ms || videoMetadata.durationMs) : '';
+  const videoResolution = videoMetadata ? `${videoMetadata.width} × ${videoMetadata.height}` : '';
+  const videoSize = videoMetadata?.fileSize ? formatFileSize(videoMetadata.fileSize) : null;
+  const titleFeedback = titleEditor.kind === 'saving' ? 'กำลังบันทึกชื่อ…'
+    : titleEditor.kind !== 'display' && registeringJob ? 'กำลังบันทึกงานบนเซิร์ฟเวอร์…'
+    : titleEditor.kind === 'display' && titleAcknowledgement === 'server' ? 'บันทึกชื่อบนเซิร์ฟเวอร์แล้ว'
+    : titleEditor.kind === 'display' && titleAcknowledgement === 'local' ? 'ชื่อนี้อยู่ในหน้านี้เท่านั้นจนกว่าจะสร้างงานบนเซิร์ฟเวอร์'
+    : '';
+  const showTitleNotice = titleEditor.kind === 'error' || (titleEditor.kind === 'editing' && registeringJob);
 
   return (
     <div className={`min-h-screen flex flex-col bg-canvas text-foreground ${hasProject ? 'lg:h-dvh lg:overflow-hidden' : ''}`}>
       <button type="button" onClick={() => workspaceRef.current?.focus()} className="skip-link cursor-pointer">ข้ามไปยังพื้นที่ทำงาน</button>
-      <header className="min-h-16 shrink-0 bg-card border-b border-brand-100 px-4 sm:px-6 flex items-center py-3">
-        <div className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void openJobList(); }} aria-label="TCC Envisio รายการงาน" className="inline-flex min-w-0 items-center gap-2.5 rounded-md">
-            <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
-            <span className="min-w-0">
-              <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-foreground">
-                <span className="text-brand-700">TCC</span> Envisio
-              </span>
-              <span className="hidden truncate text-xs font-medium leading-tight text-muted-foreground sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
-            </span>
-          </a>
+      <header className={`relative flex min-h-16 shrink-0 items-center border-b border-brand-100 bg-card sm:px-6 ${hasProject ? 'px-3 py-2' : 'px-4 py-3'}`}>
+        <div className="grid w-full min-w-0 items-center gap-x-5 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+            <a href="/" onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); void openJobList(); }} aria-label="TCC Envisio รายการงาน" title={hasProject ? 'กลับรายการงาน' : undefined} className={`inline-flex shrink-0 items-center gap-2.5 rounded-md ${hasProject ? 'size-11 justify-center' : ''}`}>
+              <img src="/logo.svg" alt="" width={36} height={36} className="shrink-0" />
+              {!hasProject && <span className="min-w-0">
+                <span className="block whitespace-nowrap text-base font-bold leading-tight tracking-tight text-foreground">
+                  <span className="text-brand-700">TCC</span> Envisio
+                </span>
+                <span className="hidden truncate text-xs font-medium leading-tight text-muted-foreground sm:block">สร้างและตรวจแก้บทบรรยายภาพ</span>
+              </span>}
+            </a>
 
-          <div ref={setHeaderActionsElement} className="contents" />
+            {videoMetadata && (
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1">
+                  {titleEditor.kind === 'display' ? (
+                    <Tooltip>
+                      <TooltipTrigger render={(
+                        <Button
+                          ref={focusTitleButton}
+                          variant="ghost"
+                          size="lg"
+                          aria-label={`เปลี่ยนชื่องาน: ${displayedTitle}`}
+                          aria-describedby={titleFeedback ? 'job-title-status' : undefined}
+                          className="h-11 min-w-18 shrink justify-start gap-1.5 px-2 text-left text-base leading-[1.35] font-bold not-disabled:hover:border-border not-disabled:hover:bg-transparent"
+                          onClick={() => setTitleEditor({ kind: 'editing', draft: displayedTitle })}
+                        />
+                      )}>
+                        <span className="min-w-0">
+                          <span className="block truncate">{displayedTitle}</span>
+                          {titleAcknowledgement === 'local' && (
+                            <span aria-hidden="true" className="block truncate text-xs font-normal text-muted-foreground">
+                              ชื่ออยู่เฉพาะในหน้านี้
+                            </span>
+                          )}
+                        </span>
+                        {titleAcknowledgement === 'server' ? <Check className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                          : <Pencil className="invisible size-3.5 text-muted-foreground pointer-coarse:visible" aria-hidden="true" />}
+                      </TooltipTrigger>
+                      <TooltipContent role="tooltip" side="bottom">แก้ไขชื่อ</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <div className="relative flex min-w-0 items-center">
+                      <Input
+                        ref={focusTitleInput}
+                        type="text"
+                        aria-label="ชื่องาน"
+                        aria-invalid={titleEditor.kind === 'error' || undefined}
+                        aria-describedby={titleEditor.kind === 'error' ? 'job-title-error' : undefined}
+                        value={titleEditor.draft}
+                        placeholder="ชื่องาน"
+                        maxLength={120}
+                        readOnly={titleEditor.kind === 'saving' || titleEditor.kind === 'queued'}
+                        onChange={(event) => setTitleEditor({ kind: 'editing', draft: event.target.value })}
+                        onBlur={() => { if (titleEditor.kind === 'editing') saveTitle(titleEditor.draft, false); }}
+                        onKeyDown={handleTitleKeyDown}
+                        className="h-11 w-auto min-w-18 field-sizing-content pr-7 pl-2 text-base leading-[1.35] font-bold md:text-base"
+                      />
+                      {(titleEditor.kind === 'saving' || titleEditor.kind === 'queued') && <Spinner className="pointer-events-none absolute inset-y-0 right-2 my-auto size-3.5 text-muted-foreground" aria-hidden="true" />}
+                    </div>
+                  )}
+                  <Popover>
+                    <Tooltip onOpenChange={setShowVideoSummary}>
+                      <TooltipTrigger aria-describedby={showVideoSummary ? 'job-video-summary' : undefined} render={<PopoverTrigger render={<Button variant="ghost" size="icon-lg" aria-label="ข้อมูลวิดีโอ" className="size-11 text-muted-foreground" />} />}>
+                        <Info aria-hidden="true" />
+                      </TooltipTrigger>
+                      <TooltipContent id="job-video-summary" role="tooltip" side="bottom" className="block max-w-[min(20rem,calc(100vw-1.5rem))]">
+                        <span className="block font-semibold [overflow-wrap:anywhere]">{videoMetadata.fileName}</span>
+                        <span className="block tabular-nums">{videoDuration} · {videoResolution}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                    <PopoverContent aria-label="ข้อมูลวิดีโอ" align="start" className="w-80 max-w-[calc(100vw-1.5rem)] p-4">
+                      <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{videoMetadata.fileName}</p>
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-muted-foreground">
+                        <dt>ความยาว</dt><dd className="text-right tabular-nums text-foreground">{videoDuration}</dd>
+                        <dt>ความละเอียด</dt><dd className="text-right tabular-nums text-foreground">{videoResolution}</dd>
+                        <dt>ขนาดไฟล์</dt><dd className="text-right tabular-nums text-foreground">{videoSize ?? 'ไม่ทราบ'}</dd>
+                      </dl>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
+          </div>
+          {hasProject && <div ref={setHeaderActionsElement} className="min-h-11 min-w-0" />}
         </div>
+        {hasProject && (
+          <div className={showTitleNotice
+            ? 'pointer-events-none absolute top-full left-3 z-20 mt-1 max-w-[calc(100%-1.5rem)] rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md sm:left-6 sm:max-w-[calc(100%-3rem)]'
+            : 'sr-only'}>
+            <p id="job-title-status" role="status" className="text-muted-foreground">{titleFeedback}</p>
+            {titleEditor.kind === 'error' && (
+              <p id="job-title-error" role="alert" className="text-error-foreground [overflow-wrap:anywhere]">
+                <span>{titleEditor.message}</span>
+                <span className="mt-0.5 block">กด Enter ในช่องชื่อเพื่อลองอีกครั้ง</span>
+              </p>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Browser Compatibility Blocking Banner */}
@@ -1334,8 +1529,6 @@ export default function App() {
         onRetryFailedBatches={handleRetryFailedBatches}
         onResetJob={handleResetJob}
         onOpenJobList={() => void openJobList()}
-        jobTitle={jobTitle}
-        onRenameJob={handleRenameJob}
         onSelectSpot={handleSelectSpot}
         onExportSrt={handleExportSrt}
         errorMessage={errorMessage}
