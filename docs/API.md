@@ -86,7 +86,7 @@ Returns the signed-in Author as `{ email, name?, allJobs, accessGroups? }`; `nam
 
 ### GET /api/jobs
 
-Returns `{ jobs }` for the signed-in Author's own saved Jobs; with All-Jobs Access it returns every saved Job and recognizable unfinished upload. Items are sorted by `updated_at`, most recent first. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, and `is_processing`; saved jobs also carry `title`, `mode`, `status`, `duration_ms`, `spot_count`, `owner_email` (null when the Job has no Job Owner), and optional `progress_percent` and `error_message`. An active upload has both `is_upload` and `is_processing` set. There is no active job: the browser opens the job named in its `/jobs/:jobId` URL.
+Returns `{ jobs }` for the signed-in Author's own saved Jobs; with All-Jobs Access it returns every saved Job and recognizable unfinished upload. Items are sorted by `updated_at`, most recent first. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, `is_owner` (boolean derived server-side from the Job's `owner_sub` and the signed-in Author's `sub`, never exposing `owner_sub`; `false` for other Authors' Jobs, ownerless Jobs, and unfinished uploads), and `is_processing`; saved jobs also carry `title`, `mode`, `status`, `duration_ms`, `spot_count`, `owner_email` (null when the Job has no Job Owner), and optional `progress_percent` and `error_message`. An active upload has both `is_upload` and `is_processing` set. There is no active job: the browser opens the job named in its `/jobs/:jobId` URL.
 
 ### GET /api/jobs/:jobId
 

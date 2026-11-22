@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'generate', text: 'บทเดิม', is_edited: false };
@@ -45,7 +46,7 @@ async page => {
   let releaseInitialList;
   nextListResponse = new Promise(resolve => { releaseInitialList = resolve; });
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto(`${baseUrl}/`);
   const list = page.getByRole('table', { name: 'งานที่บันทึกไว้' });
   const skeletons = page.locator('[data-slot="skeleton"]');
   await list.waitFor();
@@ -318,12 +319,12 @@ async page => {
   await newJob.click();
   await page.getByRole('heading', { name: 'เริ่มงานบทบรรยายภาพ' }).waitFor();
 
-  await page.goto('http://127.0.0.1:4173/jobs/job_missing');
+  await page.goto(`${baseUrl}/jobs/job_missing`);
   await page.getByRole('heading', { name: 'ไม่พบงานนี้' }).waitFor();
-  await page.goto('http://127.0.0.1:4173/jobs/job_broken');
+  await page.goto(`${baseUrl}/jobs/job_broken`);
   await page.getByRole('heading', { name: 'เปิดงานไม่สำเร็จ' }).waitFor();
   listFails = true;
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto(`${baseUrl}/`);
   await page.getByText('โหลดรายการงานไม่สำเร็จ').waitFor();
   assert(await page.getByRole('button', { name: 'งานใหม่' }).isVisible(), 'A new Job can start when the list fails to load');
   return { renamedShowsInList: true, listFailureStillOffersNewJob: true, listed: true, processingProtected: true, uploadDeleteOnly: true, reopened: true, reloadKept: true, backToList: true, newJob: true, emptyState: true, missingJobReported: true, loadFailureReported: true };

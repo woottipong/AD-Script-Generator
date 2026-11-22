@@ -51,6 +51,14 @@ test('every API but config needs a session, and pages send signed-out Authors to
     assert.equal((await signedOut.json() as { code: string }).code, 'UNAUTHENTICATED');
     assert.equal((await fetch(`${base}/api/me`)).status, 401);
 
+    const signedOutMalformedJson = await fetch(`${base}/api/upload/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{broken',
+    });
+    assert.equal(signedOutMalformedJson.status, 401);
+    assert.equal((await signedOutMalformedJson.json() as { code: string }).code, 'UNAUTHENTICATED');
+
     const me = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie(author) } });
     assert.equal(me.status, 200);
     assert.deepEqual(await me.json(), { email: 'author@example.com', allJobs: false });

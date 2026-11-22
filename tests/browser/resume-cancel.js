@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const spot = { spot_id: 'one', start_ms: 1000, end_ms: 5000, duration_ms: 4000, original_start_ms: 1000, original_end_ms: 5000, decision: 'pending', text: '', is_edited: false };
   const completed = { ...spot, spot_id: 'two', start_ms: 6000, end_ms: 10000, original_start_ms: 6000, original_end_ms: 10000, decision: 'generate', text: 'บทที่สร้างแล้ว' };
@@ -14,7 +15,7 @@ async page => {
     if (request.method() === 'DELETE') throw new Error('Leaving a job must not delete it');
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
-  await page.goto('http://127.0.0.1:4173/jobs/job_fixture');
+  await page.goto(`${baseUrl}/jobs/job_fixture`);
   const resume = page.getByRole('button', { name: 'ทำต่อจากชุดที่ค้าง' });
   const manage = page.getByRole('button', { name: 'จัดการงาน', exact: true });
   await resume.waitFor();

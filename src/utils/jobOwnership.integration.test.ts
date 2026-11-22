@@ -196,3 +196,63 @@ globalThis.fetch = async (input, init) => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('GET /api/jobs derives is_owner from sub and never leaks owner_sub', { timeout: 20000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-is-owner-test-'));
+  const socket = net.createServer();
+  await new Promise<void>(resolve => socket.listen(0, '127.0.0.1', resolve));
+  const port = (socket.address() as net.AddressInfo).port;
+  await new Promise<void>(resolve => socket.close(() => resolve()));
+
+  const seed = createJobStore(path.join(dir, '.data'));
+  // Seed supervisor's own Job with an outdated owner_email that differs from supervisor's current session email.
+  seed.save(seededJob('job_mine', { sub: supervisor.sub, email: 'old-lead@example.com' }));
+  seed.save(seededJob('job_theirs', authorB));
+  seed.save(seededJob('job_legacy'));
+  seed.close();
+  fs.mkdirSync(path.join(dir, '.data/jobs/job_upload'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.data/jobs/job_upload/source_video.mp4'), 'abc');
+
+  const child = spawn(process.execPath, [path.join(process.cwd(), 'server.ts')], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port) },
+    stdio: 'ignore',
+  });
+  const base = `http://127.0.0.1:${port}/api`;
+  const leadSend = signedInFetch(supervisor);
+  const bSend = signedInFetch(authorB);
+  try {
+    let ready = false;
+    for (let i = 0; i < 100 && !ready; i++) {
+      try { ready = (await fetch(`${base}/config`)).ok; } catch { await new Promise(resolve => setTimeout(resolve, 50)); }
+    }
+    assert.ok(ready);
+
+    const leadRes = await leadSend(`${base}/jobs`);
+    assert.equal(leadRes.status, 200);
+    const { jobs } = (await leadRes.json()) as { jobs: (Record<string, unknown> & { job_id: string; is_owner: boolean; is_upload: boolean })[] };
+    const byId = new Map(jobs.map((job) => [job.job_id, job]));
+
+    assert.equal(byId.get('job_mine')?.is_owner, true, 'own Job is_owner=true even when session email differs from owner_email');
+    assert.equal(byId.get('job_mine')?.owner_email, 'old-lead@example.com');
+    assert.equal(byId.get('job_theirs')?.is_owner, false, 'another Author Job is_owner=false');
+    assert.equal(byId.get('job_legacy')?.is_owner, false, 'ownerless Job is_owner=false');
+    assert.equal(byId.get('job_upload')?.is_upload, true);
+    assert.equal(byId.get('job_upload')?.is_owner, false, 'Unfinished Upload is_owner=false');
+    for (const item of jobs) {
+      assert.equal('owner_sub' in item, false, `owner_sub must not be returned in /api/jobs (${item.job_id})`);
+    }
+
+    const bRes = await bSend(`${base}/jobs`);
+    assert.equal(bRes.status, 200);
+    const bJobs = ((await bRes.json()) as { jobs: (Record<string, unknown> & { job_id: string; is_owner: boolean })[] }).jobs;
+    assert.equal(bJobs.length, 1);
+    assert.equal(bJobs[0].job_id, 'job_theirs');
+    assert.equal(bJobs[0].is_owner, true);
+    assert.equal('owner_sub' in bJobs[0], false);
+  } finally {
+    child.kill('SIGTERM');
+    await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

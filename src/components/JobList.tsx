@@ -345,7 +345,13 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
     return () => window.clearTimeout(timer);
   }, [hasProcessingJobs, loading, loadJobs]);
 
-  const isMine = useCallback((job: StoredJob) => !job.is_upload && job.owner_email === ownEmail, [ownEmail]);
+  const isMine = useCallback(
+    (job: StoredJob) =>
+      typeof job.is_owner === 'boolean'
+        ? job.is_owner
+        : (!job.is_upload && Boolean(ownEmail) && job.owner_email === ownEmail),
+    [ownEmail],
+  );
   const mineCount = useMemo(() => (jobs ?? []).filter(isMine).length, [jobs, isMine]);
   // Only an Author with All-Jobs Access sees other Authors' Jobs, so only they can narrow to their own.
   const showMineOnly = showOwners && ownerScope === 'mine';

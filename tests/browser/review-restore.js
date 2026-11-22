@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   await page.unrouteAll({ behavior: 'wait' });
   await page.setContent('<input type="file">');
@@ -24,7 +25,7 @@ async page => {
   });
   page.on('worker', () => { scanStarted = true; });
 
-  await page.goto('http://127.0.0.1:4173/jobs/job_review_restore');
+  await page.goto(`${baseUrl}/jobs/job_review_restore`);
   const line = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
   await line.waitFor();
   assert(await line.inputValue() === 'บทที่บันทึกไว้', 'Saved Review Mode lines are restored');

@@ -100,3 +100,15 @@ test('all relative markdown file links in repository docs resolve to existing fi
 
   assert.deepEqual(broken, [], `Broken relative markdown links:\n${broken.join('\n')}`);
 });
+
+test('vite.config.ts retains Vite defaults and blocks .data in server.fs.deny', async () => {
+  const mod = await import('../../vite.config');
+  const exported = mod.default;
+  const config = typeof exported === 'function'
+    ? await exported({ mode: 'development', command: 'serve' })
+    : await exported;
+  const deny = config.server?.fs?.deny ?? [];
+  assert.ok(deny.includes('.env'), 'server.fs.deny should retain .env');
+  assert.ok(deny.includes('**/.git/**'), 'server.fs.deny should retain **/.git/**');
+  assert.ok(deny.some((entry) => entry.includes('.data')), 'server.fs.deny should block .data');
+});

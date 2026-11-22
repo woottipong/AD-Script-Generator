@@ -24,7 +24,12 @@ export type StoredJobSummary = {
   error_message?: string;
   /** The Job Owner's email; null for a Job with no Job Owner. */
   owner_email?: string | null;
+  /** Whether the signed-in Author owns this Job (derived by `GET /api/jobs` from `owner_sub`). */
+  is_owner?: boolean;
 };
+
+/** Internal store list item carrying `owner_sub` so `GET /api/jobs` can derive `is_owner` without leaking `sub`. */
+export type StoredJobRecord = StoredJobSummary & { owner_sub?: string | null };
 
 /** Everything a Job holds except its VAD output and AD Spots. */
 export type JobMeta = Omit<PersistedJobState, 'vad_output' | 'spots'>;
@@ -212,7 +217,7 @@ export function createJobStore(dataDir: string) {
   const selectJob = db.prepare('SELECT * FROM jobs WHERE job_id = ?');
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
   const summaryQuery = (where: string) => db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
-      j.progress_percent, j.error_message, j.updated_at, j.owner_email,
+      j.progress_percent, j.error_message, j.updated_at, j.owner_sub, j.owner_email,
       COUNT(CASE WHEN s.decision = 'generate' AND TRIM(s.text) <> '' THEN 1 END) AS spot_count
     FROM jobs j
     LEFT JOIN job_spots s ON s.job_id = j.job_id
@@ -329,15 +334,16 @@ export function createJobStore(dataDir: string) {
    * Every stored Job and Unfinished Upload, most recently changed first; with `ownerSub`, only that Author's Jobs
    * (an Unfinished Upload has no Job Owner, so it is left out).
    */
-  function list(ownerSub?: string): StoredJobSummary[] {
+  function list(ownerSub?: string): StoredJobRecord[] {
     const rows = (ownerSub === undefined ? selectSummaries.all() : selectOwnedSummaries.all(ownerSub)) as JobRow[];
-    const jobs = rows.map((found): StoredJobSummary => {
-      const summary: StoredJobSummary = {
+    const jobs = rows.map((found): StoredJobRecord => {
+      const summary: StoredJobRecord = {
         job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
         size_bytes: folderSize(found.job_id as string), is_upload: false,
         title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
         duration_ms: Number(found.duration_ms),
         spot_count: Number(found.spot_count),
+        owner_sub: (found.owner_sub as string | null) ?? null,
         owner_email: (found.owner_email as string | null) ?? null,
       };
       const progressPercent = optional<number>(found.progress_percent);
@@ -347,7 +353,7 @@ export function createJobStore(dataDir: string) {
       return summary;
     });
     if (ownerSub !== undefined) return jobs;
-    const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobSummary[] => {
+    const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobRecord[] => {
       const upload = findUnfinishedUpload(name);
       if (!upload) return [];
       return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, size_bytes: folderSize(name), is_upload: true }];

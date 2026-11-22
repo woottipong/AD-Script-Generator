@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const spot = (id, start, decision, text, reason) => ({spot_id:id,start_ms:start,end_ms:start+4000,duration_ms:4000,original_start_ms:start,original_end_ms:start+4000,decision,text,reason,is_edited:false});
   const spots=[spot('one',1000,'generate','ช้างเดิน',''),spot('two',5000,'skip','','เหตุผลนก'),spot('three',9000,'generate','ปลาแหวกว่าย',''),spot('four',13000,'pending','','')];
@@ -10,7 +11,7 @@ async page => {
     if(url.endsWith('/spots')) {job.spots=route.request().postDataJSON().spots; return route.fulfill({json:{job}})}
     return route.fulfill({status:404,json:{error:'fixture'}});
   });
-  await page.goto('http://127.0.0.1:4173/jobs/fixture');
+  await page.goto(`${baseUrl}/jobs/fixture`);
   const list=page.getByRole('list',{name:'รายการช่วงบรรยาย'}); await list.waitFor();
   const listNames=async()=>await list.getByRole('listitem').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')));
   const assert=(x,message)=>{if(!x) throw new Error(message)};

@@ -73,3 +73,56 @@ test('an Unfinished Upload belongs to its uploader; others reach it only with Al
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('inactive activeUploads expire after ACTIVE_UPLOAD_IDLE_MS', { timeout: 20000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-upload-idle-test-'));
+  const socket = net.createServer();
+  await new Promise<void>(resolve => socket.listen(0, '127.0.0.1', resolve));
+  const port = (socket.address() as net.AddressInfo).port;
+  await new Promise<void>(resolve => socket.close(() => resolve()));
+  const child = spawn(process.execPath, [path.join(process.cwd(), 'server.ts')], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ACTIVE_UPLOAD_IDLE_MS: '150', ...authTestEnv(port) },
+    stdio: 'ignore',
+  });
+  const base = `http://127.0.0.1:${port}/api`;
+  const aSend = signedInFetch(authorA);
+  const leadSend = signedInFetch(supervisor);
+  try {
+    let ready = false;
+    for (let i = 0; i < 100 && !ready; i++) {
+      try { ready = (await fetch(`${base}/config`)).ok; } catch { await new Promise(resolve => setTimeout(resolve, 50)); }
+    }
+    assert.ok(ready);
+
+    const initRes = await aSend(`${base}/upload/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'idle.mp4', fileSize: 3 }),
+    });
+    assert.equal(initRes.status, 200);
+    const { uploadId } = (await initRes.json()) as { uploadId: string };
+    assert.equal(
+      (await aSend(`${base}/upload/chunk?uploadId=${uploadId}&offset=0`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: 'abc',
+      })).status,
+      200,
+    );
+
+    const activeList = (await (await leadSend(`${base}/jobs`)).json()) as { jobs: { job_id: string; is_processing: boolean }[] };
+    assert.equal(activeList.jobs.find((job) => job.job_id === uploadId)?.is_processing, true);
+    assert.equal((await aSend(`${base}/jobs/${uploadId}/files`, { method: 'DELETE' })).status, 409);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const expiredList = (await (await leadSend(`${base}/jobs`)).json()) as { jobs: { job_id: string; is_processing: boolean }[] };
+    assert.equal(expiredList.jobs.find((job) => job.job_id === uploadId)?.is_processing, false);
+    assert.equal((await aSend(`${base}/jobs/${uploadId}/files`, { method: 'DELETE' })).status, 200);
+  } finally {
+    child.kill('SIGTERM');
+    await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise(resolve => setTimeout(resolve, 1000))]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

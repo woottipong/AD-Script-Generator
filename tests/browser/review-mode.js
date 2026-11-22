@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   let created = null;
   let patched = null, renamed = null;
@@ -24,7 +25,7 @@ async page => {
     }
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
-  await page.goto('http://127.0.0.1:4173/new');
+  await page.goto(`${baseUrl}/new`);
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   await page.getByRole('button', { name: 'สร้างบทบรรยาย', exact: true }).waitFor();
   await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
@@ -122,7 +123,7 @@ async page => {
   assert(await page.getByRole('button', { name: 'เปลี่ยนชื่องาน: ตรวจบท ตอนที่ 1 (แก้)', exact: true }).isVisible(), 'The header shows the new title');
 
   rejectCreation = true;
-  await page.goto('http://127.0.0.1:4173/new');
+  await page.goto(`${baseUrl}/new`);
   await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
   await page.getByLabel('เลือกไฟล์ SRT').setInputFiles('/tmp/ad-review.srt');
   await page.getByText('ad-review.srt', { exact: true }).waitFor();

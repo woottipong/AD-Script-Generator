@@ -117,7 +117,16 @@ type ProcessingLock = {
   release: () => void;
 };
 let activeProcessingLock: ProcessingLock | null = null;
-const activeUploads = new Set<string>();
+const activeUploads = new Map<string, number>();
+const ACTIVE_UPLOAD_IDLE_MS = Number(process.env.ACTIVE_UPLOAD_IDLE_MS) || 5 * 60 * 1000;
+
+function isUploadActive(uploadId: string): boolean {
+  const lastActivityMs = activeUploads.get(uploadId);
+  if (lastActivityMs === undefined) return false;
+  if (Date.now() - lastActivityMs <= ACTIVE_UPLOAD_IDLE_MS) return true;
+  activeUploads.delete(uploadId);
+  return false;
+}
 /**
  * Who started each Unfinished Upload, until it is deleted or becomes a Job. Kept in memory only: after a restart an
  * upload has no known uploader and only Authors with All-Jobs Access can reach it (ADR-0004).
@@ -573,7 +582,6 @@ async function startServer() {
   recoverOrphanedJobsOnStartup();
 
   const app = express();
-  app.use(express.json({ limit: '25mb' }));
 
   // Ensure /api responses are never cached by proxies or browsers
   app.use('/api', (_req, res, next) => {
@@ -598,6 +606,8 @@ async function startServer() {
     res.locals.author = author;
     next();
   });
+
+  app.use(express.json({ limit: '25mb' }));
 
   // A page opened without a session goes to sign-in first, so the SPA never renders signed out.
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -637,9 +647,10 @@ async function startServer() {
   app.get('/api/jobs', (_req: Request, res: Response) => {
     try {
       const author = res.locals.author as AuthorSession;
-      const jobs = store.list(author.allJobs ? undefined : author.sub).map((job) => ({
+      const jobs = store.list(author.allJobs ? undefined : author.sub).map(({ owner_sub, ...job }) => ({
         ...job,
-        is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
+        is_owner: !job.is_upload && Boolean(owner_sub) && owner_sub === author.sub,
+        is_processing: job.is_upload ? isUploadActive(job.job_id) : job.job_id === activeProcessingLock?.jobId,
       }));
       res.json({ jobs });
     } catch (err) {
@@ -654,7 +665,7 @@ async function startServer() {
       if (!store.exists(req.params.jobId) && !canUseUpload(req.params.jobId, res.locals.author as AuthorSession)) {
         res.status(404).json({ error: JOB_NOT_FOUND }); return;
       }
-      if (req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
+      if (req.params.jobId === activeProcessingLock?.jobId || isUploadActive(req.params.jobId)) {
         res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
       if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: JOB_NOT_FOUND }); return; }
@@ -732,7 +743,7 @@ async function startServer() {
 
       const targetFilePath = path.join(jobDir, 'source_video.mp4');
       fs.writeFileSync(targetFilePath, Buffer.alloc(0));
-      activeUploads.add(uploadId);
+      activeUploads.set(uploadId, Date.now());
       uploadOwners.set(uploadId, (res.locals.author as AuthorSession).sub);
 
       res.json({
@@ -830,6 +841,7 @@ async function startServer() {
         } finally {
           fs.closeSync(fd);
         }
+        activeUploads.set(uploadId, Date.now());
         res.json({ ok: true, currentSize });
       } catch {
         res.status(500).json({ error: 'ไม่สามารถเขียนไฟล์ Chunk ได้' });
@@ -1312,6 +1324,20 @@ async function startServer() {
         hmr: process.env.DISABLE_HMR !== 'true' ? { server: httpServer } : false,
       },
       appType: 'spa',
+    });
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent(req.path);
+      } catch {
+        res.status(404).end();
+        return;
+      }
+      if (/(^|\/)\.data(\/|$)/i.test(decodedPath)) {
+        res.status(404).end();
+        return;
+      }
+      next();
     });
     app.use(vite.middlewares);
   } else {

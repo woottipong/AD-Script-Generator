@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   const videoPath = '/tmp/ad-generate-480p.mp4';
@@ -46,7 +47,7 @@ async page => {
     return route.fulfill({ json: { ok: true } });
   });
 
-  await page.goto('http://127.0.0.1:4173/new');
+  await page.goto(`${baseUrl}/new`);
   await page.setViewportSize({ width: 390, height: 844 });
   const generate = page.getByRole('button', { name: 'สร้างบทบรรยาย', exact: true });
   const review = page.getByRole('button', { name: 'ตรวจแก้ไฟล์ SRT', exact: true });

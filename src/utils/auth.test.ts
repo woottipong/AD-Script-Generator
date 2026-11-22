@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { allJobsGroupsOf, authorEmailFromClaims, readAuthConfig, safeReturnTo, sealSession } from './auth';
+import { allJobsGroupsOf, authorEmailFromClaims, readAuthConfig, safeReturnTo, sealSession, summarizeAuthError } from './auth';
 import { SESSION_COOKIE, readCookie, sealValue, unsealValue, type AuthorSession } from './session';
 
 const SECRET = 'test-session-secret-at-least-32-chars';
@@ -70,4 +70,30 @@ test('authorEmailFromClaims trims email and preferred_username before falling ba
   assert.equal(authorEmailFromClaims({ email: '  user@example.com  ', preferred_username: 'user', sub: 'sub-1' }), 'user@example.com');
   assert.equal(authorEmailFromClaims({ email: '   ', preferred_username: '  user  ', sub: 'sub-1' }), 'user');
   assert.equal(authorEmailFromClaims({ email: '', preferred_username: '   ', sub: ' sub-1 ' }), 'sub-1');
+});
+
+test('summarizeAuthError keeps only safe error metadata and never leaks token payloads', () => {
+  const secretIdToken = 'eyJ.secret-id-token-value.sig';
+  const secretAccessToken = 'eyJ.secret-access-token-value.sig';
+  const err = Object.assign(new Error(`token exchange failed with ${secretAccessToken}`), {
+    name: 'ResponseBodyError',
+    code: 'OAUTH_RESPONSE_BODY_ERROR',
+    error: 'invalid_grant',
+    status: 400,
+    cause: { id_token: secretIdToken, access_token: secretAccessToken },
+    response: { body: { id_token: secretIdToken, access_token: secretAccessToken } },
+  });
+  const summary = summarizeAuthError(err);
+  assert.equal(summary, 'ResponseBodyError code=OAUTH_RESPONSE_BODY_ERROR error=invalid_grant status=400');
+  assert.equal(summary.includes(secretIdToken), false);
+  assert.equal(summary.includes(secretAccessToken), false);
+  assert.equal(summary.includes('id_token'), false);
+  assert.equal(summary.includes('access_token'), false);
+
+  const unsafeFieldErr = Object.assign(new Error('raw'), {
+    code: `contains spaces ${secretAccessToken}`,
+    error: 'x'.repeat(80),
+  });
+  assert.equal(summarizeAuthError(unsafeFieldErr), 'Error');
+  assert.equal(summarizeAuthError(`raw secret ${secretAccessToken}`), 'NonError(string)');
 });

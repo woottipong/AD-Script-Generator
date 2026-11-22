@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
   let listAnswer = 'ok';
@@ -20,7 +21,7 @@ async page => {
   // The preview server has no sign-in route; answering it lets the test see where the page went.
   await page.route('**/auth/**', route => route.fulfill({ contentType: 'text/html', body: '<p>sign-in</p>' }));
 
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto(`${baseUrl}/`);
   const account = page.getByRole('button', { name: 'บัญชี author@example.com' });
   await account.waitFor();
   await account.click();
@@ -33,7 +34,7 @@ async page => {
 
   me = { email: 'admin@example.com', name: 'เอกชัย', allJobs: true, accessGroups: ['admin'] };
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto(`${baseUrl}/`);
   const adminAccount = page.getByRole('button', { name: 'บัญชี admin@example.com' });
   await adminAccount.waitFor();
   assert((await adminAccount.innerText()).trim() === 'อ', 'A Thai name skips its leading vowel for the avatar initial');
@@ -45,18 +46,18 @@ async page => {
   await page.keyboard.press('Escape');
 
   listAnswer = 'other-401';
-  await page.goto('http://127.0.0.1:4173/');
+  await page.goto(`${baseUrl}/`);
   await page.getByText('โหลดรายการงานไม่สำเร็จ').waitFor();
   assert(!page.url().includes('/auth/'), 'A 401 that is not about the session stays on the page');
 
   listAnswer = 'session-ended';
-  await page.goto('http://127.0.0.1:4173/?q=1');
+  await page.goto(`${baseUrl}/?q=1`);
   await page.waitForURL('**/auth/login?*');
   const target = new URL(page.url());
   assert(target.searchParams.get('returnTo') === '/?q=1', `A 401 sends the Author to sign in and back to the same page, got ${page.url()}`);
 
   listAnswer = 'ok';
-  await page.goto('http://127.0.0.1:4173/jobs/job_1');
+  await page.goto(`${baseUrl}/jobs/job_1`);
   const line = page.getByRole('textbox', { name: 'บทบรรยายที่ 1', exact: true });
   await line.waitFor();
   await line.fill('แก้แต่บันทึกไม่ผ่าน');

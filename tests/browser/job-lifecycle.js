@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   await page.unrouteAll({ behavior: 'wait' });
   let patchCalls = 0;
   const spot = {spot_id:'test_1', start_ms:1000,end_ms:5000,duration_ms:4000,original_start_ms:1000,original_end_ms:5000,decision:'generate',text:'บทเดิม',is_edited:false};
@@ -10,7 +11,7 @@ async page => {
     if (url.endsWith('/spots')) { patchCalls++; if (patchCalls===1) return route.fulfill({status:500,json:{error:'synthetic failure'}}); await new Promise(r=>setTimeout(r,400)); job.spots = route.request().postDataJSON().spots; return route.fulfill({json:{job}}); }
     return route.fulfill({status:404,json:{error:'fixture'}});
   });
-  await page.goto('http://127.0.0.1:4173/jobs/job_test');
+  await page.goto(`${baseUrl}/jobs/job_test`);
   await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).waitFor();
   await page.getByRole('textbox',{name:'บทบรรยายที่ 1',exact:true}).fill('บทแก้ไข');
   await page.getByText('บันทึกไม่สำเร็จ', {exact:false}).waitFor();

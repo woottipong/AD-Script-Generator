@@ -1,4 +1,5 @@
 async page => {
+  const baseUrl = new URL(page.url()).origin;
   const videoUrl = 'https://drive.rtt.in.th/archive/%E0%B8%AA%E0%B8%AA%E0%B8%A7%E0%B8%97.%202567/%E0%B8%84%E0%B8%93%E0%B8%B4%E0%B8%95%E0%B8%A8%E0%B8%B2%E0%B8%AA%E0%B8%95%E0%B8%A3%E0%B9%8C%E0%B8%9E%E0%B8%B7%E0%B9%89%E0%B8%99%E0%B8%90%E0%B8%B2%E0%B8%99/%E0%B8%84%E0%B8%93%E0%B8%B4%E0%B8%95%E0%B8%A8%E0%B8%B2%E0%B8%AA%E0%B8%95%E0%B8%A3%E0%B9%8C%E0%B8%9E%E0%B8%B7%E0%B9%89%E0%B8%99%E0%B8%90%E0%B8%B2%E0%B8%99%20%E0%B8%A1.5/%E0%B8%9A%E0%B8%97%E0%B8%97%E0%B8%B5%E0%B9%88%201/3.%E0%B9%80%E0%B8%A5%E0%B8%82%E0%B8%A2%E0%B8%81%E0%B8%81%E0%B8%B3%E0%B8%A5%E0%B8%B1%E0%B8%87%20%E0%B8%95%E0%B8%AD%E0%B8%99%203%20%E0%B8%A1.5%20%E0%B8%9A%E0%B8%97%E0%B8%97%E0%B8%B5%E0%B9%88%201.mp4';
   await page.unrouteAll({ behavior: 'wait' });
   let created = null;
@@ -13,7 +14,7 @@ async page => {
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
   const assert = (ok, message) => { if (!ok) throw new Error(message); };
-  await page.goto('http://127.0.0.1:4173/new');
+  await page.goto(`${baseUrl}/new`);
   await page.getByRole('button', { name: /ตรวจแก้ไฟล์ SRT/ }).click();
   const link = page.getByPlaceholder('https://…/video.mp4');
   const process = page.getByRole('button', { name: 'เริ่มตรวจแก้' });

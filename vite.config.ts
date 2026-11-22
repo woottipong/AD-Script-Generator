@@ -19,6 +19,9 @@ export default defineConfig(() => {
         interval: Number(process.env.CHOKIDAR_INTERVAL) || 300,
         ignored: ['**/_data/**', '**/.data/**', '**/dist/**'],
       },
+      fs: {
+        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.data/**'],
+      },
     },
   };
 });

@@ -16,6 +16,24 @@ const REQUIRED_SETTINGS = ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_CLIENT_ID', 'SESSION
 const LOGIN_COOKIE = 'envisio_login';
 const LOGIN_MAX_AGE_MS = 10 * 60 * 1000;
 const MAX_SESSION_COOKIE_BYTES = 3800;
+const SAFE_ERROR_TOKEN = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** Extracts only allowlisted non-secret metadata from OIDC/network errors before logging. */
+export function summarizeAuthError(err: unknown): string {
+  if (typeof err !== 'object' || err === null) return `NonError(${typeof err})`;
+  const record = err as Record<string, unknown>;
+  const rawName = err instanceof Error ? err.name || err.constructor?.name : err.constructor?.name;
+  const name = typeof rawName === 'string' && SAFE_ERROR_TOKEN.test(rawName) ? rawName : 'Error';
+  const parts = [name];
+  for (const field of ['code', 'error'] as const) {
+    const value = record[field];
+    if (typeof value === 'string' && SAFE_ERROR_TOKEN.test(value)) parts.push(`${field}=${value}`);
+  }
+  if (typeof record.status === 'number' && Number.isInteger(record.status) && record.status >= 100 && record.status <= 599) {
+    parts.push(`status=${record.status}`);
+  }
+  return parts.join(' ');
+}
 
 /** `new URL('localhost:3003')` parses with `localhost:` as the scheme, so the scheme is checked too. */
 function parseUrl(name: string, value: string): URL {
@@ -137,7 +155,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
     try {
       configuration = await provider();
     } catch (err) {
-      console.error('Could not reach Keycloak to sign in:', err);
+      console.error('Could not reach Keycloak to sign in:', summarizeAuthError(err));
       signInFailedPage(res, 503, 'เชื่อมต่อระบบเข้าสู่ระบบไม่ได้ กรุณาลองใหม่อีกครั้ง');
       return;
     }
@@ -183,7 +201,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       res.append('Set-Cookie', cookie(SESSION_COOKIE, sealSession(config.sessionSecret, session), SESSION_MAX_AGE_MS, '/'));
       res.redirect(pending.returnTo);
     } catch (err) {
-      console.error('Sign-in callback failed:', err);
+      console.error('Sign-in callback failed:', summarizeAuthError(err));
       signInFailedPage(res, 400, 'เข้าสู่ระบบไม่สำเร็จ');
     }
   });
@@ -201,7 +219,7 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
       url.searchParams.set('redirect_uri', `${config.appUrl}/`);
       res.redirect(url.href);
     } catch (err) {
-      console.error('Could not reach Keycloak to sign out:', err);
+      console.error('Could not reach Keycloak to sign out:', summarizeAuthError(err));
       res.redirect('/');
     }
   });
