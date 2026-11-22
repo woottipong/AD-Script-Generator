@@ -40,7 +40,6 @@ test('sign-in settings are required and the session secret must be long', () => 
   const env = {
     KEYCLOAK_ISSUER_URL: 'https://keycloak.example/realms/test',
     KEYCLOAK_CLIENT_ID: 'envisio-test',
-    KEYCLOAK_CLIENT_SECRET: 'client-secret',
     SESSION_SECRET: SECRET,
     APP_URL: 'https://envisio.example/',
   };
@@ -48,7 +47,8 @@ test('sign-in settings are required and the session secret must be long', () => 
   assert.equal(config.appUrl, 'https://envisio.example');
   assert.deepEqual(config.allJobsGroups, ['admin', 'supervisor']);
   assert.deepEqual(readAuthConfig({ ...env, AUTH_ALL_JOBS_GROUPS: ' lead , admin ' }).allJobsGroups, ['lead', 'admin']);
-  assert.throws(() => readAuthConfig({ ...env, KEYCLOAK_CLIENT_SECRET: '' }), /KEYCLOAK_CLIENT_SECRET/);
+  assert.throws(() => readAuthConfig({ ...env, KEYCLOAK_CLIENT_ID: '' }), /KEYCLOAK_CLIENT_ID/);
   assert.throws(() => readAuthConfig({ ...env, SESSION_SECRET: 'short' }), /SESSION_SECRET/);
   assert.throws(() => readAuthConfig({ ...env, APP_URL: 'not a url' }), /APP_URL/);
+  assert.throws(() => readAuthConfig({ ...env, APP_URL: 'localhost:3003' }), /APP_URL must start with http/);
 });

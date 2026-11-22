@@ -36,7 +36,7 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 20. As an Author with All-Jobs Access, I want admin and supervisor to work the same, so that nobody has to remember which group can do what.
 21. As an Author, I want my email shown as the Job Owner to stay current if the organisation changes my email, so that teammates still recognise my Jobs.
 22. As an Author whose email changes in Keycloak, I want to keep all my Jobs, so that an account change doesn't orphan my work.
-23. As an operator, I want to set the Keycloak issuer, client ID, client secret, session secret, app URL, and the All-Jobs Access group names through environment variables, so that the same build runs in development and production.
+23. As an operator, I want to set the Keycloak issuer, client ID, session secret, app URL, and the All-Jobs Access group names through environment variables, so that the same build runs in development and production.
 24. As an operator, I want the server to refuse to start when a required sign-in setting is missing, so that a misconfiguration never runs without sign-in.
 25. As an operator, I want to sign everyone out at once by changing the session secret and restarting, so that I can revoke access immediately when someone leaves.
 26. As an operator, I want the production healthcheck to keep working without a session, so that the container isn't marked unhealthy.
@@ -46,8 +46,8 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 
 ## Implementation Decisions
 
-**Sign-in flow (server, confidential client)**
-- Add the `openid-client` dependency (approved). The Express server runs an authorization code flow with PKCE (`S256`) and `state` against the issuer in `KEYCLOAK_ISSUER_URL` (`https://accounts.rtt.in.th/auth/realms/rtt`), client `envisio-dev`, and the client secret from the environment, authenticating with `client_secret_basic`.
+**Sign-in flow (server, public client with PKCE)**
+- Add the `openid-client` dependency (approved). The Express server runs an authorization code flow with PKCE (`S256`) and `state` against the issuer in `KEYCLOAK_ISSUER_URL` (`https://accounts.rtt.in.th/auth/realms/rtt`), client `envisio-dev` as a public client (no client secret; PKCE protects the code exchange).
 - Discover the provider lazily on the first sign-in and keep the result, so the server starts and serves its healthcheck even when Keycloak is unreachable.
 - Routes:
   - `GET /auth/login?returnTo=<path>` starts the flow. It keeps `state`, the PKCE verifier, and `returnTo` in a short-lived encrypted cookie (10 minutes).
@@ -64,7 +64,7 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 - `allJobs` is true when any entry of the token's `groups` claim, with a leading `/` stripped, matches a name in `AUTH_ALL_JOBS_GROUPS` (default `admin,supervisor`).
 
 **Configuration**
-- The server requires `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `SESSION_SECRET`, and `APP_URL`. If any is missing, or `SESSION_SECRET` is shorter than 32 characters, it exits at startup with a clear message.
+- The server requires `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_ID`, `SESSION_SECRET`, and `APP_URL`. If any is missing, or `SESSION_SECRET` is shorter than 32 characters, it exits at startup with a clear message.
 - There is no sign-in bypass or development switch.
 
 **Route protection**
@@ -139,6 +139,6 @@ Author ต้อง login ผ่าน Keycloak ขององค์กร (rea
 
 ## Further Notes
 
-- On `envisio-dev`, register the redirect URI `http://localhost:3003/auth/callback` and the post-logout redirect URI `http://localhost:3003/` for local development, plus the production equivalents. Turn on client authentication (confidential) and keep the Group Membership mapper that puts `groups` in the token.
-- `KEYCLOAK_CLIENT_SECRET` and `SESSION_SECRET` go only in `.env`. Never commit them, never put them in examples or logs.
+- On `envisio-dev`, register the redirect URI `http://localhost:3003/auth/callback` and the post-logout redirect URI `http://localhost:3003/` for local development, plus the production equivalents. Keep client authentication off (public client) and keep the Group Membership mapper that puts `groups` in the token.
+- `SESSION_SECRET` goes only in `.env`. Never commit them, never put them in examples or logs.
 - The discovery document does not list `groups` in `claims_supported`, which is normal for a mapper claim. Confirm on the first real sign-in that `groups` arrives in the token.

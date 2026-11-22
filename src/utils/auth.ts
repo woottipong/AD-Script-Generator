@@ -5,7 +5,6 @@ import { SESSION_COOKIE, SESSION_MAX_AGE_MS, readCookie, sealValue, unsealValue,
 export type AuthConfig = {
   issuerUrl: URL;
   clientId: string;
-  clientSecret: string;
   sessionSecret: string;
   /** Public origin of the app, without a trailing slash. */
   appUrl: string;
@@ -13,16 +12,20 @@ export type AuthConfig = {
   allJobsGroups: string[];
 };
 
-const REQUIRED_SETTINGS = ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_CLIENT_ID', 'KEYCLOAK_CLIENT_SECRET', 'SESSION_SECRET', 'APP_URL'] as const;
+const REQUIRED_SETTINGS = ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_CLIENT_ID', 'SESSION_SECRET', 'APP_URL'] as const;
 const LOGIN_COOKIE = 'envisio_login';
 const LOGIN_MAX_AGE_MS = 10 * 60 * 1000;
 
+/** `new URL('localhost:3003')` parses with `localhost:` as the scheme, so the scheme is checked too. */
 function parseUrl(name: string, value: string): URL {
+  let url: URL;
   try {
-    return new URL(value);
+    url = new URL(value);
   } catch {
     throw new Error(`${name} is not a valid URL`);
   }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`${name} must start with http:// or https://`);
+  return url;
 }
 
 /** Reads the sign-in settings; throws naming every missing or invalid one so the server can refuse to start. */
@@ -34,7 +37,6 @@ export function readAuthConfig(env: Record<string, string | undefined>): AuthCon
   return {
     issuerUrl: parseUrl('KEYCLOAK_ISSUER_URL', env.KEYCLOAK_ISSUER_URL!),
     clientId: env.KEYCLOAK_CLIENT_ID!,
-    clientSecret: env.KEYCLOAK_CLIENT_SECRET!,
     sessionSecret: env.SESSION_SECRET!,
     appUrl: appUrl.origin,
     secureCookies: appUrl.protocol === 'https:',
@@ -73,7 +75,8 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
   let discovered: Promise<oidc.Configuration> | null = null;
   const provider = () => {
     if (!discovered) {
-      discovered = oidc.discovery(config.issuerUrl, config.clientId, undefined, oidc.ClientSecretBasic(config.clientSecret));
+      // `envisio-dev` is a public client: PKCE, not a client secret, protects the code exchange.
+      discovered = oidc.discovery(config.issuerUrl, config.clientId, undefined, oidc.None());
       discovered.catch(() => { discovered = null; });
     }
     return discovered;
@@ -102,7 +105,8 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
     res.append('Set-Cookie', cookie(LOGIN_COOKIE, sealValue(config.sessionSecret, 'login', pending, LOGIN_MAX_AGE_MS), LOGIN_MAX_AGE_MS, '/auth'));
     res.redirect(oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: redirectUri,
-      scope: 'openid email profile',
+      // Only `openid`: this realm rejects scopes not assigned to the client, and its default scopes already add email.
+      scope: 'openid',
       code_challenge: await oidc.calculatePKCECodeChallenge(pkceCodeVerifier),
       code_challenge_method: 'S256',
       state,

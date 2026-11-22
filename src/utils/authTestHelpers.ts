@@ -7,7 +7,6 @@ export function authTestEnv(port: number): Record<string, string> {
   return {
     KEYCLOAK_ISSUER_URL: 'https://keycloak.invalid/realms/test',
     KEYCLOAK_CLIENT_ID: 'envisio-test',
-    KEYCLOAK_CLIENT_SECRET: 'test-only-client-secret',
     SESSION_SECRET: TEST_SESSION_SECRET,
     APP_URL: `http://127.0.0.1:${port}`,
   };

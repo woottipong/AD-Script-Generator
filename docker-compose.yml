@@ -12,6 +12,13 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=300
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Sign-in (ADR-0004). The browser reaches this container on host port 3003, so that is the sign-in origin;
+      # register http://localhost:3003/auth/callback on the Keycloak client. SESSION_SECRET comes from .env only.
+      - APP_URL=http://localhost:3003
+      - KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL:-https://accounts.rtt.in.th/auth/realms/rtt}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-envisio-dev}
+      - SESSION_SECRET=${SESSION_SECRET:?Set SESSION_SECRET in .env to at least 32 random characters}
+      - AUTH_ALL_JOBS_GROUPS=${AUTH_ALL_JOBS_GROUPS:-admin,supervisor}
     volumes:
       - .:/app
       - /app/node_modules
