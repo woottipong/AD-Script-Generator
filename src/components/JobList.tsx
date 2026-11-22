@@ -519,7 +519,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
           </EmptyContent>
         </Empty>
       ) : (jobs || !fetchError) && (
-        <div className="@container overflow-hidden rounded-lg border bg-card">
+        <div className="@container overflow-hidden rounded-xl border bg-card">
           {jobs === null ? (
             <div aria-hidden="true" className="flex flex-col gap-3 border-b bg-card px-4 py-3 @min-[42rem]:flex-row @min-[42rem]:flex-wrap @min-[42rem]:items-center @min-[42rem]:justify-between @min-[42rem]:px-5">
               <Skeleton className="h-9 w-full @min-[42rem]:w-80" />
@@ -583,7 +583,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                     key={value}
                     value={value}
                     size="sm"
-                    className="h-7 gap-1.5 rounded-[5px] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
+                    className="h-7 gap-1.5 rounded-[calc(var(--radius)-2px)] px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-xs aria-pressed:ring-0 not-disabled:aria-pressed:hover:bg-background pointer-coarse:min-h-10"
                   >
                     <span>{label}</span>
                     <span className="text-xs text-muted-foreground opacity-75 tabular-nums">{count}</span>

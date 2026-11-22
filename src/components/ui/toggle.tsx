@@ -14,9 +14,9 @@ const toggleVariants = cva(
         outline:
           "border border-input bg-transparent not-disabled:hover:bg-muted aria-pressed:bg-brand-100 aria-pressed:text-brand-900 aria-pressed:ring-1 aria-pressed:ring-brand-300 aria-pressed:ring-inset not-disabled:aria-pressed:hover:bg-brand-200/70",
         "solid-primary":
-          "rounded-[4px] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-primary",
+          "rounded-[calc(var(--radius)-2px)] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-primary",
         "solid-muted":
-          "rounded-[4px] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-slate-700 aria-pressed:text-white aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-slate-700",
+          "rounded-[calc(var(--radius)-2px)] bg-transparent text-muted-foreground not-disabled:hover:bg-background/80 not-disabled:hover:text-foreground aria-pressed:bg-slate-700 aria-pressed:text-white aria-pressed:shadow-xs not-disabled:aria-pressed:hover:bg-slate-700",
       },
       size: {
         default:
