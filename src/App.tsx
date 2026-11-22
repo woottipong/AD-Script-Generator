@@ -1480,7 +1480,7 @@ export default function App() {
                             />
                           }
                         >
-                          <Info className="size-3.5 shrink-0" aria-hidden="true" />
+                          <Info aria-hidden="true" />
                           {videoDuration && <span className="hidden sm:inline">{videoDuration}</span>}
                           {videoHeightLabel && <span className="hidden text-muted-foreground/80 md:inline">· {videoHeightLabel}</span>}
                         </TooltipTrigger>
@@ -1520,7 +1520,7 @@ export default function App() {
             : 'sr-only'}>
             <p id="job-title-status" role="status" className="text-muted-foreground">{titleFeedback}</p>
             {titleEditor.kind === 'error' && (
-              <div id="job-title-error" role="alert" className="space-y-1.5 text-error-foreground [overflow-wrap:anywhere]">
+              <div id="job-title-error" role="alert" className="flex flex-col gap-1.5 text-error-foreground [overflow-wrap:anywhere]">
                 <p>{titleEditor.message}</p>
                 <div className="flex items-center gap-2">
                   <Button

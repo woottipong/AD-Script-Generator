@@ -257,11 +257,11 @@ export function IntakeSkeleton() {
           </div>
         </div>
 
-        <div className="space-y-5 p-5 sm:p-7">
+        <div className="flex flex-col gap-5 p-5 sm:p-7">
           <div className="flex h-20 w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3.5">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <Skeleton variant="shimmer" delay={180} className="size-10 shrink-0 rounded-lg bg-brand-100/70" />
-              <div className="min-w-0 space-y-1.5">
+              <div className="flex min-w-0 flex-col gap-1.5">
                 <Skeleton variant="shimmer" delay={220} className="h-4 w-36 max-w-full rounded bg-muted" />
                 <Skeleton variant="shimmer" delay={260} className="h-3 w-24 max-w-full rounded bg-muted/70" />
               </div>
@@ -269,7 +269,7 @@ export function IntakeSkeleton() {
             <Skeleton variant="shimmer" delay={300} className="h-8 w-24 shrink-0 rounded-md bg-muted" />
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Skeleton variant="shimmer" delay={280} className="h-4 w-16 rounded bg-muted" />
             <Skeleton variant="shimmer" delay={340} className="h-9 w-full rounded-lg bg-muted/70" />
           </div>

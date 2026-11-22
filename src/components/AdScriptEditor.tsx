@@ -23,6 +23,7 @@ import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,9 +33,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
@@ -438,7 +440,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
           {!isExpanded && spot.is_edited && <span className="text-muted-foreground">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
             <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-600" aria-hidden="true" />
+              <span className="size-1.5 rounded-full bg-brand-600" aria-hidden="true" />
               ตำแหน่งวิดีโอ
             </span>
           )}
@@ -457,7 +459,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
         {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
         {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
           {spot.decision === 'generate' ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Textarea
                 ref={textareaRef}
                 variant="script"
@@ -475,7 +477,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               />
 
               {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all duration-150 ${
@@ -530,7 +532,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               </div>
             </div>
           ) : hasSavedText ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Textarea
                 ref={textareaRef}
                 variant="script"
@@ -557,7 +559,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       {spot.decision === 'pending' && isBatchProcessing && (
         <div
           aria-hidden="true"
-          className="mt-1.5 w-full space-y-2"
+          className="mt-1.5 flex w-full flex-col gap-2"
         >
           <Skeleton variant="shimmer" delay={(spotOrder % 4) * 140} className="h-3.5 w-full rounded bg-brand-100/80" />
           <Skeleton
@@ -812,11 +814,13 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </SelectValue>
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-44">
-              {(Object.entries(filterLabels) as [FilterMode, string][]).map(([value, label]) => (
-                <SelectItem key={value} value={value} className="text-xs">
-                  {label}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {(Object.entries(filterLabels) as [FilterMode, string][]).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="text-xs">
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           {spotChecks.size > 0 && (
@@ -829,9 +833,9 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   />
                 }
               >
-                {hasTimingIssue ? <AlertTriangle className="size-3.5" aria-hidden="true" /> : <Clock className="size-3.5" aria-hidden="true" />}
+                {hasTimingIssue ? <AlertTriangle data-icon="inline-start" className="size-3.5" aria-hidden="true" /> : <Clock data-icon="inline-start" className="size-3.5" aria-hidden="true" />}
                 ต้องตรวจ <span className="tabular-nums">{spotChecks.size}</span>
-                <ChevronDown className="size-3.5 transition-transform group-aria-expanded/button:rotate-180" aria-hidden="true" />
+                <ChevronDown data-icon="inline-end" className="size-3.5 transition-transform group-aria-expanded/button:rotate-180" aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuGroup>
@@ -852,16 +856,18 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   ))}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="primary"
-                  onClick={() => {
-                    setFilterMode('needs_check');
-                    setSearchQuery('');
-                  }}
-                  className="py-1.5 text-xs"
-                >
-                  แสดงเฉพาะบรรทัดที่ต้องตรวจ
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    variant="primary"
+                    onClick={() => {
+                      setFilterMode('needs_check');
+                      setSearchQuery('');
+                    }}
+                    className="py-1.5 text-xs"
+                  >
+                    แสดงเฉพาะบรรทัดที่ต้องตรวจ
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -898,7 +904,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                         </div>
                         <Skeleton variant="shimmer" delay={idx * 140} className="h-5 w-16 rounded-md bg-brand-100/60" />
                       </div>
-                      <div className="w-full space-y-2">
+                      <div className="flex w-full flex-col gap-2">
                         <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 w-full rounded bg-muted" />
                         <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
                       </div>
@@ -915,36 +921,54 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
-              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-destructive mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-muted-foreground/60 mb-2" aria-hidden="true" />}
-              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
-                {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
-              </p>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
-                {emptyState === 'failed'
-                  ? (onRetryJobSave
-                    ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
-                    : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
-                  : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
-              </p>
+            <Empty className="h-full py-10 sm:py-16">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  {emptyState === 'failed'
+                    ? <AlertTriangle className="text-destructive" aria-hidden="true" />
+                    : <Maximize2 aria-hidden="true" />}
+                </EmptyMedia>
+                <EmptyTitle role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
+                  {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {emptyState === 'failed'
+                    ? (onRetryJobSave
+                      ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
+                      : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
+                    : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+                </EmptyDescription>
+              </EmptyHeader>
               {emptyState === 'failed' && (
-                <Button onClick={onRetryJobSave ?? onRetryVad} className="mt-5">
-                  {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
-                </Button>
+                <EmptyContent>
+                  <Button onClick={onRetryJobSave ?? onRetryVad}>
+                    {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
+                  </Button>
+                  {errorMessage && (
+                    <Collapsible className="w-full text-left text-sm text-muted-foreground">
+                      <CollapsibleTrigger className="group/err inline-flex items-center gap-1.5 rounded px-1 py-2 hover:text-foreground">
+                        รายละเอียดข้อผิดพลาด
+                        <ChevronDown aria-hidden="true" className="size-4 transition-transform group-data-[panel-open]/err:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                </EmptyContent>
               )}
-              {emptyState === 'failed' && errorMessage && (
-                <details className="mt-4 w-full max-w-sm text-left text-sm text-muted-foreground">
-                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-foreground">รายละเอียดข้อผิดพลาด</summary>
-                  <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
-                </details>
-              )}
-            </div>
+            </Empty>
           )
         ) : filteredSpots.length === 0 ? (
-          <div className="py-12 px-6 text-center text-sm text-muted-foreground space-y-3">
-            <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>
-            <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
-          </div>
+          <Empty className="py-12">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
+              <EmptyTitle>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-border border-b border-border bg-card">
             {filteredSpots.map((spot) => {
@@ -983,9 +1007,9 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
           {saveStatus === 'saving' ? <Spinner className="size-3.5 shrink-0 text-brand-700" aria-hidden="true" />
-            : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
-            : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+            : saveStatus === 'saved' ? <CheckCircle2 className="size-3.5 shrink-0 text-brand-800" aria-hidden="true" />
+            : saveStatus === 'error' ? <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+            : <FileText className="size-3.5 shrink-0" aria-hidden="true" />}
           <span>
             {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้เท่านั้น'
               : saveStatus === 'saving' ? 'กำลังบันทึกการแก้ไข…'

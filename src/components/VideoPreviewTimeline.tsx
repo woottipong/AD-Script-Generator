@@ -473,7 +473,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 ref={videoRef}
                 src={videoUrl}
                 preload="auto"
-                className="w-full h-full object-contain cursor-pointer"
+                className="size-full object-contain cursor-pointer"
                 playsInline
                 onLoadStart={() => {
                   if ((videoRef.current?.readyState ?? 0) < 1) setIsVideoLoading(true);
@@ -496,8 +496,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               />
               {videoError || isVideoLoading ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stage px-6 py-4 text-center text-stage-foreground">
-                  {videoError ? <AlertTriangle className="h-6 w-6 text-warning-strong-border" aria-hidden="true" /> : <Spinner className="size-6 text-brand-300" aria-hidden="true" />}
-                  <div role={videoError ? 'alert' : 'status'} className="w-full max-w-xs space-y-2">
+                  {videoError ? <AlertTriangle className="size-6 text-warning-strong-border" aria-hidden="true" /> : <Spinner className="size-6 text-brand-300" aria-hidden="true" />}
+                  <div role={videoError ? 'alert' : 'status'} className="flex w-full max-w-xs flex-col gap-2">
                     <p className="text-sm font-semibold">{videoError === 'load' ? 'ยังเปิดวิดีโอไม่ได้' : videoError === 'play' ? 'ยังเล่นวิดีโอไม่ได้' : 'กำลังโหลดวิดีโอ'}</p>
                     {!videoError && (
                       <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-stage-foreground/15">
@@ -538,7 +538,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center p-6 text-center text-stage-foreground/80">
-              <Film className="mb-2 h-8 w-8 text-stage-foreground/50" aria-hidden="true" />
+              <Film className="mb-2 size-8 text-stage-foreground/50" aria-hidden="true" />
               <p className="text-sm font-medium">ยังเปิดวิดีโอไม่ได้</p>
               <p className="mt-1 text-xs">ตรวจสอบข้อความแจ้งปัญหา หรือเลือกวิดีโออีกครั้ง</p>
             </div>
@@ -591,7 +591,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               <div className="hidden xl:flex items-center gap-3 text-muted-foreground" aria-label="สถานะช่วงบรรยาย">
                 {legendItems.map((item) => (
                   <span key={item.key} className="inline-flex items-center gap-1.5">
-                    <span className={`h-2.5 w-2.5 rounded-[3px] ${item.swatch}`} aria-hidden="true" />
+                    <span className={`size-2.5 rounded-[3px] ${item.swatch}`} aria-hidden="true" />
                     {item.label}
                   </span>
                 ))}
@@ -682,7 +682,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     className="pointer-events-none sticky left-0 block h-full"
                   />
                 ) : (
-                  <div className="pointer-events-none relative h-full w-full overflow-hidden bg-gradient-to-b from-surface-subtle/70 via-card to-surface-subtle/70">
+                  <div className="pointer-events-none relative size-full overflow-hidden bg-gradient-to-b from-surface-subtle/70 via-card to-surface-subtle/70">
                     <div aria-hidden="true" className="absolute inset-0 flex items-center justify-between gap-1 px-3 opacity-80">
                       {[24, 38, 18, 44, 30, 52, 22, 40, 28, 48, 20, 34, 46, 26, 36, 50, 20, 42, 30, 44, 24, 38, 48, 22, 34, 42, 26, 36, 20, 40, 28, 46].map((pct, idx) => (
                         <Skeleton
@@ -850,7 +850,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 );
               })}
             </div>
-            <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 h-2.5 w-2.5 rotate-45 bg-red-600" /></div>
+            <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 size-2.5 rotate-45 bg-red-600" /></div>
           </div>
         </div>
       </div>

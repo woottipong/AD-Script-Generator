@@ -72,7 +72,9 @@ export function AccountMenu({ email, name, allJobs, accessGroups, onSignOut }: {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onSignOut}><LogOut aria-hidden="true" />ออกจากระบบ</DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onSignOut}><LogOut aria-hidden="true" />ออกจากระบบ</DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

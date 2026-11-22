@@ -1,3 +1,4 @@
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -59,18 +60,18 @@ export function EditorWorkspaceSkeleton({ label }: { label: string }) {
 
         <div aria-hidden="true" className="flex flex-wrap items-center gap-2 border-t border-border bg-card px-3 py-2">
           <div className="flex items-center gap-1">
-            <Skeleton variant="shimmer" delay={0} className="h-8 w-8 rounded-md bg-muted/70" />
-            <Skeleton variant="shimmer" delay={60} className="h-8 w-8 rounded-md bg-muted/70" />
+            <Skeleton variant="shimmer" delay={0} className="size-8 rounded-md bg-muted/70" />
+            <Skeleton variant="shimmer" delay={60} className="size-8 rounded-md bg-muted/70" />
             <Skeleton variant="shimmer" delay={120} className="size-8 rounded-lg bg-brand-100/70" />
-            <Skeleton variant="shimmer" delay={180} className="h-8 w-8 rounded-md bg-muted/70" />
-            <Skeleton variant="shimmer" delay={240} className="h-8 w-8 rounded-md bg-muted/70" />
+            <Skeleton variant="shimmer" delay={180} className="size-8 rounded-md bg-muted/70" />
+            <Skeleton variant="shimmer" delay={240} className="size-8 rounded-md bg-muted/70" />
           </div>
-          <div className="h-5 w-px bg-border" />
+          <Separator orientation="vertical" className="h-5 self-center" />
           <div className="flex items-center gap-1">
             <Skeleton variant="shimmer" delay={280} className="size-8 rounded-md bg-muted/70" />
             <Skeleton variant="shimmer" delay={320} className="size-8 rounded-md bg-muted/70" />
           </div>
-          <div className="hidden h-5 w-px bg-border sm:block" />
+          <Separator orientation="vertical" className="hidden h-5 self-center sm:block" />
           <div className="flex items-center gap-1">
             <Skeleton variant="shimmer" delay={360} className="size-8 rounded-md bg-muted/70" />
             <Skeleton variant="shimmer" delay={400} className="size-8 rounded-md bg-muted/70" />
@@ -161,12 +162,12 @@ export function EditorWorkspaceSkeleton({ label }: { label: string }) {
             </div>
             <Skeleton variant="shimmer" delay={260} className="h-8 w-28 rounded-lg bg-muted/80" />
           </div>
-          <div className="h-24 w-full space-y-2.5 rounded-lg border border-border/70 bg-card p-3">
+          <div className="flex h-24 w-full flex-col gap-2.5 rounded-lg border border-border/70 bg-card p-3">
             <Skeleton variant="shimmer" delay={100} className="h-3.5 w-11/12 rounded bg-muted" />
             <Skeleton variant="shimmer" delay={180} className="h-3.5 w-4/5 rounded bg-muted" />
             <Skeleton variant="shimmer" delay={260} className="h-3.5 w-2/5 rounded bg-muted/70" />
           </div>
-          <div className="mt-2.5 space-y-2">
+          <div className="mt-2.5 flex flex-col gap-2">
             <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
               <Skeleton variant="shimmer" delay={160} className="h-full w-2/3 rounded-full bg-brand-100/80" />
             </div>
@@ -187,7 +188,7 @@ export function EditorWorkspaceSkeleton({ label }: { label: string }) {
                   </div>
                   <Skeleton variant="shimmer" delay={baseDelay + 100} className="h-5 w-16 rounded-md bg-brand-100/60" />
                 </div>
-                <div className="w-full space-y-2">
+                <div className="flex w-full flex-col gap-2">
                   <Skeleton variant="shimmer" delay={baseDelay + 60} className="h-3.5 w-full rounded bg-muted" />
                   <Skeleton
                     variant="shimmer"

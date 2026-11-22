@@ -4,6 +4,7 @@ import { VideoProcessingStatus } from './VideoProcessingStatus';
 import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -52,25 +53,25 @@ const batchColors = {
     surface: 'border-border bg-card hover:border-warning-strong-border hover:bg-warning',
     foreground: 'text-foreground',
     secondary: 'text-muted-foreground',
-    badge: 'bg-warning-strong text-warning-strong-foreground',
+    badgeVariant: 'warning-strong' as const,
   },
   processing: {
     surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
     foreground: 'text-brand-950',
     secondary: 'text-brand-900',
-    badge: 'bg-brand-800 text-primary-foreground',
+    badgeVariant: 'default' as const,
   },
   completed: {
     surface: 'border-brand-200 bg-card hover:border-brand-300 hover:bg-brand-50',
     foreground: 'text-foreground',
     secondary: 'text-muted-foreground',
-    badge: 'bg-brand-100 text-brand-900',
+    badgeVariant: 'info-strong' as const,
   },
   failed: {
     surface: 'border-error-border bg-error-surface hover:bg-destructive/15',
     foreground: 'text-error-foreground',
     secondary: 'text-error-foreground',
-    badge: 'bg-destructive/15 text-error-foreground',
+    badgeVariant: 'destructive' as const,
   },
 };
 
@@ -406,7 +407,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 <X aria-hidden="true" />
               </Button>
             </div>
-            <div className="space-y-3 px-4 pb-4 pt-2">
+            <div className="flex flex-col gap-3 px-4 pb-4 pt-2">
               {activityFeedback && (
                 <p className="leading-relaxed text-muted-foreground">
                   {activityFeedback.detail || activityFeedback.description}
@@ -454,10 +455,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                           <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
                           <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
                         </div>
-                        <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
-                          {batch.status === 'processing' ? <Spinner className="size-3.5" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                        <Badge variant={colors.badgeVariant}>
+                          {batch.status === 'processing' ? <Spinner aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle aria-hidden="true" /> : <Clock aria-hidden="true" />}
                           {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
-                        </span>
+                        </Badge>
                       </button>
                     );
                   })}
@@ -495,7 +496,9 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
