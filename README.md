@@ -335,6 +335,7 @@ npx --yes --package @playwright/cli playwright-cli -s=ad-check open http://127.0
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-lifecycle.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/editor.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list.js
+npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/job-list-owners.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/create-mode.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/resume-cancel.js
 npx --yes --package @playwright/cli playwright-cli -s=ad-check run-code --filename tests/browser/review-mode.js

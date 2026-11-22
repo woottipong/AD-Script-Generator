@@ -260,7 +260,8 @@ function deleteConfirmationCopy(job: StoredJob): string {
   return `ลบ “${name}” และวิดีโอต้นทาง${sizeNote} ออกจากเซิร์ฟเวอร์ การลบนี้ย้อนกลับไม่ได้`;
 }
 
-export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; onNew: () => void }) {
+/** `showOwners` is the Author's All-Jobs Access: their list mixes Authors, so it names each Job Owner. */
+export function JobList({ onOpen, onNew, showOwners }: { onOpen: (jobId: string) => void; onNew: () => void; showOwners: boolean }) {
   const [jobs, setJobs] = useState<StoredJob[] | null>(null);
   const [pendingDelete, setPendingDelete] = useState<StoredJob | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -352,7 +353,8 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
     const filtered = (jobs ?? []).filter((job) => {
       if (modeFilter !== 'all' && (job.is_upload || job.mode !== modeFilter)) return false;
       if (!searchTerm) return true;
-      return [jobName(job), job.file_name].some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
+      return [jobName(job), job.file_name, showOwners ? job.owner_email ?? '' : '']
+        .some((value) => value.toLocaleLowerCase('th-TH').includes(searchTerm));
     });
     return filtered.sort((a, b) => {
       let delta = 0;
@@ -373,7 +375,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
       }
       return sortDirection === 'asc' ? delta : -delta;
     });
-  }, [jobs, modeFilter, searchTerm, sortField, sortDirection]);
+  }, [jobs, modeFilter, searchTerm, sortField, sortDirection, showOwners]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -533,8 +535,8 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                   <InputGroupInput
                     ref={searchInput}
                     type="search"
-                    aria-label="ค้นหาชื่องานหรือชื่อไฟล์"
-                    placeholder="ค้นหาชื่องานหรือชื่อไฟล์"
+                    aria-label={showOwners ? 'ค้นหาชื่องาน ชื่อไฟล์ หรืออีเมลเจ้าของ' : 'ค้นหาชื่องานหรือชื่อไฟล์'}
+                    placeholder={showOwners ? 'ค้นหาชื่องาน ชื่อไฟล์ หรืออีเมลเจ้าของ' : 'ค้นหาชื่องานหรือชื่อไฟล์'}
                     className="[&::-webkit-search-cancel-button]:hidden"
                     value={query}
                     onChange={(event) => {
@@ -624,6 +626,7 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                     <TableHead scope="col" aria-sort={ariaSortFor('name')} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground @min-[42rem]:pl-5">
                       <SortableColumnButton label="ชื่องาน" field="name" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
                     </TableHead>
+                    {showOwners && <TableHead scope="col" className="hidden w-48 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">เจ้าของ</TableHead>}
                     <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
                     <TableHead scope="col" className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
                     <TableHead scope="col" aria-sort={ariaSortFor('duration')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
@@ -659,6 +662,11 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                             <Skeleton className="size-9 rounded-md" />
                           </div>
                         </TableCell>
+                        {showOwners && (
+                          <TableCell className="hidden px-3 @min-[54rem]:table-cell">
+                            <Skeleton className="h-3.5 w-32" />
+                          </TableCell>
+                        )}
                         <TableCell className="hidden px-3 @min-[54rem]:table-cell">
                           <Skeleton className="h-3.5 w-20" />
                         </TableCell>
@@ -690,6 +698,11 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                       const uploadSize = job.is_upload ? formatFileSize(job.size_bytes) : '';
                       const href = jobPath(job.job_id);
                       const statusNode = <JobStatusBadge status={status} name={name} />;
+                      const ownerNode = job.is_upload
+                        ? <span className="text-muted-foreground">—</span>
+                        : job.owner_email
+                          ? <span className="[overflow-wrap:anywhere]">{job.owner_email}</span>
+                          : <span className="text-muted-foreground">ไม่มีเจ้าของ</span>;
                       const deleteButton = (
                         <Button
                           variant="ghost-destructive"
@@ -766,11 +779,15 @@ export function JobList({ onOpen, onNew }: { onOpen: (jobId: string) => void; on
                                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 @min-[54rem]:hidden">
                                   {statusNode}
                                   {!job.is_upload && job.mode && <ModeTag mode={job.mode} />}
+                                  {showOwners && !job.is_upload && <span className="text-xs text-muted-foreground">{ownerNode}</span>}
                                 </div>
                               </div>
                             </div>
                             <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
                           </TableCell>
+                          {showOwners && (
+                            <TableCell className="hidden px-3 text-xs whitespace-normal text-foreground @min-[54rem]:table-cell">{ownerNode}</TableCell>
+                          )}
                           <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
                             {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
                           </TableCell>

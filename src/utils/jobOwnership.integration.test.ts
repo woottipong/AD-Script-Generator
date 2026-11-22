@@ -89,6 +89,9 @@ test('an Author sees and acts on only their own Jobs; others answer like a missi
     }
     assert.equal((await b('/jobs/job_b')).status, 200, 'the hidden Jobs are untouched');
     assert.equal((await lead('/jobs/job_legacy')).status, 200, 'All-Jobs Access opens a Job with no Job Owner');
+    assert.equal((await lead('/jobs/job_b', 'PATCH', { title: 'ส่งต่อให้ทีม' })).status, 200, 'All-Jobs Access acts on another Author\'s Job');
+    assert.equal((await lead('/jobs/job_legacy/spots', 'PATCH', { spots: [spot] })).status, 200);
+    assert.equal((await lead('/jobs/job_legacy/files', 'DELETE')).status, 200);
 
     assert.equal((await a(`/jobs/${job.job_id}`, 'PATCH', { title: 'ของฉัน' })).status, 200);
     const renamed = await lead(`/jobs/${job.job_id}`);

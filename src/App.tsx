@@ -1636,7 +1636,7 @@ export default function App() {
           </EmptyContent>
         </Empty>
       ) : !hasProject && path === '/' ? (
-        <JobList onOpen={openJob} onNew={() => navigate('/new')} />
+        <JobList onOpen={openJob} onNew={() => navigate('/new')} showOwners={signedInAuthor?.allJobs === true} />
       ) : !hasProject && (mode ?? 'generate') === 'review' ? (
         <ReviewIntake
           checkingFileName={checkingFileName}

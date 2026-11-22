@@ -4,8 +4,8 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Author ที่ `allJobs` เป็นจริงได้ทุก Job จาก `GET /api/jobs` และทุก route ที่มี `:jobId` ทำงานกับงานของใครก็ได้ รวมถึงงานที่ไม่มีเจ้าของ
-- [ ] Job List แสดงคอลัมน์ "เจ้าของ" (email หรือ "ไม่มีเจ้าของ") และค้นหาจาก email เจ้าของได้ เฉพาะเมื่อ `allJobs` เป็นจริง
-- [ ] integration tests ครอบ All-Jobs Access; browser tests ครอบคอลัมน์และการค้นหาที่ขึ้นตาม `allJobs`
+- [x] Author ที่ `allJobs` เป็นจริงได้ทุก Job จาก `GET /api/jobs` และทุก route ที่มี `:jobId` ทำงานกับงานของใครก็ได้ รวมถึงงานที่ไม่มีเจ้าของ
+- [x] Job List แสดงคอลัมน์ "เจ้าของ" (email หรือ "ไม่มีเจ้าของ") และค้นหาจาก email เจ้าของได้ เฉพาะเมื่อ `allJobs` เป็นจริง
+- [x] integration tests ครอบ All-Jobs Access; browser tests ครอบคอลัมน์และการค้นหาที่ขึ้นตาม `allJobs`
