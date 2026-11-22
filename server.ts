@@ -7,12 +7,14 @@ import http from 'http';
 import path from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createServer as createViteServer } from 'vite';
 import { ApiError, GoogleGenAI, MediaProcessing, MediaResolution, ThinkingLevel, Type } from '@google/genai';
 import {
   ADAnalysisSettings,
   ADSpot,
   AnalysisBatch,
+  type AiGenerationAvailability,
   DEFAULT_AD_ANALYSIS_SETTINGS,
   JOB_SCHEMA_VERSION,
   PersistedJobState,
@@ -66,6 +68,30 @@ const REVIEW_MODE_GEMINI_ERROR = 'งานตรวจแก้ SRT ไม่�
 const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 let primaryModelCooldownUntil = 0;
 const verifiedActiveFileNames = new Set<string>();
+const configuredAiLimit = Number(process.env.AI_DAILY_JOB_LIMIT);
+const aiDailyLimit = Number.isSafeInteger(configuredAiLimit) && configuredAiLimit > 0 ? configuredAiLimit : 3;
+const thailandDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', dateStyle: 'short' });
+
+function geminiApiKey(): string | undefined {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  return key && key !== 'MY_GEMINI_API_KEY' ? key : undefined;
+}
+
+function allowAiGeneration(res: Response, confirmed: unknown, jobId: string): boolean {
+  const author = res.locals.author as AuthorSession;
+  if (!author.canGenerateAi) {
+    res.status(401).json({ code: 'AI_ACCESS_REQUIRED', error: 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้' });
+  } else if (!geminiApiKey()) {
+    res.status(500).json({ code: 'AI_NOT_CONFIGURED', error: 'ระบบยังไม่ได้ตั้งค่า Gemini' });
+  } else if (confirmed !== true) {
+    res.status(400).json({ code: 'AI_CONFIRMATION_REQUIRED', error: 'กรุณายืนยันค่าใช้จ่ายก่อนเริ่มวิเคราะห์' });
+  } else if (!store.reserveAiUsage(author.sub, thailandDay.format(), jobId, aiDailyLimit)) {
+    res.status(429).json({ code: 'AI_DAILY_QUOTA_EXHAUSTED', error: 'ใช้โควตาสร้างบท AI ครบแล้ววันนี้' });
+  } else {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Prevents returning HTTP 403, 502, 503, or 504 from Express /api routes,
@@ -79,8 +105,8 @@ function sanitizeApiStatusCode(code: number): number {
 }
 
 function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+  const apiKey = geminiApiKey();
+  if (!apiKey) {
     throw new Error(
       'ไม่พบ GEMINI_API_KEY บนฝั่งเซิร์ฟเวอร์ กรุณาตั้งค่า API Key ในแผง Settings > Secrets'
     );
@@ -113,12 +139,14 @@ function saveProcessingState(
   job.spots = mergeProcessingState(job, latest, results).spots;
   // The author may rename the Job while it is analysed; analysis never changes the title.
   job.title = latest.title;
+  if (latest.status === 'STOPPING' && job.status === 'ANALYZING') job.status = 'STOPPING';
   store.save(job);
 }
 
 // Single-job concurrency lock (MVP rule: process 1 Gemini job at a time)
 type ProcessingLock = {
   jobId: string;
+  stop: AbortController;
   finished: Promise<void>;
   release: () => void;
 };
@@ -146,7 +174,20 @@ function canUseUpload(uploadId: string, author: AuthorSession): boolean {
 function createProcessingLock(jobId: string): ProcessingLock {
   let release!: () => void;
   const finished = new Promise<void>((resolve) => { release = resolve; });
-  return { jobId, finished, release };
+  return { jobId, stop: new AbortController(), finished, release };
+}
+
+function finishStoppedAnalysis(job: PersistedJobState): void {
+  for (const batch of job.batches) {
+    if (batch.status === 'processing') {
+      batch.status = 'pending';
+      batch.error = undefined;
+    }
+  }
+  job.status = job.batches.every((batch) => batch.status === 'completed') ? 'READY' : 'STOPPED';
+  job.progress_stage = undefined;
+  job.active_model = undefined;
+  job.error_message = undefined;
 }
 
 function releaseProcessingLock(lock: ProcessingLock): void {
@@ -220,8 +261,10 @@ function serverVideoPath(job: JobMeta): string | null {
 async function ensureActiveGeminiFileUri(
   uploadAi: GoogleGenAI,
   job: PersistedJobState,
+  signal: AbortSignal,
   onProgressStage?: (stage: string) => void
 ): Promise<{ uri: string; mimeType: string }> {
+  signal.throwIfAborted();
   const existingName = job.gemini_file_name;
   if (existingName) {
     const expiresMs = job.gemini_file_expires_at
@@ -263,9 +306,11 @@ async function ensureActiveGeminiFileUri(
   }
 
   onProgressStage?.('กำลังส่งไฟล์วิดีโอไปยัง Gemini Files API...');
+  signal.throwIfAborted();
   const uploaded = await uploadAi.files.upload({
     file: videoPath,
     config: {
+      httpOptions: { retryOptions: { attempts: 1 } },
       mimeType: 'video/mp4',
       displayName: job.video_metadata.fileName || 'source_video.mp4',
     },
@@ -279,6 +324,7 @@ async function ensureActiveGeminiFileUri(
     job.gemini_file_expires_at = uploaded.expirationTime;
     saveProcessingState(job);
   }
+  signal.throwIfAborted();
   if (!name || !uploaded.uri) {
     throw new Error('การอัปโหลดไฟล์ไปยัง Gemini Files API ไม่สำเร็จ (ไม่ได้รับ File URI)');
   }
@@ -287,9 +333,10 @@ async function ensureActiveGeminiFileUri(
   const maxPollAttempts = 90;
   for (let attempt = 1; currentFile.state === 'PROCESSING' && attempt <= maxPollAttempts; attempt++) {
     onProgressStage?.(`รอ Gemini Files API ประมวลผลไฟล์วิดีโอ (${attempt * 2} วินาที)...`);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await delay(2000, undefined, { signal });
     currentFile = await uploadAi.files.get({ name });
   }
+  signal.throwIfAborted();
 
   if (currentFile.state === 'FAILED') {
     throw new Error('Gemini Files API ไม่สามารถประมวลผลไฟล์วิดีโอนี้ได้ (State: FAILED)');
@@ -321,11 +368,13 @@ async function analyzeBatchWithGemini(
   job: PersistedJobState,
   batch: AnalysisBatch,
   config: ServerConfig,
+  signal: AbortSignal,
   onProgressStage?: (stage: string, activeModel?: string) => void
 ): Promise<Map<string, BatchSpotResult>> {
   const { uri: fileUri, mimeType } = await ensureActiveGeminiFileUri(
     uploadAi,
     job,
+    signal,
     (stage) => onProgressStage?.(stage)
   );
 
@@ -336,6 +385,7 @@ async function analyzeBatchWithGemini(
   let forceFallbackModel = Date.now() < primaryModelCooldownUntil;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    signal.throwIfAborted();
     const modelToUse = forceFallbackModel ? FALLBACK_GEMINI_MODEL : config.geminiModel;
 
     try {
@@ -417,6 +467,7 @@ async function analyzeBatchWithGemini(
 
       return parseBatchResponse(response.text ?? '', batch);
     } catch (err) {
+      signal.throwIfAborted();
       lastError = err;
       const classification = parseGeminiError(err);
 
@@ -425,7 +476,7 @@ async function analyzeBatchWithGemini(
         primaryModelCooldownUntil = Date.now() + 10 * 60 * 1000;
         forceFallbackModel = true;
         if (attempt < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          await delay(800, undefined, { signal });
           continue;
         }
       }
@@ -433,7 +484,7 @@ async function analyzeBatchWithGemini(
       if (attempt < maxAttempts) {
         const baseDelayMs = classification.isRateLimit ? 3500 : 1500;
         const backoffMs = baseDelayMs * attempt;
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        await delay(backoffMs, undefined, { signal });
         continue;
       }
     }
@@ -474,7 +525,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
     saveProcessingState(job);
 
     // Step 1: Ensure video is uploaded & ACTIVE on Gemini Files API
-    await ensureActiveGeminiFileUri(uploadAi, job, (stage) => {
+    await ensureActiveGeminiFileUri(uploadAi, job, lock.stop.signal, (stage) => {
       job.progress_stage = stage;
       job.progress_percent = 12;
       saveProcessingProgress(job);
@@ -483,6 +534,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
     // Step 2: Process incomplete batches sequentially
     const totalBatches = job.batches.length;
     for (let i = 0; i < totalBatches; i++) {
+      lock.stop.signal.throwIfAborted();
       const batch = job.batches[i];
       if (batch.status === 'completed') {
         continue;
@@ -512,6 +564,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
         job,
         batch,
         FIXED_SERVER_CONFIG,
+        lock.stop.signal,
         (stage, activeModel) => {
           job.progress_stage = stage;
           job.active_model = activeModel;
@@ -533,6 +586,7 @@ async function runJobInBackground(jobId: string): Promise<void> {
     job.error_message = undefined;
   } catch (err) {
     deletionFailed = err instanceof GeminiFileDeletionError;
+    if (lock.stop.signal.aborted) return;
     const parsed = parseGeminiError(err);
     const stuckBatch = job.batches.find((b) => b.status === 'processing');
     if (stuckBatch) {
@@ -547,7 +601,8 @@ async function runJobInBackground(jobId: string): Promise<void> {
       if (!deletionFailed && (uploadAi || (allBatchesCompleted && job.gemini_file_name))) {
         await deleteJobGeminiFile(uploadAi ?? getGeminiClient({ fastFail: false }), job);
       }
-      if (job.status === 'READY' || job.status === 'FAILED') saveProcessingState(job);
+      if (lock.stop.signal.aborted) finishStoppedAnalysis(job);
+      if (job.status === 'READY' || job.status === 'FAILED' || job.status === 'STOPPED') saveProcessingState(job);
     } catch {
       console.error('Failed to finalize job processing');
     } finally {
@@ -571,8 +626,8 @@ function recoverOrphanedJobsOnStartup(): void {
           modified = true;
         }
       }
-      if (job.status === 'ANALYZING') {
-        job.status = 'VAD_READY';
+      if (job.status === 'ANALYZING' || job.status === 'STOPPING') {
+        job.status = job.status === 'STOPPING' ? 'STOPPED' : 'VAD_READY';
         job.progress_stage = undefined;
         modified = true;
       }
@@ -639,8 +694,15 @@ async function startServer() {
   });
 
   app.get('/api/me', (_req: Request, res: Response) => {
-    const { email, name, allJobs, accessGroups } = res.locals.author as AuthorSession;
-    res.json({ email, name, allJobs, accessGroups });
+    const { email, name, allJobs, accessGroups, canGenerateAi, sub } = res.locals.author as AuthorSession;
+    const usedJobIds = canGenerateAi ? store.aiUsage(sub, thailandDay.format()) : [];
+    const aiGeneration: AiGenerationAvailability = {
+      enabled: Boolean(geminiApiKey()),
+      limit: aiDailyLimit,
+      remaining: Math.max(0, aiDailyLimit - usedJobIds.length),
+      usedJobIds,
+    };
+    res.json({ email, name, allJobs, accessGroups, canGenerateAi: canGenerateAi === true, aiGeneration });
   });
 
   // 1. GET /api/config — Return server default configuration (no secrets)
@@ -665,7 +727,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/jobs/:jobId/files', (req: Request, res: Response) => {
+  app.delete('/api/jobs/:jobId/files', (req, res) => {
     try {
       // A Job's access was checked by the `jobId` param; an Unfinished Upload has no row, so check its uploader here.
       if (!store.exists(req.params.jobId) && !canUseUpload(req.params.jobId, res.locals.author as AuthorSession)) {
@@ -684,7 +746,7 @@ async function startServer() {
   });
 
   // 3. GET /api/jobs/:jobId — Fetch specific job state (used by fast client polling)
-  app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
+  app.get('/api/jobs/:jobId', (req, res) => {
     // Polling asks for `view=progress`, which skips reading the VAD file on every poll.
     if (req.query.view === 'progress') {
       const meta = store.loadMeta(req.params.jobId);
@@ -711,7 +773,7 @@ async function startServer() {
   });
 
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
-  app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
+  app.get('/api/jobs/:jobId/video', (req, res) => {
     const job = store.loadMeta(req.params.jobId);
     if (!job) {
       res.status(404).json({ error: JOB_NOT_FOUND });
@@ -777,7 +839,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/upload/:uploadId/abandon', (req: Request, res: Response) => {
+  app.post('/api/upload/:uploadId/abandon', (req, res) => {
     const { uploadId } = req.params;
     if (!isJobId(uploadId)) {
       res.status(400).json({ error: 'uploadId ไม่ถูกต้อง' });
@@ -1006,10 +1068,7 @@ async function startServer() {
         progress_percent: batches.length === 0 ? 100 : willAnalyzeNow ? 8 : undefined,
       };
 
-      // Validate API key presence immediately so missing key fails fast before background spawn
-      if (willAnalyzeNow) {
-        getGeminiClient({ fastFail: true });
-      }
+      if (willAnalyzeNow && !allowAiGeneration(res, req.body?.confirmAiCost === 'true' || req.body?.confirmAiCost === true, jobId)) return;
 
       store.save(jobState);
       uploadActivity.delete(jobId);
@@ -1098,7 +1157,7 @@ async function startServer() {
   });
 
   // 6a. POST /api/jobs/:jobId/start — Start or resume background batch processing immediately
-  app.post('/api/jobs/:jobId/start', (req: Request, res: Response) => {
+  app.post('/api/jobs/:jobId/start', (req, res) => {
     const { jobId } = req.params;
 
     const job = store.load(jobId);
@@ -1126,16 +1185,6 @@ async function startServer() {
       return;
     }
 
-    try {
-      getGeminiClient({ fastFail: true });
-    } catch (err) {
-      const parsed = parseGeminiError(err);
-      res.status(sanitizeApiStatusCode(parsed.statusCode)).json({
-        error: parsed.userMessage,
-      });
-      return;
-    }
-
     if (job.batches.every((b) => b.status === 'completed')) {
       job.status = 'READY';
       job.progress_stage = undefined;
@@ -1145,7 +1194,12 @@ async function startServer() {
         res.json({ job, isRunning: false });
         return;
       }
+      if (!(res.locals.author as AuthorSession).canGenerateAi || !geminiApiKey()) {
+        res.json({ job, isRunning: false });
+        return;
+      }
     } else {
+      if (!allowAiGeneration(res, req.body?.confirmAiCost, jobId)) return;
       job.status = 'ANALYZING';
       job.error_message = undefined;
       job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
@@ -1156,8 +1210,32 @@ async function startServer() {
     res.json({ job, isRunning: true });
   });
 
+  app.post('/api/jobs/:jobId/stop', (req, res) => {
+    const { jobId } = req.params;
+    if (!store.exists(jobId)) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+    const author = res.locals.author as AuthorSession;
+    if (!author.canGenerateAi) {
+      res.status(401).json({ code: 'AI_ACCESS_REQUIRED', error: 'เฉพาะผู้ดูแลและหัวหน้างานที่หยุดการวิเคราะห์ได้' });
+      return;
+    }
+
+    const lock = activeProcessingLock;
+    if (lock?.jobId !== jobId) {
+      res.json({ isRunning: false });
+      return;
+    }
+    if (!lock.stop.signal.aborted) {
+      store.recordAiStop(jobId, author.sub);
+      lock.stop.abort();
+    }
+    res.json({ isRunning: true });
+  });
+
   // 6b. POST /api/jobs/:jobId/analyze-batch — Backward-compatible single-batch endpoint
-  app.post('/api/jobs/:jobId/analyze-batch', async (req: Request, res: Response, next: NextFunction) => {
+  app.post('/api/jobs/:jobId/analyze-batch', async (req, res, next) => {
     try {
       const { jobId } = req.params;
       const { batch_id } = (req.body || {}) as { batch_id?: string };
@@ -1170,9 +1248,14 @@ async function startServer() {
 
       let waited = false;
       while (activeProcessingLock?.jobId === jobId) {
+        const previous = activeProcessingLock;
         waited = true;
-        await activeProcessingLock.finished;
+        await previous.finished;
         if (res.destroyed) return;
+        if (previous.stop.signal.aborted) {
+          res.status(409).json({ error: 'หยุดการวิเคราะห์แล้ว กรุณากดยืนยันเพื่อทำต่อ' });
+          return;
+        }
       }
 
       if (
@@ -1213,6 +1296,7 @@ async function startServer() {
         return;
       }
 
+      if (!allowAiGeneration(res, req.body?.confirmAiCost, jobId)) return;
       const lock = createProcessingLock(jobId);
       activeProcessingLock = lock;
       batch.status = 'processing';
@@ -1229,7 +1313,8 @@ async function startServer() {
           uploadAi,
           job,
           batch,
-          FIXED_SERVER_CONFIG
+          FIXED_SERVER_CONFIG,
+          lock.stop.signal
         );
 
         batch.status = 'completed';
@@ -1241,7 +1326,8 @@ async function startServer() {
         }
 
         saveProcessingState(job, spotResults);
-        if (allCompleted && await deleteJobGeminiFile(uploadAi, job)) {
+        if (lock.stop.signal.aborted) finishStoppedAnalysis(job);
+        if ((allCompleted || lock.stop.signal.aborted) && await deleteJobGeminiFile(uploadAi, job)) {
           try {
             saveProcessingState(job);
           } catch {
@@ -1250,6 +1336,13 @@ async function startServer() {
         }
         res.json({ job, batch });
       } catch (err) {
+        if (lock.stop.signal.aborted) {
+          finishStoppedAnalysis(job);
+          if (uploadAi) await deleteJobGeminiFile(uploadAi, job);
+          saveProcessingState(job);
+          res.json({ job, batch });
+          return;
+        }
         const parsed = parseGeminiError(err);
         batch.status = 'failed';
         batch.error = parsed.userMessage;
@@ -1278,7 +1371,7 @@ async function startServer() {
   });
 
   // PATCH /api/jobs/:jobId — Rename a Job
-  app.patch('/api/jobs/:jobId', (req: Request, res: Response) => {
+  app.patch('/api/jobs/:jobId', (req, res) => {
     if (!store.exists(req.params.jobId)) {
       res.status(404).json({ error: JOB_NOT_FOUND });
       return;
@@ -1298,7 +1391,7 @@ async function startServer() {
   });
 
   // 7. PATCH /api/jobs/:jobId/spots — Save user edits (text, decision skip->generate, timestamp edits) to local server JSON
-  app.patch('/api/jobs/:jobId/spots', (req: Request, res: Response) => {
+  app.patch('/api/jobs/:jobId/spots', (req, res) => {
     const { jobId } = req.params;
     const { spots } = (req.body || {}) as { spots?: ADSpot[] };
 
@@ -1391,7 +1484,7 @@ async function startServer() {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '1y', immutable: true }));
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
