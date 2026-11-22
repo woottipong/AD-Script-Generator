@@ -69,7 +69,7 @@ function signInFailedPage(res: Response, status: number, message: string): void 
  * Mounts `/auth/login`, `/auth/callback` and `/auth/logout` and returns how to read the signed-in Author.
  * Keycloak is discovered on the first sign-in, so the server starts even while Keycloak is unreachable.
  */
-export function mountAuth(app: Express, config: AuthConfig) {
+export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: AuthorSession) => void) {
   let discovered: Promise<oidc.Configuration> | null = null;
   const provider = () => {
     if (!discovered) {
@@ -132,6 +132,7 @@ export function mountAuth(app: Express, config: AuthConfig) {
         allJobs: hasAllJobsAccess(claims.groups ?? accessTokenGroups(tokens.access_token), config.allJobsGroups),
         idToken: tokens.id_token!,
       };
+      onSignIn(session);
       res.append('Set-Cookie', cookie(SESSION_COOKIE, sealValue(config.sessionSecret, 'session', session, SESSION_MAX_AGE_MS), SESSION_MAX_AGE_MS, '/'));
       res.redirect(pending.returnTo);
     } catch (err) {

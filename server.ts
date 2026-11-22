@@ -46,6 +46,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const store = createJobStore(path.resolve(process.cwd(), '.data'));
 
 const ANOTHER_JOB_ANALYZING_ERROR = 'มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ';
+/** Every `:jobId` route answers a missing Job, and a Job the Author may not open, with this same body. */
+const JOB_NOT_FOUND = 'ไม่พบงานนี้';
 
 const FIXED_SERVER_CONFIG: ServerConfig = {
   geminiModel: 'gemini-4-hydrogen',
@@ -570,7 +572,8 @@ async function startServer() {
     next();
   });
 
-  const { sessionOf } = mountAuth(app, authConfig);
+  // Keycloak may change an Author's email; keep the Job List's owner email in step at each sign-in.
+  const { sessionOf } = mountAuth(app, authConfig, (author) => store.updateOwnerEmail(author.sub, author.email));
 
   // `/api/config` stays public for the container healthcheck; every other API needs a signed-in Author.
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -598,6 +601,18 @@ async function startServer() {
     res.redirect(`/auth/login?returnTo=${encodeURIComponent(req.originalUrl)}`);
   });
 
+  // Another Author's Job, or one with no Job Owner, is reachable only with All-Jobs Access and otherwise
+  // answers exactly like a missing Job, so its existence is never revealed. A missing Job falls through to the route.
+  app.param('jobId', (_req: Request, res: Response, next: NextFunction, jobId: string) => {
+    const job = store.loadMeta(jobId);
+    const author = res.locals.author as AuthorSession;
+    if (job && !author.allJobs && job.owner_sub !== author.sub) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+    next();
+  });
+
   app.get('/api/me', (_req: Request, res: Response) => {
     const { email, allJobs } = res.locals.author as AuthorSession;
     res.json({ email, allJobs });
@@ -612,7 +627,8 @@ async function startServer() {
 
   app.get('/api/jobs', (_req: Request, res: Response) => {
     try {
-      const jobs = store.list().map((job) => ({
+      const author = res.locals.author as AuthorSession;
+      const jobs = store.list(author.allJobs ? undefined : author.sub).map((job) => ({
         ...job,
         is_processing: job.is_upload ? activeUploads.has(job.job_id) : job.job_id === activeProcessingLock?.jobId,
       }));
@@ -628,7 +644,7 @@ async function startServer() {
       if (req.params.jobId === activeProcessingLock?.jobId || activeUploads.has(req.params.jobId)) {
         res.status(409).json({ error: 'ไม่สามารถลบงานที่กำลังวิเคราะห์หรืออัปโหลดอยู่' }); return;
       }
-      if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: 'ไม่พบงาน' }); return; }
+      if (!store.deleteJob(req.params.jobId)) { res.status(404).json({ error: JOB_NOT_FOUND }); return; }
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'ไม่สามารถลบไฟล์งานได้' });
@@ -639,7 +655,7 @@ async function startServer() {
   app.get('/api/jobs/:jobId', (req: Request, res: Response) => {
     const job = store.load(req.params.jobId);
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผลนี้บนเซิร์ฟเวอร์' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     const isRunning = Boolean(
@@ -651,7 +667,11 @@ async function startServer() {
   // 4. GET /api/jobs/:jobId/video — Stream local MP4 file with Range support for video player recovery after refresh
   app.get('/api/jobs/:jobId/video', (req: Request, res: Response) => {
     const job = store.loadMeta(req.params.jobId);
-    const filePath = job ? serverVideoPath(job) : null;
+    if (!job) {
+      res.status(404).json({ error: JOB_NOT_FOUND });
+      return;
+    }
+    const filePath = serverVideoPath(job);
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'ไม่พบไฟล์วิดีโอสำรองสำหรับงานนี้' });
       return;
@@ -910,6 +930,8 @@ async function startServer() {
         schema_version: JOB_SCHEMA_VERSION,
         job_id: jobId,
         title: title.title,
+        owner_sub: (res.locals.author as AuthorSession).sub,
+        owner_email: (res.locals.author as AuthorSession).email,
         mode: 'generate',
         video_source: { kind: 'server_copy', local_file_path: localFilePath },
         created_at: now,
@@ -976,6 +998,8 @@ async function startServer() {
       schema_version: JOB_SCHEMA_VERSION,
       job_id: `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       title: title.title,
+      owner_sub: (res.locals.author as AuthorSession).sub,
+      owner_email: (res.locals.author as AuthorSession).email,
       mode: 'review',
       video_source,
       srt_source: { ...srt_source, imported_at: now },
@@ -1008,7 +1032,7 @@ async function startServer() {
 
     const job = store.load(jobId);
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     if (job.mode === 'review') {
@@ -1074,7 +1098,7 @@ async function startServer() {
 
       const job = store.load(jobId);
       if (!job) {
-        res.status(404).json({ error: 'ไม่พบงานประมวลผล (Job) บนเซิร์ฟเวอร์' });
+        res.status(404).json({ error: JOB_NOT_FOUND });
         return;
       }
       if (job.mode === 'review') {
@@ -1172,7 +1196,7 @@ async function startServer() {
     // Only the title column changes, so a rename never overwrites spots saved meanwhile.
     const job = store.rename(req.params.jobId, title.title) ? store.load(req.params.jobId) : null;
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
     res.json({ job });
@@ -1185,7 +1209,7 @@ async function startServer() {
 
     const job = store.load(jobId);
     if (!job) {
-      res.status(404).json({ error: 'ไม่พบข้อมูลงานประมวลผล' });
+      res.status(404).json({ error: JOB_NOT_FOUND });
       return;
     }
 

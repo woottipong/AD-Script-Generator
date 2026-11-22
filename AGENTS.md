@@ -29,7 +29,7 @@ Keep executable setup, Docker, build, and verification commands in [README.md - 
 
 ## Verification
 
-Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; see [README.md](README.md#คำสั่งตรวจสอบโค้ด)). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes another author's Job too.
+Exercise UI flows with the browser scripts in `tests/browser/` (they mock every API route; see [README.md](README.md#คำสั่งตรวจสอบโค้ด)). In a running app with real data, keep to read-only checks: deleting from storage calls `DELETE /api/jobs/:jobId/files`, which permanently removes the Job for every Author (and, with All-Jobs Access, can remove another Author's Job).
 
 ## UX conventions
 

@@ -7,7 +7,7 @@ This reference describes the routes in [server.ts](../server.ts). Request and re
 - The default base URL is `http://localhost:3000/api`. Express listens on `0.0.0.0:3000`, or on `PORT` when it is set.
 - JSON requests use `Content-Type: application/json`. The JSON parser limit is 25 MiB. Upload chunks use `application/octet-stream`. Source video responses use `video/mp4`.
 - Times ending in `_ms` and `video_metadata.durationMs` are milliseconds. Configuration fields ending in `Seconds` are seconds. File sizes are bytes. Size limits use `1024 × 1024` bytes per MiB.
-- Every route except `GET /api/config` needs a signed-in Author: the browser sends the `envisio_session` cookie that [sign-in](#sign-in-routes) sets. Without a valid session the route answers HTTP 401 with `code: "UNAUTHENTICATED"`. Jobs are not yet scoped to their owner. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
+- Every route except `GET /api/config` needs a signed-in Author: the browser sends the `envisio_session` cookie that [sign-in](#sign-in-routes) sets. Without a valid session the route answers HTTP 401 with `code: "UNAUTHENTICATED"`. An Author reaches only Jobs they own (their Job Owner `sub`) unless they have All-Jobs Access; every `/api/jobs/:jobId` route answers another Author's Job, or a Job with no Job Owner, with HTTP 404 `{ "error": "ไม่พบงานนี้" }`, the same body as a missing Job. `GEMINI_API_KEY` authenticates server requests to Google, not requests to this API.
 - A process-local `activeProcessingLock` coordinates analysis. It is not a distributed lock. The server holds it until the running operation finishes and releases it.
 - A lock belonging to another running job can produce HTTP 409. An accepted background request does not mean that Gemini analysis has succeeded. Poll the job for its result.
 - API handlers set `Cache-Control: no-store, no-cache, must-revalidate`.
@@ -84,7 +84,7 @@ Returns the signed-in Author as `{ email, allJobs }`. `allJobs` is true when one
 
 ### GET /api/jobs
 
-Returns `{ jobs }` for readable saved jobs and recognizable unfinished uploads. Items are sorted by `updated_at`, most recent first. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, and `is_processing`; saved jobs also carry `title`, `mode`, `status`, `duration_ms`, `spot_count`, and optional `progress_percent` and `error_message`. An active upload has both `is_upload` and `is_processing` set. There is no active job: the browser opens the job named in its `/jobs/:jobId` URL.
+Returns `{ jobs }` for the signed-in Author's own saved Jobs; with All-Jobs Access it returns every saved Job and recognizable unfinished upload. Items are sorted by `updated_at`, most recent first. Each item contains `job_id`, `file_name`, `updated_at`, `size_bytes`, `is_upload`, and `is_processing`; saved jobs also carry `title`, `mode`, `status`, `duration_ms`, `spot_count`, `owner_email` (null when the Job has no Job Owner), and optional `progress_percent` and `error_message`. An active upload has both `is_upload` and `is_processing` set. There is no active job: the browser opens the job named in its `/jobs/:jobId` URL.
 
 ### GET /api/jobs/:jobId
 

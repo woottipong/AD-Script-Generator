@@ -73,6 +73,8 @@ Keep Job data inside `.data/`.
 - `server.ts` answers HTTP 401 `UNAUTHENTICATED` for every `/api` route except `/api/config`, and redirects page navigations without a session to `/auth/login`. Keep new routes behind that middleware.
 - All-Jobs Access is computed once at sign-in from the token's `groups` claim (a leading `/` is ignored) and stored in the session as `allJobs`.
 - The client signs in again only on `code: "UNAUTHENTICATED"`, from one `fetch` wrapper in `src/main.tsx`; other 401s reach their caller.
+- Job Owner: the two Job-creation routes store the Author's `sub` and email as `owner_sub` and `owner_email`; `jobStore.save` never changes them afterwards, and each sign-in refreshes `owner_email` for the Author's Jobs. Jobs from before sign-in have none.
+- Access rule: `app.param('jobId')` in `server.ts` lets an Author reach a Job only when they own it or have All-Jobs Access, and otherwise answers the same 404 as a missing Job. `GET /api/jobs` lists through `store.list(ownerSub)`. A new `:jobId` route inherits the rule; a route that names a Job another way must check it itself.
 - There is no sign-in bypass. Integration tests seal their own session with a test `SESSION_SECRET` (`src/utils/authTestHelpers.ts`).
 
 ## API contract

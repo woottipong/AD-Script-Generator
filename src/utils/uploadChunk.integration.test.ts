@@ -7,8 +7,8 @@ import * as path from 'node:path';
 import * as net from 'node:net';
 import { authTestEnv, signedInFetch } from './authTestHelpers';
 
-// Every API call in this file is made by a signed-in Author.
-const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: false });
+// Every API call in this file is made by an Author with All-Jobs Access, so seeded Jobs with no Job Owner stay reachable.
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true });
 
 test('chunk retries preserve bytes and reject conflicting offsets', { timeout: 20000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-upload-test-'));
