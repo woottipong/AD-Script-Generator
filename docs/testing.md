@@ -45,9 +45,17 @@ bun run test:e2e
 - `tests/e2e/fixtures.ts` (`ensureVideoFixtures()`) สร้างไฟล์ต่อไปนี้ใน `tests/fixtures/.generated/` ด้วย `ffmpeg` อัตโนมัติหากยังไม่มี:
   - `ad-generate-480p.mp4`: MP4 480p (`854x480`, AAC mono, `-movflags +faststart`) สำหรับ `generate-mode.spec.ts`
   - `ad-review-1080p.mp4`: MP4 1080p (`1920x1080`, AAC sine wave, ไม่ใส่ `+faststart` เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) สำหรับ `review-mode.spec.ts` และ `review-restore.spec.ts`
-- `review-mode-url.spec.ts` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และตั้ง timeout ไว้ที่ `60_000` ms
+- `review-mode-url.spec.ts` ใช้ `tests/fixtures/review-url-speech.mp4` ไฟล์ 1080p ยาว 14 วินาทีที่มีเสียงพูดสังเคราะห์ เซิร์ฟเวอร์ทดสอบเสิร์ฟไฟล์จากคนละ origin ผ่าน HTTP Range เพื่อให้ Chromium ตรวจเสียงพูด เปิด editor และเลื่อนตำแหน่งวิดีโอจริง
 
 การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
+
+#### ตรวจลิงก์ MP4 ภายนอก
+
+เคสลิงก์จริงปิดไว้ในชุดหลัก รันแยกเมื่อต้องการตรวจว่าแหล่งวิดีโอภายนอกยังรองรับการตรวจเสียงและเลื่อนตำแหน่ง ไฟล์ตัวอย่างมีขนาด 71 MB และยาว 24:43 เคสนี้ต้องต่ออินเทอร์เน็ตและให้เวลาสูงสุด 5 นาที
+
+```bash
+RUN_EXTERNAL_MP4_SMOKE=1 bun run test:e2e review-mode-url.spec.ts --grep 'external MP4 URL'
+```
 
 ## 3. Production Smoke Test (`test:smoke`)
 

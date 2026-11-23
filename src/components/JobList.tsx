@@ -322,7 +322,7 @@ function SortableColumnButton({
 function JobStatusBadge({ status, name }: { status: JobVisualState; name: string }) {
   const StatusIcon = status.icon;
   const badge = (
-    <Badge variant={status.variant} className="h-auto min-h-5 max-w-full whitespace-normal text-left tabular-nums">
+    <Badge variant={status.variant} className="h-auto min-h-6 max-w-full py-0.5 leading-4 whitespace-normal text-left tabular-nums @min-[54rem]:whitespace-nowrap">
       <StatusIcon className={status.spinning ? 'animate-spin motion-reduce:animate-none' : undefined} aria-hidden="true" />
       {status.label}
       {status.errorDetails && <ChevronDown aria-hidden="true" />}
@@ -908,7 +908,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                     </TableHead>
                     {showOwnerColumn && <TableHead scope="col" className="hidden w-48 px-3 text-xs font-semibold text-muted-foreground @min-[75rem]:table-cell">เจ้าของ</TableHead>}
                     <TableHead scope="col" className="hidden w-32 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">โหมด</TableHead>
-                    <TableHead scope="col" className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
+                    <TableHead scope="col" className="hidden w-44 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">สถานะ</TableHead>
                     <TableHead scope="col" aria-sort={ariaSortFor('duration')} className="hidden w-24 px-3 text-right text-xs font-semibold text-muted-foreground @min-[66rem]:table-cell">
                       <SortableColumnButton label="ความยาว" field="duration" activeField={sortField} direction={sortDirection} align="right" disabled={jobs === null} onSort={handleSort} />
                     </TableHead>
@@ -918,15 +918,15 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                     <TableHead scope="col" aria-sort={ariaSortFor('updated_at')} className="hidden w-40 px-3 text-xs font-semibold text-muted-foreground @min-[54rem]:table-cell">
                       <SortableColumnButton label="แก้ล่าสุด" field="updated_at" activeField={sortField} direction={sortDirection} disabled={jobs === null} onSort={handleSort} />
                     </TableHead>
-                    <TableHead scope="col" className="hidden w-28 px-4 text-right text-xs font-semibold text-muted-foreground @min-[42rem]:table-cell @min-[42rem]:pr-5">การทำงาน</TableHead>
+                    <TableHead scope="col" className="hidden w-28 px-3 pr-5 text-center text-xs font-semibold text-muted-foreground @min-[42rem]:table-cell pointer-coarse:w-32">การทำงาน</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {jobs === null
                     ? SKELETON_ROWS.map((row, index) => (
                       <TableRow key={index} aria-hidden="true" className="hover:bg-transparent">
-                        <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:pl-5">
-                          <div className="flex min-h-10 items-start gap-3 @min-[54rem]:items-center">
+                        <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:py-3 @min-[42rem]:pl-5">
+                          <div className="flex min-h-10 items-start gap-3 @min-[42rem]:min-h-9 @min-[54rem]:items-center">
                             <Skeleton className="hidden size-9 shrink-0 rounded-md @min-[42rem]:block" />
                             <div className="min-w-0 flex-1">
                               <Skeleton className={cn('h-4 max-w-full', row.title)} />
@@ -941,8 +941,8 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                             </div>
                           </div>
                           <div className="mt-2 flex items-center gap-1 border-t border-border/60 pt-1 @min-[42rem]:hidden">
-                            <Skeleton className="size-9 rounded-md" />
-                            <Skeleton className="size-9 rounded-md" />
+                            <Skeleton className="size-9 rounded-md pointer-coarse:size-11" />
+                            <Skeleton className="size-9 rounded-md pointer-coarse:size-11" />
                           </div>
                         </TableCell>
                         {showOwnerColumn && (
@@ -965,10 +965,10 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                         <TableCell className="hidden px-3 @min-[54rem]:table-cell">
                           <Skeleton className="h-3.5 w-28" />
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3.5 @min-[42rem]:table-cell @min-[42rem]:pr-5">
-                          <div className="flex items-center justify-end gap-1">
-                            <Skeleton className="size-9 rounded-md" />
-                            <Skeleton className="size-9 rounded-md" />
+                        <TableCell className="hidden px-3 py-3 pr-5 @min-[42rem]:table-cell">
+                          <div className="flex items-center justify-center gap-1">
+                            <Skeleton className="size-9 rounded-md pointer-coarse:size-11" />
+                            <Skeleton className="size-9 rounded-md pointer-coarse:size-11" />
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1001,7 +1001,10 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                         </Button>
                       );
                       const actions = (
-                        <div className="flex items-center gap-1 @min-[42rem]:justify-end">
+                        <div className={cn(
+                          'flex items-center gap-1 @min-[42rem]:justify-center',
+                          job.is_upload && '@min-[42rem]:before:size-9 pointer-coarse:@min-[42rem]:before:size-11',
+                        )}>
                           {!job.is_upload && (
                             <SimpleTooltip label="เปิดงาน">
                               <a
@@ -1024,8 +1027,8 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                       );
                       return (
                         <TableRow key={job.job_id} className={status.rowClass}>
-                          <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:pl-5">
-                            <div className="flex min-h-10 items-start gap-3 @min-[54rem]:items-center">
+                          <TableCell className="px-4 py-3.5 whitespace-normal @min-[42rem]:py-3 @min-[42rem]:pl-5">
+                            <div className="flex min-h-10 items-start gap-3 @min-[42rem]:min-h-9 @min-[54rem]:items-center">
                               <span
                                 aria-hidden="true"
                                 className={`hidden size-9 shrink-0 items-center justify-center rounded-md border @min-[42rem]:inline-flex ${status.tileClass}`}
@@ -1064,7 +1067,7 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                             <div className="mt-2 border-t border-border/60 pt-1 @min-[42rem]:hidden">{actions}</div>
                           </TableCell>
                           {showOwnerColumn && (
-                            <TableCell className="hidden px-3 text-xs whitespace-normal text-foreground @min-[75rem]:table-cell">{ownerNode}</TableCell>
+                            <TableCell className="hidden px-3 text-xs whitespace-normal text-muted-foreground @min-[75rem]:table-cell">{ownerNode}</TableCell>
                           )}
                           <TableCell className="hidden px-3 text-xs whitespace-normal @min-[54rem]:table-cell">
                             {!job.is_upload && job.mode ? <ModeTag mode={job.mode} /> : <span className="text-muted-foreground">—</span>}
@@ -1080,10 +1083,10 @@ export function JobList({ onOpen, onNew, showOwners, ownEmail }: {
                               ? <span>{job.spot_count} จุด</span>
                               : <span>—</span>}
                           </TableCell>
-                          <TableCell className="hidden px-3 text-xs whitespace-normal text-muted-foreground tabular-nums @min-[54rem]:table-cell">
+                          <TableCell className="hidden px-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums @min-[54rem]:table-cell">
                             {updated && <time dateTime={job.updated_at}>{updated}</time>}
                           </TableCell>
-                          <TableCell className="hidden px-4 py-3.5 @min-[42rem]:table-cell @min-[42rem]:pr-5">{actions}</TableCell>
+                          <TableCell className="hidden px-3 py-3 pr-5 @min-[42rem]:table-cell">{actions}</TableCell>
                         </TableRow>
                       );
                     })}
