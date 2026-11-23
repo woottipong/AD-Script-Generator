@@ -1,13 +1,19 @@
 # การตรวจสอบโค้ด ทดสอบหน้าจอ และวัดประสิทธิภาพ
 
-เอกสารนี้รวบรวมขั้นตอนการตรวจโค้ด การรัน browser tests ด้วยข้อมูลจำลอง และการวัดประสิทธิภาพการเล่นวิดีโอในหน้าตัดต่อ
+เอกสารนี้รวบรวมขั้นตอนการตรวจโค้ด การทดสอบ 4 ระดับ (`test:unit`, `test:integration`, `test:e2e`, `test:smoke`) และการวัดประสิทธิภาพการเล่นวิดีโอในหน้าตัดต่อ
 
-## ตรวจชนิดข้อมูล เทสต์ และ build
+## 1. Unit และ Integration Tests (`test:unit`, `test:integration`, `check`)
 
-`check` รวมการตรวจชนิดข้อมูล (`tsc --noEmit`), unit และ integration tests ใน `src/utils` (ข้อมูลและ Gemini จำลอง รวมถึง guardrail tests ใน `repoGuardrails.test.ts`) และ `build` ไว้ในคำสั่งเดียว `bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` จึงรันใน dev container ได้เสมอ:
+`bun test` ต้องใช้ Bun 1.4 ขึ้นไปเพราะ Job store ใช้ `node:sqlite` จึงรันใน dev container เสมอ:
+
+- `test:unit`: รัน unit tests และ repo guardrail tests ใน `src/` (รวม `src/utils/repoGuardrails.test.ts`)
+- `test:integration`: รัน integration tests สำหรับ Auth, Upload chunk และ Job lifecycle/storage ใน `tests/integration/`
+- `check`: รวม `tsc --noEmit`, `bun run test` (`test:unit` + `test:integration`) และ `vite build` ไว้ในคำสั่งเดียว
 
 ```bash
-docker compose exec ad-script-generator bun run check
+docker compose exec envisio bun run test:unit
+docker compose exec envisio bun run test:integration
+docker compose exec envisio bun run check
 ```
 
 ตรวจความถูกต้องของ Docker Compose config:
@@ -16,44 +22,57 @@ docker compose exec ad-script-generator bun run check
 docker compose config --quiet
 ```
 
-## ตรวจหน้าจอด้วยข้อมูลจำลอง (Browser tests)
+## 2. UI E2E Tests ด้วย Playwright (`test:e2e`)
 
-ต้องมี Node.js, npm และ Chromium ที่ Playwright ใช้งานได้ คำสั่ง `npx` อาจดาวน์โหลด Playwright CLI เมื่อยังไม่มีในเครื่อง การตรวจนี้จำลอง API ทุก endpoint และไม่ใช้ข้อมูลงานจริง หากยังไม่มี browser ที่ Playwright รองรับ ให้ติดตั้งตามคำแนะนำของ Playwright CLI
+การทดสอบหน้าจอใน `tests/e2e/ui/*.spec.ts` ใช้ `@playwright/test` จำลอง API และ Auth routes ทุก endpoint และไม่ใช้ข้อมูลงานจริง โดย `playwright.config.ts` จะเริ่มเซิร์ฟเวอร์ Node แบบ zero-dependency (`tests/e2e/serve-dist.mjs`) เพื่อเสิร์ฟ `dist/` และ `public/` บน `127.0.0.1:${PREVIEW_PORT:-4173}` ให้อัตโนมัติ
 
-build หน้าเว็บใน dev container แล้วเปิด service `preview` (เสิร์ฟ `dist` ที่ `127.0.0.1:4173` ตั้ง `PREVIEW_PORT` เพื่อเปลี่ยน port):
-
-```bash
-docker compose exec ad-script-generator bun run build
-docker compose --profile test up -d preview
-```
-
-แล้วรันทุก script บนเครื่อง (ระบุชื่อไฟล์เพื่อรันเฉพาะบางไฟล์ได้) คำสั่งแสดง `ok`, `FAIL` พร้อมข้อความ error หรือ `skip` เมื่อไม่มีไฟล์ตัวอย่างใน `/tmp` ที่ script นั้นต้องใช้ และจบด้วย exit code ไม่เป็นศูนย์เมื่อมีไฟล์ที่ไม่ผ่าน:
+ต้องมี Node.js, `ffmpeg` (สำหรับสร้างไฟล์วิดีโอทดสอบอัตโนมัติ) และ Chromium ของ Playwright บนเครื่อง หากยังไม่เคยติดตั้ง Chromium สำหรับ Playwright ให้รันครั้งเดียว:
 
 ```bash
-bun run test:browser
+npx --yes @playwright/test install chromium
 ```
 
-### ไฟล์ตัวอย่างใน `/tmp`
-
-- `create-mode.js` ต้องมีวิดีโอ MP4 480p ที่มีแทร็ก AAC และมีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที:
+build หน้าเว็บใน dev container แล้วรัน `test:e2e` บนเครื่อง (สามารถระบุชื่อไฟล์เพื่อรันเฉพาะ spec ได้):
 
 ```bash
-ffmpeg -f lavfi -i color=c=navy:s=854x480:r=25 -f lavfi -i anullsrc=channel_layout=mono:sample_rate=44100 -t 8 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/ad-generate-480p.mp4
+docker compose exec envisio bun run build
+bun run test:e2e
 ```
 
-- `review-mode.js` ต้องมีไฟล์ตัวอย่าง (ไม่ใส่ `+faststart` โดยตั้งใจ เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) `/tmp/ad-review-1080p.mp4` และ `/tmp/ad-review.srt`:
+### ไฟล์ตัวอย่างอัตโนมัติ (`tests/fixtures/`)
+
+- `tests/fixtures/ad-review.srt` มีอยู่ใน repo แล้ว (6 cues สำหรับทดสอบ Review Mode)
+- `tests/e2e/fixtures.ts` (`ensureVideoFixtures()`) สร้างไฟล์ต่อไปนี้ใน `tests/fixtures/.generated/` ด้วย `ffmpeg` อัตโนมัติหากยังไม่มี:
+  - `ad-generate-480p.mp4`: MP4 480p (`854x480`, AAC mono, `-movflags +faststart`) สำหรับ `generate-mode.spec.ts`
+  - `ad-review-1080p.mp4`: MP4 1080p (`1920x1080`, AAC sine wave, ไม่ใส่ `+faststart` เพื่อทดสอบไฟล์ที่ `moov` อยู่ท้ายไฟล์) สำหรับ `review-mode.spec.ts` และ `review-restore.spec.ts`
+- `review-mode-url.spec.ts` ใช้ `tests/fixtures/review-url-speech.mp4` ไฟล์ 1080p ยาว 14 วินาทีที่มีเสียงพูดสังเคราะห์ เซิร์ฟเวอร์ทดสอบเสิร์ฟไฟล์จากคนละ origin ผ่าน HTTP Range เพื่อให้ Chromium ตรวจเสียงพูด เปิด editor และเลื่อนตำแหน่งวิดีโอจริง
+
+การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
+
+#### ตรวจลิงก์ MP4 ภายนอก
+
+เคสลิงก์จริงปิดไว้ในชุดหลัก รันแยกเมื่อต้องการตรวจว่าแหล่งวิดีโอภายนอกยังรองรับการตรวจเสียงและเลื่อนตำแหน่ง ไฟล์ตัวอย่างมีขนาด 71 MB และยาว 24:43 เคสนี้ต้องต่ออินเทอร์เน็ตและให้เวลาสูงสุด 5 นาที
 
 ```bash
-ffmpeg -f lavfi -i color=c=navy:s=1920x1080:r=25 -f lavfi -i sine=frequency=220:sample_rate=48000 -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/ad-review-1080p.mp4
+RUN_EXTERNAL_MP4_SMOKE=1 bun run test:e2e review-mode-url.spec.ts --grep 'external MP4 URL'
 ```
+
+## 3. Production Smoke Test (`test:smoke`)
+
+`tests/e2e/smoke/app.spec.ts` ทดสอบ container production จริง (`envisio:latest`) แบบเต็มระบบ โดยเริ่ม container ชั่วคราวบน `127.0.0.1:4174` (แยก `.data` ภายใน container และใช้ dummy env vars หรือกำหนด `SMOKE_BASE_URL` เพื่อชี้ไปยัง instance ที่รันอยู่แล้ว) แล้วตรวจ:
+
+- `GET /api/config` คืน HTTP 200 พร้อมฟิลด์คอนฟิก (`geminiModel`, `maxUploadSizeMb`, `vadThreshold`)
+- `GET /api/jobs` ที่ยังไม่เข้าสู่ระบบคืน HTTP 401 พร้อม `code: 'UNAUTHENTICATED'`
+- `GET /models/silero_vad.onnx` คืน HTTP 200 พร้อม header `cross-origin-resource-policy: cross-origin`
+- `GET /` แบบยังไม่เข้าสู่ระบบคืน HTTP 302 ไปยัง `/auth/login?returnTo=%2F`
+- การเปิด `/` ด้วย session cookie ที่ถูกต้องใน Chromium อยู่บน `/` โดยไม่ redirect, แสดงปุ่ม `บัญชี smoke@example.com` ของ SPA และไม่มี `pageerror`
+
+build image production หากโค้ดเปลี่ยน แล้วรันบนเครื่อง:
 
 ```bash
-printf '1\n00:00:01,000 --> 00:00:03,000\n<i>ชายเปิดประตู</i>\n\n2\n00:00:02,500 --> 00:00:04,000\nทับบรรทัดแรก\n\n3\n00:00:05,000 --> 00:00:07,500\nหญิงยิ้ม\nแล้วเดินออกไป\n\n4\n00:00:09,000 --> 00:00:09,300\nสั้น\n\n5\n00:00:10,000 --> 00:00:10,000\nไม่มีความยาว\n\n6\n00:00:20,000 --> 00:00:21,000\nเลยท้ายวิดีโอ\n' > /tmp/ad-review.srt
+docker build --target production -t envisio:latest .
+bun run test:smoke
 ```
-
-- `review-mode-url.js` ใช้วิดีโอตัวอย่างจริงบนอินเทอร์เน็ต (71 MB ยาว 24:43) ต้องต่อเน็ต และใช้เวลาราวครึ่งนาที
-
-หยุด preview ด้วย `docker compose --profile test stop preview` เมื่อเสร็จ การตอบ HTTP 500 ในการทดสอบ Job เป็นข้อผิดพลาดจำลองสำหรับตรวจปุ่มลองใหม่
 
 ## วัดการเล่นวิดีโอในหน้ารายการบท (Playback benchmark)
 

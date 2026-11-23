@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
+import { X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -146,10 +147,34 @@ function InputGroupTextarea({
   )
 }
 
+function InputGroupClearButton({
+  label,
+  onClear,
+  className,
+}: {
+  label: string
+  onClear: () => void
+  className?: string
+}) {
+  return (
+    <InputGroupAddon align="inline-end">
+      <InputGroupButton
+        size="icon-xs"
+        aria-label={label}
+        onClick={onClear}
+        className={className}
+      >
+        <X aria-hidden="true" />
+      </InputGroupButton>
+    </InputGroupAddon>
+  )
+}
+
 export {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
+  InputGroupClearButton,
   InputGroupText,
   InputGroupInput,
   InputGroupTextarea,

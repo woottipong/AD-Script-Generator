@@ -1,13 +1,17 @@
 import type { PersistedJobState } from '../types/ad';
 
+/** What `GET /api/jobs/:jobId?view=progress` returns: the Job without its VAD output and settings. */
+export type JobProgress = Pick<PersistedJobState,
+  'job_id' | 'status' | 'batches' | 'spots' | 'progress_stage' | 'progress_percent' | 'active_model' | 'error_message'>;
+
 export type JobPollEvent =
-  | { type: 'snapshot'; job: PersistedJobState }
+  | { type: 'snapshot'; job: JobProgress }
   | { type: 'ready' }
+  | { type: 'stopped' }
   | { type: 'failed'; message: string }
-  | { type: 'start-unconfirmed'; message: string }
   | { type: 'disconnected' };
 
-type JobPollResponse = { job?: PersistedJobState; isRunning?: boolean; error?: string };
+type JobPollResponse = { job?: JobProgress; isRunning?: boolean; error?: string };
 
 export async function pollJob(options: {
   jobId: string;
@@ -24,14 +28,13 @@ export async function pollJob(options: {
   let startError = options.startError;
   let consecutiveErrors = 0;
   let idlePollsWithoutRunner = 0;
-  let autoResumedOnce = false;
 
   while (!token.aborted) {
     await wait(1400);
     if (token.aborted) return;
 
     try {
-      const response = await request(`/api/jobs/${encodeURIComponent(jobId)}`);
+      const response = await request(`/api/jobs/${encodeURIComponent(jobId)}?view=progress`);
       const data = await parseResponse(response);
       if (token.aborted) return;
       if (!response.ok || data?.job?.job_id !== jobId || !Array.isArray(data.job.batches) || !Array.isArray(data.job.spots)) {
@@ -48,6 +51,10 @@ export async function pollJob(options: {
         continue;
       }
 
+      if (job.status === 'STOPPED' || job.status === 'STOPPING') {
+        onEvent({ type: 'stopped' });
+        return;
+      }
       if (job.status === 'READY' || (job.batches.length > 0 && job.batches.every((batch) => batch.status === 'completed'))) {
         onEvent({ type: 'ready' });
         return;
@@ -56,16 +63,10 @@ export async function pollJob(options: {
         onEvent({ type: 'failed', message: startError || job.error_message || 'เกิดข้อผิดพลาดระหว่างการวิเคราะห์วิดีโอด้วย Gemini' });
         return;
       }
-      if (startError) {
-        onEvent({ type: 'start-unconfirmed', message: `${startError} กำลังตรวจสถานะงานอีกครั้ง` });
-      }
       idlePollsWithoutRunner++;
-      if (idlePollsWithoutRunner >= 2 && !autoResumedOnce) {
-        autoResumedOnce = true;
-        idlePollsWithoutRunner = 0;
-        await request(`/api/jobs/${encodeURIComponent(jobId)}/start`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-        }).catch(() => {});
+      if (idlePollsWithoutRunner >= 2) {
+        onEvent({ type: 'failed', message: startError || 'การวิเคราะห์หยุดก่อนเสร็จ กรุณากดทำต่อ' });
+        return;
       }
     } catch {
       if (token.aborted) return;

@@ -64,7 +64,7 @@ export function validateJobInitialization(input: unknown) {
 const editedSpot = z.object({
   spot_id: z.string().min(1), start_ms: ms, end_ms: ms, duration_ms: ms,
   original_start_ms: ms, original_end_ms: ms, decision: z.enum(['pending', 'generate', 'skip']),
-  text: z.string(), reason: z.string().optional(), is_edited: z.boolean(),
+  text: z.string(), reason: z.string().optional(),
 });
 
 const reviewDuration = ms.positive().max(REVIEW_MAX_DURATION_MS);

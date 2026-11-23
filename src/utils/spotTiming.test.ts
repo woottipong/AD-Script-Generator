@@ -19,7 +19,6 @@ const spot: ADSpot = {
   original_end_ms: 6000,
   decision: 'generate',
   text: '',
-  is_edited: false,
 };
 
 test('accepts an edit inside the Non-Speech Gap that is at least 500 ms long', () => {
@@ -83,7 +82,7 @@ test('every clamped result passes validation', () => {
 });
 
 const cue = (spot_id: string, start_ms: number, end_ms: number, decision: ADSpot['decision'] = 'generate'): ADSpot => ({
-  spot_id, start_ms, end_ms, duration_ms: end_ms - start_ms, original_start_ms: start_ms, original_end_ms: end_ms, decision, text: spot_id, is_edited: false,
+  spot_id, start_ms, end_ms, duration_ms: end_ms - start_ms, original_start_ms: start_ms, original_end_ms: end_ms, decision, text: spot_id,
 });
 const reviewContext = (spots: ADSpot[], videoDurationMs = 10000) => ({ mode: 'review' as const, spots, videoDurationMs });
 

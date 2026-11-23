@@ -70,7 +70,6 @@ const skippedSpot: ADSpot = {
   decision: 'skip',
   text: '',
   reason: 'เด็กหญิงวางตุ๊กตาผึ้งลงในช่องกระดาษ',
-  is_edited: false,
 };
 
 test('enables a skipped spot with its displayed AI explanation and includes it in SRT', () => {
@@ -78,7 +77,6 @@ test('enables a skipped spot with its displayed AI explanation and includes it i
 
   assert.equal(enabled.decision, 'generate');
   assert.equal(enabled.text, skippedSpot.reason);
-  assert.equal(enabled.is_edited, true);
   assert.equal(enabled.reason, skippedSpot.reason);
   assert.equal(skippedSpot.decision, 'skip');
   assert.equal(generateSrtContent([skippedSpot]), '');
@@ -87,7 +85,7 @@ test('enables a skipped spot with its displayed AI explanation and includes it i
 });
 
 test('keeps existing narration when enabling a skipped spot again', () => {
-  const edited = { ...skippedSpot, text: 'บทบรรยายที่ผู้ใช้แก้ไขแล้ว' };
+  const edited = { ...skippedSpot, text: 'บทบรรยายที่ผู้ใช้แก้ไข' };
   const enabled = enableSpotNarration(edited);
   const enabledAgain = enableSpotNarration({ ...enabled, decision: 'skip' });
 

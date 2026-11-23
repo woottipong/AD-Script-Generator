@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Film,
-  Loader2,
   Pause,
   Play,
   Repeat,
@@ -26,22 +25,14 @@ import {
 } from '../utils/waveform';
 import { SpotDragMode, computeClampedSpotDrag, findSpotIssues, spotTimingKey } from '../utils/spotTiming';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SimpleTooltip } from '@/components/ui/tooltip';
 
 const decisionLabels = { generate: 'มีบทบรรยาย', pending: 'รอสร้าง', skip: 'ข้าม' };
 const monitorTime = (ms: number) => formatTimestampDisplay(ms).replace(/^00:/, '');
 const MAX_TIMELINE_ZOOM = 64;
-
-/** A player or zoom control whose name (and shortcut) shows in a tooltip rather than a browser title. */
-function WithTooltip({ label, children }: { label: string; children: React.ReactElement }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
 
 interface ActiveSpotDrag {
   spotId: string;
@@ -65,6 +56,7 @@ interface VideoPreviewTimelineProps {
   spots: ADSpot[];
   selectedSpotId: string | null;
   isAnalyzing?: boolean;
+  editableSpotIds?: ReadonlySet<string>;
   processingSpotIds?: ReadonlySet<string>;
   detectProgress?: ProcessingProgress | null;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
@@ -83,6 +75,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
   spots,
   selectedSpotId,
   isAnalyzing = false,
+  editableSpotIds,
   processingSpotIds,
   detectProgress = null,
   onSelectSpot,
@@ -255,6 +248,11 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
     mode: SpotDragMode
   ) => {
     if (event.button !== 0 || isAnalyzing) return;
+    if (editableSpotIds?.has(spot.spot_id) === false) {
+      event.stopPropagation();
+      onSelectSpot(spot.spot_id, true);
+      return;
+    }
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     setActiveDrag({
@@ -323,7 +321,6 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
         start_ms: drag.previewStartMs,
         end_ms: drag.previewEndMs,
         duration_ms: drag.previewEndMs - drag.previewStartMs,
-        is_edited: true,
       });
       seekToMs(drag.mode === 'trim-end' ? drag.previewEndMs : drag.previewStartMs);
     }
@@ -482,7 +479,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 ref={videoRef}
                 src={videoUrl}
                 preload="auto"
-                className="w-full h-full object-contain cursor-pointer"
+                className="size-full object-contain cursor-pointer"
                 playsInline
                 onLoadStart={() => {
                   if ((videoRef.current?.readyState ?? 0) < 1) setIsVideoLoading(true);
@@ -504,24 +501,24 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 }}
               />
               {videoError || isVideoLoading ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stage px-6 py-4 text-center text-white">
-                  {videoError ? <AlertTriangle className="h-6 w-6 text-warning-strong-border" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin text-brand-300" aria-hidden="true" />}
-                  <div role={videoError ? 'alert' : 'status'} className="w-full max-w-xs space-y-2">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stage px-6 py-4 text-center text-stage-foreground">
+                  {videoError ? <AlertTriangle className="size-6 text-warning-strong-border" aria-hidden="true" /> : <Spinner className="size-6 text-brand-300" aria-hidden="true" />}
+                  <div role={videoError ? 'alert' : 'status'} className="flex w-full max-w-xs flex-col gap-2">
                     <p className="text-sm font-semibold">{videoError === 'load' ? 'ยังเปิดวิดีโอไม่ได้' : videoError === 'play' ? 'ยังเล่นวิดีโอไม่ได้' : 'กำลังโหลดวิดีโอ'}</p>
                     {!videoError && (
-                      <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-white/15">
+                      <div aria-hidden="true" className="relative mx-auto h-1 w-36 overflow-hidden rounded-full bg-stage-foreground/15">
                         <div className="progress-indeterminate-primary absolute inset-0" />
                         <div className="progress-indeterminate-secondary absolute inset-0" />
                       </div>
                     )}
-                    {videoError && <p className="text-xs leading-relaxed text-white/80">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
+                    {videoError && <p className="text-xs leading-relaxed text-stage-foreground/80">ยังแก้บทได้ตามปกติ แต่ควรเปิดวิดีโอเพื่อตรวจเทียบก่อนส่งออก</p>}
                   </div>
                   {videoError && <button type="button" onClick={() => {
                     if (videoError === 'play') { playVideo(); return; }
                     setVideoError(null);
                     setIsVideoLoading(true);
                     videoRef.current?.load();
-                  }} className="rounded-md border border-white/30 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
+                  }} className="rounded-md border border-stage-foreground/30 px-3 py-2 text-xs font-semibold text-stage-foreground hover:bg-stage-foreground/10 cursor-pointer">{videoError === 'load' ? 'ลองโหลดวิดีโออีกครั้ง' : 'ลองเล่นอีกครั้ง'}</button>}
                 </div>
               ) : null}
               {showCaptionOverlay && !videoError && !isVideoLoading && activeSubtitleSpot && (
@@ -533,12 +530,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectSpot(activeSubtitleSpot.spot_id, false)}
-                    className="pointer-events-auto flex max-h-[48%] max-w-[min(94%,42rem)] items-start gap-2.5 overflow-y-auto rounded-lg border border-white/15 bg-stage/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-stage/90 focus-visible:outline-brand-400 cursor-pointer"
+                    className="pointer-events-auto flex max-h-[48%] max-w-[min(94%,42rem)] items-start gap-2.5 overflow-y-auto rounded-lg border border-stage-foreground/15 bg-stage/80 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:bg-stage/90 focus-visible:outline-brand-400 cursor-pointer"
                   >
-                    <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-xs font-semibold leading-none tracking-wide text-white tabular-nums">
+                    <span className="mt-0.5 shrink-0 rounded bg-brand-600 px-1.5 py-0.5 text-xs font-semibold leading-none tracking-wide text-primary-foreground tabular-nums">
                       AD {spots.indexOf(activeSubtitleSpot) + 1}
                     </span>
-                    <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]">
+                    <p className="min-w-0 text-xs sm:text-sm font-medium leading-relaxed text-stage-foreground [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]">
                       {activeSubtitleSpot.text}
                     </p>
                   </button>
@@ -546,8 +543,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
               )}
             </>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center p-6 text-center text-white/80">
-              <Film className="mb-2 h-8 w-8 text-white/50" aria-hidden="true" />
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center text-stage-foreground/80">
+              <Film className="mb-2 size-8 text-stage-foreground/50" aria-hidden="true" />
               <p className="text-sm font-medium">ยังเปิดวิดีโอไม่ได้</p>
               <p className="mt-1 text-xs">ตรวจสอบข้อความแจ้งปัญหา หรือเลือกวิดีโออีกครั้ง</p>
             </div>
@@ -556,24 +553,24 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
 
         <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border bg-card px-3 py-2">
           <div role="group" aria-label="เล่นและเลื่อนเวลา" className="flex items-center gap-0.5">
-            <WithTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−5s</Button></WithTooltip>
-            <WithTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−1s</Button></WithTooltip>
-            <WithTooltip label={`${isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} (Alt + P)`}>
+            <SimpleTooltip label="ย้อนกลับ 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 5000)} disabled={!videoUrl} aria-label="ย้อนกลับ 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−5s</Button></SimpleTooltip>
+            <SimpleTooltip label="ย้อนกลับ 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs - 1000)} disabled={!videoUrl} aria-label="ย้อนกลับ 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">−1s</Button></SimpleTooltip>
+            <SimpleTooltip label={`${isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} (Alt + P)`}>
               <Button size="icon-sm" onClick={togglePlayPause} disabled={!videoUrl} aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่นวิดีโอ'} className="mx-0.5">
                 {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
               </Button>
-            </WithTooltip>
-            <WithTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+1s</Button></WithTooltip>
-            <WithTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+5s</Button></WithTooltip>
+            </SimpleTooltip>
+            <SimpleTooltip label="เดินหน้า 1 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 1000)} disabled={!videoUrl} aria-label="เดินหน้า 1 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+1s</Button></SimpleTooltip>
+            <SimpleTooltip label="เดินหน้า 5 วินาที"><Button variant="ghost" size="sm" onClick={() => seekToMs(currentTimeMs + 5000)} disabled={!videoUrl} aria-label="เดินหน้า 5 วินาที" className="px-2 font-mono text-muted-foreground tabular-nums not-disabled:hover:text-foreground">+5s</Button></SimpleTooltip>
           </div>
           <div role="group" aria-label="เลือกช่วงบรรยาย" className="flex items-center gap-0.5 border-l border-border pl-2">
-            <WithTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipBack aria-hidden="true" /></Button></WithTooltip>
-            <WithTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipForward aria-hidden="true" /></Button></WithTooltip>
+            <SimpleTooltip label="ช่วงก่อนหน้า (Alt + ↑)"><Button variant="ghost" size="icon-sm" onClick={() => prevSpot && onSelectSpot(prevSpot.spot_id, true)} disabled={!prevSpot} aria-label="ช่วงบรรยายก่อนหน้า" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipBack aria-hidden="true" /></Button></SimpleTooltip>
+            <SimpleTooltip label="ช่วงถัดไป (Alt + ↓)"><Button variant="ghost" size="icon-sm" onClick={() => nextSpot && onSelectSpot(nextSpot.spot_id, true)} disabled={!nextSpot} aria-label="ช่วงบรรยายถัดไป" className="text-muted-foreground not-disabled:hover:text-foreground"><SkipForward aria-hidden="true" /></Button></SimpleTooltip>
           </div>
           <div role="group" aria-label="ตัวเลือกการเล่น" className="flex items-center gap-0.5 sm:border-l sm:border-border sm:pl-2">
-            <WithTooltip label="วนซ้ำช่วงที่เลือก"><Toggle size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก" className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80"><Repeat aria-hidden="true" /></Toggle></WithTooltip>
-            <WithTooltip label={captionLabel}><Toggle size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel} className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80"><Subtitles aria-hidden="true" /></Toggle></WithTooltip>
-            <WithTooltip label={muteLabel}><Toggle size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel} className="text-muted-foreground aria-pressed:bg-brand-50 aria-pressed:text-brand-700 aria-pressed:ring-brand-200 not-disabled:aria-pressed:hover:bg-brand-100/80">{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></WithTooltip>
+            <SimpleTooltip label="วนซ้ำช่วงที่เลือก"><Toggle variant="soft" size="icon" pressed={loopSelectedSpot} onPressedChange={setLoopSelectedSpot} disabled={!selectedSpot} aria-label="วนซ้ำช่วงที่เลือก"><Repeat aria-hidden="true" /></Toggle></SimpleTooltip>
+            <SimpleTooltip label={captionLabel}><Toggle variant="soft" size="icon" pressed={showCaptionOverlay} onPressedChange={setShowCaptionOverlay} disabled={!videoUrl} aria-label={captionLabel}><Subtitles aria-hidden="true" /></Toggle></SimpleTooltip>
+            <SimpleTooltip label={muteLabel}><Toggle variant="soft" size="icon" pressed={isMuted} onPressedChange={toggleMute} disabled={!videoUrl} aria-label={muteLabel}>{isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}</Toggle></SimpleTooltip>
           </div>
           <div className="ml-auto rounded-md bg-muted/60 px-2.5 py-1 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
             <span className="font-semibold text-brand-950">{monitorTime(currentTimeMs)}</span><span className="mx-1.5 text-muted-foreground/70" aria-hidden="true">/</span><span>{formatCompactTime(videoUrl ? effectiveDurationMs : 0)}</span>
@@ -593,14 +590,14 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           {(() => {
             const legendItems = [
               spots.some((s) => s.decision === 'generate') && { key: 'generate', label: 'บรรยาย', swatch: 'bg-brand-700' },
-              spots.some((s) => s.decision === 'pending') && { key: 'pending', label: 'รอ', swatch: 'border border-amber-400 bg-amber-100' },
+              spots.some((s) => s.decision === 'pending') && { key: 'pending', label: 'รอ', swatch: 'border border-warning-strong-border bg-warning-strong' },
               spots.some((s) => s.decision === 'skip') && { key: 'skip', label: 'ข้าม', swatch: 'border border-slate-400 bg-slate-300' },
             ].filter(Boolean) as { key: string; label: string; swatch: string }[];
             return legendItems.length > 1 ? (
               <div className="hidden xl:flex items-center gap-3 text-muted-foreground" aria-label="สถานะช่วงบรรยาย">
                 {legendItems.map((item) => (
                   <span key={item.key} className="inline-flex items-center gap-1.5">
-                    <span className={`h-2.5 w-2.5 rounded-[3px] ${item.swatch}`} aria-hidden="true" />
+                    <span className={`size-2.5 rounded-[3px] ${item.swatch}`} aria-hidden="true" />
                     {item.label}
                   </span>
                 ))}
@@ -623,12 +620,12 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <Button variant="link" size="sm" onClick={() => setZoomLevel(Math.min(MAX_TIMELINE_ZOOM, Math.max(zoomLevel, 48 * effectiveDurationMs / selectedSpot.duration_ms / timelineViewportWidth)))}>ซูมช่วงนี้</Button>
           )}
           {zoomLevel > 1 && (
-            <WithTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="xs" onClick={() => setZoomLevel(1)} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className="h-7 px-2 text-muted-foreground hover:text-foreground">พอดี</Button></WithTooltip>
+            <SimpleTooltip label="แสดงวิดีโอทั้งเรื่องบนไทม์ไลน์"><Button variant="ghost" size="xs" onClick={() => setZoomLevel(1)} aria-label="แสดงไทม์ไลน์พอดีหน้าจอ" className="h-7 px-2 text-muted-foreground hover:text-foreground">พอดี</Button></SimpleTooltip>
           )}
           <div className="inline-flex items-center rounded-lg border border-border/70 bg-background p-0.5">
-            <WithTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomOut aria-hidden="true" /></Button></WithTooltip>
+            <SimpleTooltip label="ย่อไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.max(1, z > 8 ? z / 1.5 : z - 0.5))} disabled={zoomLevel <= 1} aria-label="ย่อไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomOut aria-hidden="true" /></Button></SimpleTooltip>
             <span className="min-w-11 text-center font-mono text-xs text-muted-foreground tabular-nums" aria-label={`ขนาดไทม์ไลน์ ${Math.round(zoomLevel * 100)} เปอร์เซ็นต์`}>{Math.round(zoomLevel * 100)}%</span>
-            <WithTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomIn aria-hidden="true" /></Button></WithTooltip>
+            <SimpleTooltip label="ขยายไทม์ไลน์"><Button variant="ghost" size="icon-xs" onClick={() => setZoomLevel((z) => Math.min(MAX_TIMELINE_ZOOM, z >= 8 ? z * 1.5 : z + 0.5))} disabled={zoomLevel >= MAX_TIMELINE_ZOOM} aria-label="ขยายไทม์ไลน์" className="size-6 text-muted-foreground not-disabled:hover:text-foreground"><ZoomIn aria-hidden="true" /></Button></SimpleTooltip>
           </div>
         </div>
       </div>
@@ -640,7 +637,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
             <div className="flex h-14 items-center border-b border-border px-3 text-muted-foreground">คลื่นเสียง</div>
           )}
           <div className="flex h-7 items-center justify-between gap-1.5 border-b border-border px-3 text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 shrink-0 rounded-full bg-indigo-500" aria-hidden="true" />เสียงพูด</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-1.5 shrink-0 rounded-full bg-speech-dot" aria-hidden="true" />เสียงพูด</span>
             <span className="hidden shrink-0 sm:inline tabular-nums text-muted-foreground">{speechSegments.length}</span>
           </div>
           <div className="flex h-14 items-center justify-between gap-1.5 px-3 font-medium text-secondary-foreground">
@@ -653,13 +650,13 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
           onScroll={drawWaveform}
           className="min-w-0 flex-1 overflow-x-auto select-none"
         >
-          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className={`relative min-w-full overflow-x-clip bg-white ${activeDrag ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : effectiveDurationMs > 1 ? 'cursor-crosshair' : 'cursor-default'}`}>
+          <div ref={timelineTrackRef} onClick={handleTimelineClick} onMouseMove={handleTimelineMouseMove} onMouseLeave={() => setHoverTimeMs(null)} style={{ width: `${100 * zoomLevel}%` }} className={`relative min-w-full overflow-x-clip bg-card ${activeDrag ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : effectiveDurationMs > 1 ? 'cursor-crosshair' : 'cursor-default'}`}>
             {ticks.slice(1, -1).map((tickMs, idx) => (
               <div
                 key={`grid-${idx}`}
                 aria-hidden="true"
                 style={{ left: `${tickMs / effectiveDurationMs * 100}%` }}
-                className="pointer-events-none absolute top-7 bottom-0 z-[1] w-px bg-slate-200/50"
+                className="pointer-events-none absolute top-7 bottom-0 z-[1] w-px bg-border/50"
               />
             ))}
             <div
@@ -672,17 +669,17 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   : event.key === 'Home' ? 0 : event.key === 'End' ? durationMs : null;
                 if (nextTime !== null && videoUrl) { event.preventDefault(); seekToMs(nextTime); }
               }}
-              className="relative h-7 border-b border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
+              className="relative h-7 border-b border-border bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
             >
               {ticks.map((tickMs, idx) => (
                 <div key={idx} style={{ left: `${tickMs / effectiveDurationMs * 100}%` }} className="pointer-events-none absolute top-0 bottom-0 w-0">
-                  <div className="h-1.5 w-px bg-slate-300" />
+                  <div className="h-1.5 w-px bg-input" />
                   <span className={`absolute bottom-1 whitespace-nowrap font-mono text-xs text-slate-500 tabular-nums ${idx === 0 ? 'translate-x-2' : idx === ticks.length - 1 ? '-translate-x-full pr-2' : '-translate-x-1/2'}`}>{formatCompactTime(tickMs)}</span>
                 </div>
               ))}
             </div>
             {showWaveformTrack && (
-              <div className="relative h-14 border-b border-slate-200 bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70">
+              <div className="relative h-14 border-b border-border bg-gradient-to-b from-surface-subtle/70 via-card to-surface-subtle/70">
                 {waveformPeaks.length > 0 ? (
                   <canvas
                     ref={waveformCanvasRef}
@@ -691,17 +688,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     className="pointer-events-none sticky left-0 block h-full"
                   />
                 ) : (
-                  <div className="pointer-events-none relative h-full w-full overflow-hidden bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70">
+                  <div className="pointer-events-none relative size-full overflow-hidden bg-gradient-to-b from-surface-subtle/70 via-card to-surface-subtle/70">
                     <div aria-hidden="true" className="absolute inset-0 flex items-center justify-between gap-1 px-3 opacity-80">
                       {[24, 38, 18, 44, 30, 52, 22, 40, 28, 48, 20, 34, 46, 26, 36, 50, 20, 42, 30, 44, 24, 38, 48, 22, 34, 42, 26, 36, 20, 40, 28, 46].map((pct, idx) => (
-                        <div
+                        <Skeleton
                           key={idx}
-                          data-slot="skeleton"
-                          style={{
-                            height: `${pct}%`,
-                            '--shimmer-delay': `${(idx % 8) * 70}ms`,
-                          } as React.CSSProperties}
-                          className="soft-shimmer w-1 flex-1 rounded-full bg-slate-200/80"
+                          variant="shimmer"
+                          delay={(idx % 8) * 70}
+                          style={{ height: `${pct}%` }}
+                          className="w-1 flex-1 rounded-full bg-border/80"
                         />
                       ))}
                     </div>
@@ -709,8 +704,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                       style={{ width: `${Math.max(1, Math.floor(timelineViewportWidth))}px` }}
                       className="sticky left-0 flex h-full items-center justify-center px-3"
                     >
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200/80 bg-white/90 px-3 py-1 text-xs font-medium text-brand-900 shadow-xs backdrop-blur-xs tabular-nums">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200/80 bg-card/90 px-3 py-1 text-xs font-medium text-brand-900 shadow-xs backdrop-blur-xs tabular-nums">
+                        <Spinner className="size-3.5 text-brand-600" aria-hidden="true" />
                         <span>{detectFeedback?.title}</span>
                         {detectPercent !== undefined && <span className="font-semibold text-brand-700">{detectPercent}%</span>}
                       </span>
@@ -719,7 +714,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 )}
               </div>
             )}
-            <div className="relative h-7 border-b border-slate-200 bg-indigo-50/25">
+            <div className="relative h-7 border-b border-border bg-speech-surface/25">
               {isDetecting && speechSegments.length === 0 ? (
                 [
                   { left: '4%', width: '12%', delay: 0 },
@@ -728,40 +723,34 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                   { left: '61%', width: '18%', delay: 420 },
                   { left: '84%', width: '11%', delay: 560 },
                 ].map((capsule, idx) => (
-                  <div
+                  <Skeleton
                     key={idx}
+                    variant="shimmer"
+                    delay={capsule.delay}
                     aria-hidden="true"
-                    data-slot="skeleton"
-                    style={{
-                      left: capsule.left,
-                      width: capsule.width,
-                      '--shimmer-delay': `${capsule.delay}ms`,
-                    } as React.CSSProperties}
-                    className="soft-shimmer pointer-events-none absolute top-1 bottom-1 rounded-[4px] bg-muted"
+                    style={{ left: capsule.left, width: capsule.width }}
+                    className="pointer-events-none absolute top-1 bottom-1 rounded-[4px] bg-muted"
                   />
                 ))
               ) : (
                 speechSegments.map((seg, index) => (
-                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-[4px] border border-indigo-300/90 bg-indigo-100/90" />
+                  <div key={index} style={{ left: `${Math.max(0, seg.start_ms / effectiveDurationMs * 100)}%`, width: `${Math.max(0.2, (seg.end_ms - seg.start_ms) / effectiveDurationMs * 100)}%` }} title={`เสียงพูด ${formatTimestampDisplay(seg.start_ms)} – ${formatTimestampDisplay(seg.end_ms)}`} className="pointer-events-none absolute top-1 bottom-1 rounded-[4px] border border-speech-border/90 bg-speech-capsule/90" />
                 ))
               )}
             </div>
-            <div className="relative h-14 bg-slate-50/40">
+            <div className="relative h-14 bg-surface-subtle/40">
               {isDetecting && spots.length === 0 && [
                 { left: '16%', width: '7%', delay: 100 },
                 { left: '38%', width: '7%', delay: 260 },
                 { left: '79%', width: '6%', delay: 420 },
               ].map((block, idx) => (
-                <div
+                <Skeleton
                   key={idx}
+                  variant="shimmer"
+                  delay={block.delay}
                   aria-hidden="true"
-                  data-slot="skeleton"
-                  style={{
-                    left: block.left,
-                    width: block.width,
-                    '--shimmer-delay': `${block.delay}ms`,
-                  } as React.CSSProperties}
-                  className="soft-shimmer pointer-events-none absolute top-1.5 bottom-1.5 rounded-sm border border-brand-200/70 bg-brand-50/80"
+                  style={{ left: block.left, width: block.width }}
+                  className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-sm border border-brand-200/70 bg-brand-50/80"
                 />
               ))}
               {activeDrag?.hasMoved && (() => {
@@ -795,14 +784,15 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 const isSelected = spot.spot_id === selectedSpotId;
                 const isProcessingSpot = spot.decision === 'pending' && Boolean(processingSpotIds?.has(spot.spot_id));
                 const hasIssue = issueSpotIds.has(spot.spot_id);
-                const showHandles = !isAnalyzing && width >= 18;
+                const editingDisabled = isAnalyzing || editableSpotIds?.has(spot.spot_id) === false;
+                const showHandles = !editingDisabled && width >= 18;
                 const colorClasses = spot.decision === 'generate'
-                  ? 'bg-brand-700 group-hover:bg-brand-800 text-white border-brand-800'
+                  ? 'bg-brand-700 group-hover:bg-brand-800 text-primary-foreground border-brand-800'
                   : spot.decision === 'skip'
                   ? 'bg-slate-300 group-hover:bg-slate-400 text-slate-800 border-slate-400'
                   : isProcessingSpot
                   ? 'bg-brand-100 text-brand-900 border-brand-400'
-                  : 'bg-amber-100 group-hover:bg-amber-200 text-amber-950 border-amber-400';
+                  : 'bg-warning-strong group-hover:brightness-95 text-warning-strong-foreground border-warning-strong-border';
                 return (
                   <div
                     key={spot.spot_id}
@@ -823,8 +813,8 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                     onPointerUp={(event) => finishSpotDrag(event, false)}
                     onPointerCancel={(event) => finishSpotDrag(event, true)}
                     style={{ left: hitLeft, width: Math.max(2, hitRight - hitLeft) }}
-                    title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)} (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)${spot.text ? `\n${spot.text}` : ''}`}
-                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${isAnalyzing ? 'cursor-pointer' : isDraggingThis ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
+                    title={`ช่วง ${index + 1} · ${formatTimestampDisplay(displayStartMs)} – ${formatTimestampDisplay(displayEndMs)}${editingDisabled ? '' : ' (ลากขอบเพื่อปรับเวลา หรือลากกลางเพื่อเลื่อน)'}${spot.text ? `\n${spot.text}` : ''}`}
+                    className={`group absolute top-0 bottom-0 touch-none rounded px-0 ${editingDisabled ? 'cursor-pointer' : isDraggingThis ? (activeDrag.mode === 'move' ? 'cursor-grabbing' : 'cursor-ew-resize') : 'cursor-grab'} ${isSelected || isDraggingThis ? 'z-20' : 'z-10'}`}
                   >
                     <span
                       style={{ left: left - hitLeft, width }}
@@ -867,7 +857,7 @@ export const VideoPreviewTimeline: React.FC<VideoPreviewTimelineProps> = ({
                 );
               })}
             </div>
-            <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 h-2.5 w-2.5 rotate-45 bg-red-600" /></div>
+            <div style={{ left: `${playheadPercent}%` }} className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-600"><div className="-mt-0.5 -ml-1 size-2.5 rotate-45 bg-red-600" /></div>
           </div>
         </div>
       </div>

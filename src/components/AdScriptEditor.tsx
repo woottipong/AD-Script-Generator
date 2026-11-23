@@ -5,14 +5,13 @@ import {
   ChevronDown,
   Clock,
   FileText,
-  Loader2,
   Maximize2,
   Minus,
   MinusCircle,
   Plus,
   RotateCcw,
   Search,
-  X,
+  Timer,
 } from 'lucide-react';
 import { ADSpot, AnalysisBatch, JobMode, SpeechSegment } from '../types/ad';
 import {
@@ -25,6 +24,7 @@ import { estimateThaiSpeechDurationMs } from '../utils/narrationBudget';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,9 +34,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { InputGroup, InputGroupAddon, InputGroupClearButton, InputGroupInput } from '@/components/ui/input-group';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
@@ -44,11 +47,11 @@ interface AdScriptEditorProps {
   spots: ADSpot[];
   batches: AnalysisBatch[];
   isAnalyzing: boolean;
+  editableSpotIds?: ReadonlySet<string>;
   emptyState: 'preparing' | 'no-gaps' | 'failed';
   errorMessage: string | null;
   onRetryVad: () => void;
   onRetryJobSave?: () => void;
-  preparationTitle?: string;
   mode: JobMode;
   speechSegments: SpeechSegment[];
   videoDurationMs: number;
@@ -60,7 +63,7 @@ interface AdScriptEditorProps {
   onRetrySave: () => void;
 }
 
-type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'edited' | 'needs_check';
+type FilterMode = 'all' | 'generate' | 'pending' | 'skip' | 'needs_check';
 
 /** Timing problems to fix, plus narration longer than its gap, which is fine for Extended AD that pauses the picture. */
 type SpotCheck = SpotIssue | 'over_duration';
@@ -82,6 +85,7 @@ interface SpotBlockItemProps {
   spotOrder: number;
   batchInfo?: AnalysisBatch;
   isAnalyzing: boolean;
+  editingDisabled: boolean;
   isSelected: boolean;
   isPlayingNow: boolean;
   timingContext: SpotTimingContext;
@@ -99,6 +103,7 @@ const areSpotBlockPropsEqual = (prev: SpotBlockItemProps, next: SpotBlockItemPro
   prev.spotOrder === next.spotOrder &&
   prev.batchInfo === next.batchInfo &&
   prev.isAnalyzing === next.isAnalyzing &&
+  prev.editingDisabled === next.editingDisabled &&
   prev.isSelected === next.isSelected &&
   prev.isPlayingNow === next.isPlayingNow &&
   prev.timingContext === next.timingContext &&
@@ -107,11 +112,17 @@ const areSpotBlockPropsEqual = (prev: SpotBlockItemProps, next: SpotBlockItemPro
   prev.registerItemRef === next.registerItemRef &&
   checksEqual(prev.checks, next.checks);
 
+// Cerulean hairlines cover the dividers above and below the active row; the first row draws its top edge inside,
+// since the list clips anything above it.
+const ACTIVE_ROW_EDGES = 'relative z-10 border-b-transparent shadow-[0_-1px_0_var(--color-brand-600),0_1px_0_var(--color-brand-600)] '
+  + 'first:shadow-[inset_0_1px_0_var(--color-brand-600),0_1px_0_var(--color-brand-600)]';
+
 const SpotBlockItem = React.memo<SpotBlockItemProps>(({
   spot,
   spotOrder,
   batchInfo,
   isAnalyzing,
+  editingDisabled,
   isSelected,
   isPlayingNow,
   timingContext,
@@ -166,7 +177,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       start_ms: newStartMs,
       end_ms: newEndMs,
       duration_ms: newEndMs - newStartMs,
-      is_edited: true,
     });
     return true;
   };
@@ -251,10 +261,10 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       className={`px-4 py-3.5 transition-colors ${isSelected ? 'cursor-default' : 'cursor-pointer'} ${
         isSkipped
           ? isSelected
-            ? 'relative z-10 bg-muted ring-1 ring-inset ring-input'
+            ? `${ACTIVE_ROW_EDGES} bg-muted`
             : 'bg-muted/60 hover:bg-muted'
           : isSelected
-          ? 'relative z-10 bg-brand-50/90 ring-1 ring-inset ring-brand-200'
+          ? `${ACTIVE_ROW_EDGES} bg-brand-50`
           : isPlayingNow
           ? 'bg-brand-50/35 hover:bg-brand-50/60'
           : 'bg-card hover:bg-muted/50'
@@ -275,7 +285,7 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
 
           {isExpanded && nudgeTargets && (
             <fieldset
-              disabled={isAnalyzing || isSkipped}
+              disabled={editingDisabled || isSkipped}
               aria-label={`ปรับเวลาบทบรรยายที่ ${spotOrder}`}
               onFocus={() => onSelect(spot.spot_id, false)}
               onClick={(e) => e.stopPropagation()}
@@ -368,14 +378,14 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
           {isExpanded && (
             <ToggleGroup
               appearance="segmented"
-              disabled={isAnalyzing}
+              disabled={editingDisabled}
               aria-label={`เลือกการบรรยายจุดที่ ${spotOrder}`}
               value={spot.decision === 'generate' || spot.decision === 'skip' ? [spot.decision] : []}
               onValueChange={(next) => {
                 const chosen = next[0];
                 if (!chosen || chosen === spot.decision) return;
                 if (chosen === 'generate') onUpdate(enableSpotNarration(spot));
-                else if (chosen === 'skip') onUpdate({ ...spot, decision: 'skip', is_edited: true });
+                else if (chosen === 'skip') onUpdate({ ...spot, decision: 'skip' });
               }}
               onClick={(e) => e.stopPropagation()}
               className="min-w-0"
@@ -398,31 +408,24 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               </ToggleGroupItem>
             </ToggleGroup>
           )}
-          {(!isExpanded || spot.decision === 'pending') && (
+          {/* Narration is the default decision, so only the exceptions take a visible badge. */}
+          {(!isExpanded || spot.decision === 'pending') && (spot.decision === 'generate' ? (
+            <span className="sr-only">{statusLabel}</span>
+          ) : (
             <Badge
-              variant={
-                isBatchProcessing
-                  ? 'info-strong'
-                  : spot.decision === 'pending'
-                  ? 'warning'
-                  : spot.decision === 'generate'
-                  ? 'info'
-                  : 'secondary'
-              }
+              variant={isBatchProcessing ? 'info-strong' : spot.decision === 'pending' ? 'warning' : 'secondary'}
               className={spot.decision === 'skip' ? 'text-muted-foreground' : undefined}
             >
               {isBatchProcessing ? (
-                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                <Spinner aria-hidden="true" />
               ) : spot.decision === 'pending' ? (
                 <Clock aria-hidden="true" />
-              ) : spot.decision === 'generate' ? (
-                <CheckCircle2 aria-hidden="true" />
               ) : (
                 <MinusCircle aria-hidden="true" />
               )}
               {statusLabel}
             </Badge>
-          )}
+          ))}
           {issues?.map((issue) => (
             <Badge key={issue} variant="warning-strong">
               <AlertTriangle aria-hidden="true" />
@@ -431,14 +434,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
           ))}
           {!isExpanded && isOverDurationWarning && (
             <Badge variant="secondary">
-              <Clock aria-hidden="true" />
+              <Timer aria-hidden="true" />
               {SPOT_CHECK_LABELS.over_duration}
             </Badge>
           )}
-          {!isExpanded && spot.is_edited && <span className="text-muted-foreground">แก้ไขแล้ว</span>}
           {isPlayingNow && !isSelected && (
             <span className="inline-flex items-center gap-1.5 font-medium text-brand-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-600" aria-hidden="true" />
+              <span className="size-1.5 rounded-full bg-brand-600" aria-hidden="true" />
               ตำแหน่งวิดีโอ
             </span>
           )}
@@ -455,9 +457,9 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
         )}
 
         {/* Main Content Area: Pending Queue Status OR Script Textarea OR Skip Info */}
-        {spot.decision !== 'pending' && <fieldset disabled={isAnalyzing} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
+        {spot.decision !== 'pending' && <fieldset disabled={editingDisabled} aria-label={`แก้ไขบทบรรยายที่ ${spotOrder}`} onFocus={() => onSelect(spot.spot_id, false)} onClick={(e) => e.stopPropagation()} className="min-w-0 w-full">
           {spot.decision === 'generate' ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Textarea
                 ref={textareaRef}
                 variant="script"
@@ -468,69 +470,46 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
                   onUpdate({
                     ...spot,
                     text: e.target.value,
-                    is_edited: true,
                   })
                 }
                 placeholder="เขียนบทบรรยายภาพ"
               />
 
-              {/* Visual Thai Speech Duration Fit Bar & Compact Footer */}
-              <div className="space-y-1.5">
-                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-150 ${
-                      isOverDurationWarning
-                        ? 'bg-warning-foreground'
-                        : speechRatio > 0.85
-                        ? 'bg-warning-strong-border'
-                        : 'bg-brand-600'
-                    }`}
-                    style={{
-                      width: `${Math.min(100, Math.max(0, Math.round(speechRatio * 100)))}%`,
-                    }}
-                  />
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span
+                    className={
+                      isOverDurationWarning || speechRatio > 0.85
+                        ? 'text-warning-foreground font-medium'
+                        : 'text-secondary-foreground font-medium'
+                    }
+                  >
+                    พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
+                    {isOverDurationWarning && (
+                      <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
+                    )}
+                  </span>
+                  <span aria-hidden="true" className="text-muted-foreground/60">·</span>
+                  <span>{spot.text.trim().length} อักษร</span>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground tabular-nums">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span
-                      className={
-                        isOverDurationWarning
-                          ? 'text-warning-foreground font-medium'
-                          : 'text-secondary-foreground font-medium'
-                      }
-                    >
-                      พูด ~{(estimatedSpeechMs / 1000).toFixed(1)} / {(spot.duration_ms / 1000).toFixed(1)}s
-                      {isOverDurationWarning && (
-                        <span title="ถ้าเป็น Extended AD ที่หยุดภาพไว้ระหว่างบรรยาย ไม่ต้องแก้"> · เกิน +{(Math.ceil((estimatedSpeechMs - spot.duration_ms) / 100) / 10).toFixed(1)}s</span>
-                      )}
-                    </span>
-                    <span aria-hidden="true" className="text-muted-foreground/60">·</span>
-                    <span>{spot.text.trim().length} อักษร</span>
-                    {spot.is_edited && <>
-                      <span aria-hidden="true" className="text-muted-foreground/60">·</span>
-                      <span>แก้ไขแล้ว</span>
-                    </>}
-                  </div>
-
-                  {isTimestampsModified && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleResetTimestamps}
-                      title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
-                      className="-mr-2"
-                    >
-                      <RotateCcw data-icon="inline-start" aria-hidden="true" />
-                      <span>คืนเวลาเดิม</span>
-                    </Button>
-                  )}
-                </div>
+                {isTimestampsModified && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetTimestamps}
+                    title={`คืนค่าเวลาต้นทาง (${formatTimestampDisplay(spot.original_start_ms)} – ${formatTimestampDisplay(spot.original_end_ms)})`}
+                    className="-mr-2"
+                  >
+                    <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                    <span>คืนเวลาเดิม</span>
+                  </Button>
+                )}
               </div>
             </div>
           ) : hasSavedText ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Textarea
                 ref={textareaRef}
                 variant="script"
@@ -541,7 +520,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               />
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>ข้ามช่วงนี้ · ไม่รวมในการส่งออก SRT (ข้อความเดิมยังถูกเก็บไว้)</span>
-                {spot.is_edited && <span>แก้ไขแล้ว</span>}
               </div>
             </div>
           ) : (
@@ -549,7 +527,6 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
               <span>
                 {spot.reason || 'ไม่มีเหตุการณ์สำคัญทางภาพที่ต้องบรรยายในช่วงเวลานี้'}
               </span>
-              {spot.is_edited && <span>แก้ไขแล้ว</span>}
             </div>
           )}
         </fieldset>}
@@ -557,12 +534,13 @@ const SpotBlockItem = React.memo<SpotBlockItemProps>(({
       {spot.decision === 'pending' && isBatchProcessing && (
         <div
           aria-hidden="true"
-          style={{ '--shimmer-delay': `${(spotOrder % 4) * 140}ms` } as React.CSSProperties}
-          className="mt-1.5 w-full space-y-2"
+          className="mt-1.5 flex w-full flex-col gap-2"
         >
-          <div className="soft-shimmer h-3.5 w-full rounded bg-brand-100/80" />
-          <div
-            className="soft-shimmer h-3.5 rounded bg-brand-100/60"
+          <Skeleton variant="shimmer" delay={(spotOrder % 4) * 140} className="h-3.5 w-full rounded bg-brand-100/80" />
+          <Skeleton
+            variant="shimmer"
+            delay={(spotOrder % 4) * 140}
+            className="h-3.5 rounded bg-brand-100/60"
             style={{ width: `${[68, 54, 78, 60][spotOrder % 4]}%` }}
           />
         </div>
@@ -592,11 +570,11 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
   spots,
   batches,
   isAnalyzing,
+  editableSpotIds,
   emptyState,
   errorMessage,
   onRetryVad,
   onRetryJobSave,
-  preparationTitle,
   mode,
   speechSegments,
   videoDurationMs,
@@ -687,20 +665,18 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     return map;
   }, [batches]);
 
-  const { generatedCount, pendingCount, skippedCount, editedCount, spotOrder } = React.useMemo(() => {
+  const { generatedCount, pendingCount, skippedCount, spotOrder } = React.useMemo(() => {
     let generatedCount = 0;
     let pendingCount = 0;
     let skippedCount = 0;
-    let editedCount = 0;
     const spotOrder = new Map<string, number>();
     spots.forEach((spot, index) => {
       if (!spotOrder.has(spot.spot_id)) spotOrder.set(spot.spot_id, index + 1);
       if (spot.decision === 'generate' && spot.text.trim().length > 0) generatedCount++;
       if (spot.decision === 'pending') pendingCount++;
       if (spot.decision === 'skip') skippedCount++;
-      if (spot.is_edited) editedCount++;
     });
-    return { generatedCount, pendingCount, skippedCount, editedCount, spotOrder };
+    return { generatedCount, pendingCount, skippedCount, spotOrder };
   }, [spots]);
 
   const spotIssues = React.useMemo(
@@ -731,7 +707,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
     generate: `มีบทบรรยาย (${generatedCount})`,
     pending: `รอสร้าง (${pendingCount})`,
     skip: `ข้ามการบรรยาย (${skippedCount})`,
-    edited: `แก้ไขแล้ว (${editedCount})`,
     needs_check: `ต้องตรวจ (${spotChecks.size})`,
   };
 
@@ -753,7 +728,6 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
       if (filterMode === 'generate' && spot.decision !== 'generate') return false;
       if (filterMode === 'pending' && spot.decision !== 'pending') return false;
       if (filterMode === 'skip' && spot.decision !== 'skip') return false;
-      if (filterMode === 'edited' && !spot.is_edited) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -790,18 +764,13 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               className="text-xs md:text-xs [&::-webkit-search-cancel-button]:hidden"
             />
             {searchQuery && (
-              <InputGroupAddon align="inline-end">
-                <InputGroupButton
-                  size="icon-xs"
-                  aria-label="ล้างคำค้นหา"
-                  onClick={() => {
-                    setSearchQuery('');
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  <X aria-hidden="true" />
-                </InputGroupButton>
-              </InputGroupAddon>
+              <InputGroupClearButton
+                label="ล้างคำค้นหา"
+                onClear={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+              />
             )}
           </InputGroup>
           <Select
@@ -816,11 +785,13 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </SelectValue>
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false} className="w-auto min-w-44">
-              {(Object.entries(filterLabels) as [FilterMode, string][]).map(([value, label]) => (
-                <SelectItem key={value} value={value} className="text-xs">
-                  {label}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {(Object.entries(filterLabels) as [FilterMode, string][]).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="text-xs">
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           {spotChecks.size > 0 && (
@@ -833,9 +804,9 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   />
                 }
               >
-                {hasTimingIssue ? <AlertTriangle className="size-3.5" aria-hidden="true" /> : <Clock className="size-3.5" aria-hidden="true" />}
+                {hasTimingIssue ? <AlertTriangle data-icon="inline-start" className="size-3.5" aria-hidden="true" /> : <Clock data-icon="inline-start" className="size-3.5" aria-hidden="true" />}
                 ต้องตรวจ <span className="tabular-nums">{spotChecks.size}</span>
-                <ChevronDown className="size-3.5 transition-transform group-aria-expanded/button:rotate-180" aria-hidden="true" />
+                <ChevronDown data-icon="inline-end" className="size-3.5 transition-transform group-aria-expanded/button:rotate-180" aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuGroup>
@@ -856,16 +827,18 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   ))}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="primary"
-                  onClick={() => {
-                    setFilterMode('needs_check');
-                    setSearchQuery('');
-                  }}
-                  className="py-1.5 text-xs"
-                >
-                  แสดงเฉพาะบรรทัดที่ต้องตรวจ
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    variant="primary"
+                    onClick={() => {
+                      setFilterMode('needs_check');
+                      setSearchQuery('');
+                    }}
+                    className="py-1.5 text-xs"
+                  >
+                    แสดงเฉพาะบรรทัดที่ต้องตรวจ
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -879,37 +852,28 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           emptyState === 'preparing' ? (
             <div className="flex h-full min-h-full flex-col">
               <div aria-hidden="true" className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
-                <div data-slot="skeleton" className="soft-shimmer h-9 flex-1 rounded-lg bg-muted/70" />
-                <div
-                  data-slot="skeleton"
-                  style={{ '--shimmer-delay': '120ms' } as React.CSSProperties}
-                  className="soft-shimmer h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40"
-                />
+                <Skeleton variant="shimmer" className="h-9 flex-1 rounded-lg bg-muted/70" />
+                <Skeleton variant="shimmer" delay={120} className="h-9 w-36 shrink-0 rounded-lg bg-muted/70 sm:w-40" />
               </div>
-              <div role="status" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
-                <div className="flex shrink-0 items-center gap-2 border-b border-border bg-brand-50/50 px-4 py-2.5 text-xs font-medium text-brand-900">
-                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-600" aria-hidden="true" />
-                  <span>{preparationTitle ?? 'กำลังเตรียมงาน'}</span>
-                </div>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
                 <div className="min-h-0 flex-1 divide-y divide-border overflow-hidden [mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)]">
                   {[74, 58, 82, 52, 68, 86, 60].map((secondLineWidth, idx) => (
                     <div
                       key={idx}
                       aria-hidden="true"
-                      style={{ '--shimmer-delay': `${idx * 140}ms` } as React.CSSProperties}
                       className="px-4 py-3.5"
                     >
                       <div className="mb-2.5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                          <div data-slot="skeleton" className="soft-shimmer h-4 w-12 rounded bg-border/80" />
-                          <div data-slot="skeleton" className="soft-shimmer h-3.5 w-28 rounded bg-muted" />
-                          <div data-slot="skeleton" className="soft-shimmer h-4 w-10 rounded bg-muted" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-4 w-12 rounded bg-border/80" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 w-28 rounded bg-muted" />
+                          <Skeleton variant="shimmer" delay={idx * 140} className="h-4 w-10 rounded bg-muted" />
                         </div>
-                        <div data-slot="skeleton" className="soft-shimmer h-5 w-16 rounded-md bg-brand-100/60" />
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-5 w-16 rounded-md bg-brand-100/60" />
                       </div>
-                      <div className="w-full space-y-2">
-                        <div data-slot="skeleton" className="soft-shimmer h-3.5 w-full rounded bg-muted" />
-                        <div data-slot="skeleton" className="soft-shimmer h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
+                      <div className="flex w-full flex-col gap-2">
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 w-full rounded bg-muted" />
+                        <Skeleton variant="shimmer" delay={idx * 140} className="h-3.5 rounded bg-muted/70" style={{ width: `${secondLineWidth}%` }} />
                       </div>
                     </div>
                   ))}
@@ -917,51 +881,61 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
               </div>
               <div aria-hidden="true" className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <div data-slot="skeleton" className="soft-shimmer h-4 w-24 rounded bg-muted" />
-                  <div
-                    data-slot="skeleton"
-                    style={{ '--shimmer-delay': '100ms' } as React.CSSProperties}
-                    className="soft-shimmer h-4 w-20 rounded bg-muted"
-                  />
+                  <Skeleton variant="shimmer" className="h-4 w-24 rounded bg-muted" />
+                  <Skeleton variant="shimmer" delay={100} className="h-4 w-20 rounded bg-muted" />
                 </div>
-                <div
-                  data-slot="skeleton"
-                  style={{ '--shimmer-delay': '180ms' } as React.CSSProperties}
-                  className="soft-shimmer h-4 w-32 rounded bg-muted"
-                />
+                <Skeleton variant="shimmer" delay={180} className="h-4 w-32 rounded bg-muted" />
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center py-10 sm:py-16 px-6 text-center">
-              {emptyState === 'failed' ? <AlertTriangle className="w-7 h-7 text-destructive mb-2" aria-hidden="true" /> : <Maximize2 className="w-7 h-7 text-muted-foreground/60 mb-2" aria-hidden="true" />}
-              <p role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
-                {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
-              </p>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
-                {emptyState === 'failed'
-                  ? (onRetryJobSave
-                    ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
-                    : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
-                  : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
-              </p>
+            <Empty className="h-full py-10 sm:py-16">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  {emptyState === 'failed'
+                    ? <AlertTriangle className="text-destructive" aria-hidden="true" />
+                    : <Maximize2 aria-hidden="true" />}
+                </EmptyMedia>
+                <EmptyTitle role={emptyState === 'failed' ? 'alert' : undefined} className="text-base font-semibold text-foreground">
+                  {emptyState === 'failed' ? (onRetryJobSave ? 'ยังบันทึกงานไม่สำเร็จ' : 'ยังตรวจเสียงไม่สำเร็จ') : 'ไม่พบช่วงสำหรับบรรยาย'}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {emptyState === 'failed'
+                    ? (onRetryJobSave
+                      ? 'ตรวจเสียงเสร็จแล้ว ลองบันทึกงานอีกครั้งได้โดยใช้ผลตรวจเสียงเดิม'
+                      : 'ลองตรวจเสียงอีกครั้ง หากยังไม่สำเร็จ ให้เปลี่ยนวิดีโอจากเมนูจัดการ')
+                    : 'วิดีโอนี้ไม่มีช่วงว่างที่ยาวพอ ลองเลือกวิดีโออื่นที่มีช่วงไม่มีเสียงพูดอย่างน้อย 3 วินาที'}
+                </EmptyDescription>
+              </EmptyHeader>
               {emptyState === 'failed' && (
-                <Button onClick={onRetryJobSave ?? onRetryVad} className="mt-5">
-                  {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
-                </Button>
+                <EmptyContent>
+                  <Button onClick={onRetryJobSave ?? onRetryVad}>
+                    {onRetryJobSave ? 'ลองบันทึกอีกครั้ง' : 'ลองตรวจเสียงอีกครั้ง'}
+                  </Button>
+                  {errorMessage && (
+                    <Collapsible className="w-full text-left text-sm text-muted-foreground">
+                      <CollapsibleTrigger className="group/err inline-flex items-center gap-1.5 rounded px-1 py-2 hover:text-foreground">
+                        รายละเอียดข้อผิดพลาด
+                        <ChevronDown aria-hidden="true" className="size-4 transition-transform group-data-[panel-open]/err:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                </EmptyContent>
               )}
-              {emptyState === 'failed' && errorMessage && (
-                <details className="mt-4 w-full max-w-sm text-left text-sm text-muted-foreground">
-                  <summary className="w-fit cursor-pointer rounded px-1 py-2 hover:text-foreground">รายละเอียดข้อผิดพลาด</summary>
-                  <p className="mt-2 rounded-md bg-muted/60 p-3 leading-relaxed [overflow-wrap:anywhere]">{errorMessage}</p>
-                </details>
-              )}
-            </div>
+            </Empty>
           )
         ) : filteredSpots.length === 0 ? (
-          <div className="py-12 px-6 text-center text-sm text-muted-foreground space-y-3">
-            <p>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</p>
-            <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
-          </div>
+          <Empty className="py-12">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia>
+              <EmptyTitle>ไม่พบจุดบรรยายที่ตรงกับตัวกรองหรือคำค้นหา</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => { setFilterMode('all'); setSearchQuery(''); }}>ล้างตัวกรองและคำค้นหา</Button>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div role="list" aria-label="รายการช่วงบรรยาย" className="divide-y divide-border border-b border-border bg-card">
             {filteredSpots.map((spot) => {
@@ -975,6 +949,7 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
                   spotOrder={globalIdx}
                   batchInfo={spotBatchMap[spot.spot_id]}
                   isAnalyzing={isAnalyzing}
+                  editingDisabled={isAnalyzing || editableSpotIds?.has(spot.spot_id) === false}
                   isSelected={spot.spot_id === selectedSpotId}
                   isPlayingNow={isPlayingNow}
                   timingContext={timingContext}
@@ -999,10 +974,10 @@ export const AdScriptEditor: React.FC<AdScriptEditorProps> = ({
           <span>เล่น/หยุด</span>
         </span>
         <div role="status" className={`flex flex-wrap items-center gap-2 ${saveStatus === 'error' ? 'text-destructive' : ''}`}>
-          {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
-            : saveStatus === 'saved' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-brand-800" aria-hidden="true" />
-            : saveStatus === 'error' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            : <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          {saveStatus === 'saving' ? <Spinner className="size-3.5 shrink-0 text-brand-700" aria-hidden="true" />
+            : saveStatus === 'saved' ? <CheckCircle2 className="size-3.5 shrink-0 text-brand-800" aria-hidden="true" />
+            : saveStatus === 'error' ? <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+            : <FileText className="size-3.5 shrink-0" aria-hidden="true" />}
           <span>
             {saveStatus === 'local' ? 'งานยังอยู่ในหน้านี้เท่านั้น'
               : saveStatus === 'saving' ? 'กำลังบันทึกการแก้ไข…'

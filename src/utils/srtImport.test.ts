@@ -42,8 +42,8 @@ test('turns cues into AD Spots and leaves out cues that start after the video en
     { start_ms: 5000, end_ms: 5000, text: 'ง' },
   ], 10000);
   assert.deepEqual(spots, [
-    { spot_id: 'cue_001', start_ms: 1000, end_ms: 3500, duration_ms: 2500, decision: 'generate', text: 'ก', is_edited: false, original_start_ms: 1000, original_end_ms: 3500 },
-    { spot_id: 'cue_002', start_ms: 9000, end_ms: 11000, duration_ms: 2000, decision: 'generate', text: 'ข', is_edited: false, original_start_ms: 9000, original_end_ms: 11000 },
+    { spot_id: 'cue_001', start_ms: 1000, end_ms: 3500, duration_ms: 2500, decision: 'generate', text: 'ก', original_start_ms: 1000, original_end_ms: 3500 },
+    { spot_id: 'cue_002', start_ms: 9000, end_ms: 11000, duration_ms: 2000, decision: 'generate', text: 'ข', original_start_ms: 9000, original_end_ms: 11000 },
   ]);
   assert.deepEqual(skipped, [
     { cue: { start_ms: 12000, end_ms: 13000, text: 'ค' }, reason: 'starts_after_video_end' },

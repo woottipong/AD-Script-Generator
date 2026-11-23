@@ -11,7 +11,7 @@ if (!videoPath || !port || !fs.existsSync(path.join(buildDir, 'index.html')) || 
 const spots = Array.from({ length: 300 }, (_, i) => ({
   spot_id: `spot_${i}`, start_ms: i * 6000, end_ms: i * 6000 + 4000, duration_ms: 4000,
   original_start_ms: i * 6000, original_end_ms: i * 6000 + 4000,
-  decision: 'generate', text: `บุคคลเดินผ่านประตูหมายเลข ${i}`, is_edited: false,
+  decision: 'generate', text: `บุคคลเดินผ่านประตูหมายเลข ${i}`,
 }));
 const job = {
   schema_version: 3, job_id: 'benchmark', title: 'benchmark', mode: 'generate', status: 'READY',

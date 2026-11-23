@@ -56,7 +56,7 @@ test('sign-in settings are required and the session secret must be long', () => 
 });
 
 test('sealSession keeps normal idToken and drops oversized idToken to stay under 3,800 bytes', () => {
-  const base: AuthorSession = { sub: 'sub-1', email: 'a@example.com', name: 'Author', allJobs: false };
+  const base: AuthorSession = { sub: 'sub-1', email: 'a@example.com', name: 'Author', allJobs: false, canGenerateAi: false };
   const normal = sealSession(SECRET, { ...base, idToken: 'header.payload.sig' });
   assert.equal(unsealValue<AuthorSession>(SECRET, 'session', normal)?.idToken, 'header.payload.sig');
 

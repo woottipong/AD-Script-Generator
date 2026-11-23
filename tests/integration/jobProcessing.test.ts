@@ -5,13 +5,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import { pollJob } from './jobPolling';
-import type { PersistedJobState } from '../types/ad';
-import { createJobStore } from './jobStore';
-import { authTestEnv, signedInFetch } from './authTestHelpers';
+import { DatabaseSync } from 'node:sqlite';
+import { pollJob } from '../../src/utils/jobPolling';
+import type { PersistedJobState } from '../../src/types/ad';
+import { createJobStore } from '../../src/utils/jobStore';
+import { authTestEnv, signedInFetch } from './helpers/auth';
 
 // Every API call in this file is made by an Author with All-Jobs Access, so seeded Jobs with no Job Owner stay reachable.
-const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true });
+const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true, canGenerateAi: true });
 
 const root = process.cwd();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -35,7 +36,7 @@ async function availablePort(): Promise<number> {
 
 function spot(id: string, start: number) {
   return { spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000,
-    original_start_ms: start, original_end_ms: start + 4000, decision: 'generate', text: 'before', is_edited: true };
+    original_start_ms: start, original_end_ms: start + 4000, decision: 'generate', text: 'before' };
 }
 
 function makeJob(twoBatches = false) {
@@ -55,7 +56,10 @@ function makeJob(twoBatches = false) {
 }
 
 async function withServer(twoBatches: boolean, action: (ctx: {
-  dir: string; request: (suffix?: string, method?: string, body?: unknown) => Promise<Response>; otherJob: () => Promise<Response>
+  dir: string;
+  origin: string;
+  request: (suffix?: string, method?: string, body?: Record<string, unknown>) => Promise<Response>;
+  otherJob: () => Promise<Response>;
 }) => Promise<void>) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-test-'));
   const port = await availablePort();
@@ -71,11 +75,20 @@ globalThis.fetch = async (input, init) => {
     return Response.json({}, { headers: { 'x-goog-upload-url': 'https://generativelanguage.googleapis.com/test-upload' } });
   }
   if (pathname === '/test-upload') {
+    if (fs.existsSync('hold-upload')) {
+      const headers = new Headers(init?.headers);
+      const offset = headers.get('x-goog-upload-offset');
+      const command = headers.get('x-goog-upload-command');
+      fs.appendFileSync('upload-offsets', offset + '\\n');
+      while (!fs.existsSync('release-upload')) await new Promise(r => setTimeout(r, 20));
+      if (fs.existsSync('retry-upload')) return Response.json({});
+      if (command === 'upload') return Response.json({}, { headers: { 'x-goog-upload-status': 'active' } });
+    }
     const id = 'upload-' + ++uploads;
     fs.writeFileSync(id, '1');
     return Response.json({ file: {
       name: 'files/' + id,
-      state: fs.existsSync('upload-fail') ? 'FAILED' : 'ACTIVE',
+      state: fs.existsSync('upload-fail') ? 'FAILED' : fs.existsSync('upload-processing') ? 'PROCESSING' : 'ACTIVE',
       uri: 'https://fake.invalid/' + id,
       mimeType: 'video/mp4',
     } }, { headers: { 'x-goog-upload-status': 'final' } });
@@ -126,14 +139,15 @@ globalThis.fetch = async (input, init) => {
   const child = spawn(process.execPath, ['--preload', path.join(dir, 'fake.ts'), path.join(root, 'server.ts')], {
     cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port), GEMINI_API_KEY: 'test-only-key' }, stdio: 'ignore',
   });
-  const base = `http://127.0.0.1:${port}/api/jobs/job_test`;
-  const request = (suffix = '', method = 'GET', body?: unknown) => fetch(base + suffix, {
-    method, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
+  const origin = `http://127.0.0.1:${port}`;
+  const base = `${origin}/api/jobs/job_test`;
+  const request = (suffix = '', method = 'GET', body?: Record<string, unknown>) => fetch(base + suffix, {
+    method, headers: { 'content-type': 'application/json' }, ...(method === 'GET' ? {} : { body: JSON.stringify({ confirmAiCost: true, ...body }) }),
   });
   try {
     await until(async () => { try { return (await request()).ok; } catch { return false; } });
     const otherJob = () => fetch(`http://127.0.0.1:${port}/api/jobs/job_other/start`, { method: 'POST' });
-    await action({ dir, request, otherJob });
+    await action({ dir, origin, request, otherJob });
   } finally {
     child.kill('SIGTERM');
     await Promise.race([new Promise<void>((resolve) => child.once('exit', () => resolve())), sleep(1000)]);
@@ -147,6 +161,10 @@ for (const route of ['single batch', 'background'] as const) for (const mode of 
       const pending = route === 'single batch' ? request('/analyze-batch', 'POST', { batch_id: 'batch_1' }) : undefined;
       if (!pending) assert.equal((await request('/start', 'POST')).status, 200);
       await until(() => fs.existsSync(path.join(dir, 'entered-1')));
+      const running = await (await request('?view=progress')).json();
+      assert.equal(running.isRunning, true, 'the progress view reports the running analysis');
+      assert.equal(running.job.status, 'ANALYZING');
+      if (route === 'background') assert.ok(running.job.progress_stage, 'background analysis publishes its stage');
       const current = await (await request()).json();
       const spots = current.job.spots.map((item: ReturnType<typeof spot>) => item.spot_id === 'b'
         ? { ...item, text: 'manual edit', start_ms: 7200, duration_ms: 3800 } : item);
@@ -159,6 +177,10 @@ for (const route of ['single batch', 'background'] as const) for (const mode of 
       assert.equal(saved.job.status, mode === 'success' ? 'READY' : 'FAILED');
       assert.equal(saved.job.spots[1].text, 'manual edit');
       assert.equal(saved.job.spots[1].start_ms, 7200);
+      const progress = await (await request('?view=progress')).json();
+      assert.equal(progress.job.vad_output, undefined, 'the progress view leaves out the VAD output');
+      assert.deepEqual([progress.job.status, progress.job.spots, progress.job.batches, progress.isRunning],
+        [saved.job.status, saved.job.spots, saved.job.batches, false]);
       assert.equal(saved.job.batches[0].status, mode === 'success' ? 'completed' : 'failed');
       assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
       assert.equal(saved.job.gemini_file_name, undefined);
@@ -279,6 +301,121 @@ test('failed deletion keeps the old Gemini reference until replacement can proce
   });
 });
 
+test('authorized stop preserves the in-flight batch and resumes with the same quota reservation', { timeout: 20000 }, async () => {
+  await withServer(true, async ({ dir, origin, request }) => {
+    const author = signedInFetch({ sub: 'sub-no-ai', email: 'editor@example.com', allJobs: true });
+    const denied = await author(`${origin}/api/jobs/job_test/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmAiCost: true }),
+    });
+    assert.equal((await denied.json()).code, 'AI_ACCESS_REQUIRED');
+    const unconfirmed = await request('/start', 'POST', { confirmAiCost: false });
+    assert.equal((await unconfirmed.json()).code, 'AI_CONFIRMATION_REQUIRED');
+    assert.equal(fs.existsSync(path.join(dir, 'entered-1')), false);
+    const usage = async () => (await (await fetch(`${origin}/api/me`)).json()).aiGeneration;
+    assert.equal((await usage()).remaining, 3);
+
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(() => fs.existsSync(path.join(dir, 'entered-1')));
+    const supervisor = signedInFetch({ sub: 'sub-supervisor', email: 'lead@example.com', allJobs: true, canGenerateAi: true });
+    const stop = () => supervisor(`${origin}/api/jobs/job_test/stop`, { method: 'POST' });
+    assert.equal((await stop()).status, 200);
+    assert.equal((await stop()).status, 200);
+    assert.equal((await (await request()).json()).job.status, 'STOPPING');
+    fs.writeFileSync(path.join(dir, 'release-1'), '1');
+    await until(async () => !(await (await request()).json()).isRunning);
+    const stopped = (await (await request()).json()).job;
+    assert.equal(stopped.status, 'STOPPED');
+    assert.deepEqual(stopped.batches.map((batch: { status: string }) => batch.status), ['completed', 'pending']);
+    assert.equal(stopped.spots[0].text, 'AI result');
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-example')));
+    assert.equal(fs.existsSync(path.join(dir, 'entered-2')), false);
+    assert.equal((await usage()).remaining, 2);
+    const audit = new DatabaseSync(path.join(dir, '.data/envisio.db'), { readOnly: true });
+    try {
+      const actors = audit.prepare('SELECT author_sub FROM ai_analysis_stops WHERE job_id = ?').all('job_test');
+      assert.deepEqual(actors.map((row) => row.author_sub), ['sub-supervisor']);
+    } finally {
+      audit.close();
+    }
+    const incompleteEdit = stopped.spots.map((spot: { spot_id: string }) => spot.spot_id === 'b' ? { ...spot, text: 'unfinished edit' } : spot);
+    assert.equal((await request('/spots', 'PATCH', { spots: incompleteEdit })).status, 409);
+    stopped.spots[0].text = 'edited after stop';
+    assert.equal((await request('/spots', 'PATCH', { spots: stopped.spots })).status, 200);
+    assert.equal((await request('/start', 'POST', { confirmAiCost: false })).status, 400);
+
+    fs.writeFileSync(path.join(dir, 'release-all'), '1');
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    const resumed = (await (await request()).json()).job;
+    assert.equal(resumed.status, 'READY');
+    assert.equal(resumed.spots[0].text, 'edited after stop');
+    assert.ok(fs.existsSync(path.join(dir, 'upload-1')));
+    assert.equal(fs.existsSync(path.join(dir, 'entered-3')), false);
+    assert.equal((await usage()).remaining, 2);
+  });
+});
+
+test('failed start preserves quota and leaves the Job ready to start', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, origin, request }) => {
+    const db = new DatabaseSync(path.join(dir, '.data/envisio.db'));
+    try {
+      db.exec(`CREATE TRIGGER fail_analysis_admission BEFORE UPDATE ON jobs
+        WHEN NEW.status = 'ANALYZING' BEGIN SELECT RAISE(ABORT, 'test write failure'); END`);
+    } finally {
+      db.close();
+    }
+    const usage = async () => (await (await fetch(`${origin}/api/me`)).json()).aiGeneration.remaining;
+    assert.equal(await usage(), 3);
+    assert.equal((await request('/start', 'POST')).status, 500);
+    assert.equal(await usage(), 3);
+    const { job, isRunning } = await (await request()).json();
+    assert.equal(job.status, 'VAD_READY');
+    assert.equal(isRunning, false);
+    assert.ok(!fs.existsSync(path.join(dir, 'entered-1')));
+  });
+});
+
+for (const phase of ['next chunk', 'retry', 'finalize'] as const) {
+  test(`stop during Gemini upload handles ${phase}`, { timeout: 20000 }, async () => {
+    await withServer(false, async ({ dir, request }) => {
+      fs.writeFileSync(path.join(dir, 'old-processing'), '1');
+      fs.writeFileSync(path.join(dir, 'hold-upload'), '1');
+      if (phase !== 'finalize') fs.truncateSync(path.join(dir, '.data/jobs/job_test/source_video.mp4'), 8 * 1024 * 1024 + 1);
+      if (phase === 'retry') fs.writeFileSync(path.join(dir, 'retry-upload'), '1');
+      const offsets = path.join(dir, 'upload-offsets');
+
+      assert.equal((await request('/start', 'POST')).status, 200);
+      await until(() => fs.existsSync(offsets));
+      assert.equal((await request('/stop', 'POST')).status, 200);
+      fs.writeFileSync(path.join(dir, 'release-upload'), '1');
+      await until(async () => !(await (await request()).json()).isRunning);
+
+      const { job } = await (await request()).json();
+      assert.equal(job.status, 'STOPPED');
+      assert.equal(fs.readFileSync(offsets, 'utf8').trim(), '0');
+      assert.equal(fs.existsSync(path.join(dir, 'deleted-upload-1')), phase === 'finalize');
+      assert.ok(!fs.existsSync(path.join(dir, 'entered-1')));
+    });
+  });
+}
+
+test('stop while waiting for the Gemini file skips all analysis and cleans up the upload', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, request }) => {
+    fs.writeFileSync(path.join(dir, 'old-processing'), '1');
+    fs.writeFileSync(path.join(dir, 'upload-processing'), '1');
+    assert.equal((await request('/start', 'POST')).status, 200);
+    await until(() => fs.existsSync(path.join(dir, 'upload-1')));
+    assert.equal((await request('/stop', 'POST')).status, 200);
+    await until(async () => !(await (await request()).json()).isRunning);
+    const stopped = (await (await request()).json()).job;
+    assert.equal(stopped.status, 'STOPPED');
+    assert.equal(stopped.batches[0].status, 'pending');
+    assert.equal(stopped.gemini_file_name, undefined);
+    assert.ok(fs.existsSync(path.join(dir, 'deleted-upload-1')));
+    assert.equal(fs.existsSync(path.join(dir, 'entered-1')), false);
+  });
+});
+
 test('same-job batch request waits for the running background job', { timeout: 20000 }, async () => {
   await withServer(false, async ({ dir, request, otherJob }) => {
     assert.equal((await request('/start', 'POST')).status, 200);
@@ -330,5 +467,29 @@ test('a failed job read never replaces the unreadable persisted data', { timeout
     const otherRes = await otherJob();
     assert.equal(otherRes.status, 200);
     assert.equal((await otherRes.json()).isRunning, false);
+  });
+});
+
+test('direct multipart init removes its uploaded folder when AI admission is rejected', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, origin }) => {
+    const jobsDir = path.join(dir, '.data/jobs');
+    const before = fs.readdirSync(jobsDir).sort();
+    const form = new FormData();
+    form.append('video', new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/mp4' }), 'sample.mp4');
+    form.append('video_metadata', JSON.stringify({
+      fileName: 'sample.mp4', fileSize: 4, mimeType: 'video/mp4', width: 854, height: 480,
+      durationMs: 20000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true,
+    }));
+    form.append('vad_config', JSON.stringify({
+      speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000,
+    }));
+    form.append('vad_output', JSON.stringify({
+      duration_ms: 20000, speech_segments: [], candidate_spots: [{ spot_id: 'spot_1', start_ms: 1000, end_ms: 5000, duration_ms: 4000 }],
+    }));
+
+    const res = await fetch(`${origin}/api/jobs/init`, { method: 'POST', body: form });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json() as { code?: string }).code, 'AI_CONFIRMATION_REQUIRED');
+    assert.deepEqual(fs.readdirSync(jobsDir).sort(), before);
   });
 });

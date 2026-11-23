@@ -5,8 +5,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import { authTestEnv, sessionCookie, TEST_SESSION_SECRET } from './authTestHelpers';
-import { SESSION_COOKIE, sealValue } from './session';
+import { authTestEnv, sessionCookie, TEST_SESSION_SECRET } from './helpers/auth';
+import { SESSION_COOKIE, sealValue } from '../../src/utils/session';
 
 async function freePort(): Promise<number> {
   const socket = net.createServer();
@@ -59,18 +59,23 @@ test('every API but config needs a session, and pages send signed-out Authors to
     assert.equal(signedOutMalformedJson.status, 401);
     assert.equal((await signedOutMalformedJson.json() as { code: string }).code, 'UNAUTHENTICATED');
 
+    const aiGeneration = { enabled: false, limit: 3, remaining: 3, usedJobIds: [] };
     const me = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie(author) } });
     assert.equal(me.status, 200);
-    assert.deepEqual(await me.json(), { email: 'author@example.com', allJobs: false });
+    assert.deepEqual(await me.json(), { email: 'author@example.com', allJobs: false, canGenerateAi: false, aiGeneration });
     assert.equal((await fetch(`${base}/api/jobs`, { headers: { Cookie: sessionCookie(author) } })).status, 200);
     const named = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie({ ...author, name: 'ผู้เขียน ทดสอบ' }) } });
-    assert.deepEqual(await named.json(), { email: 'author@example.com', name: 'ผู้เขียน ทดสอบ', allJobs: false });
-    const lead = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie({ ...author, allJobs: true, accessGroups: ['admin'] }) } });
-    assert.deepEqual(await lead.json(), { email: 'author@example.com', allJobs: true, accessGroups: ['admin'] });
+    assert.deepEqual(await named.json(), { email: 'author@example.com', name: 'ผู้เขียน ทดสอบ', allJobs: false, canGenerateAi: false, aiGeneration });
+    const lead = await fetch(`${base}/api/me`, { headers: { Cookie: sessionCookie({ ...author, allJobs: true, accessGroups: ['admin'], canGenerateAi: true }) } });
+    assert.deepEqual(await lead.json(), { email: 'author@example.com', allJobs: true, accessGroups: ['admin'], canGenerateAi: true, aiGeneration });
 
-    const expired = sealValue(TEST_SESSION_SECRET, 'session', { ...author, idToken: 'x' }, -1);
+    const expired = sealValue(TEST_SESSION_SECRET, 'session', { ...author, canGenerateAi: false, idToken: 'x' }, -1);
     assert.equal((await fetch(`${base}/api/me`, { headers: { Cookie: `${SESSION_COOKIE}=${expired}` } })).status, 401, 'an expired session counts as signed out');
-    const forged = sealValue('another-secret-that-is-long-enough!!', 'session', { ...author, idToken: 'x' }, 60_000);
+    const legacy = sealValue(TEST_SESSION_SECRET, 'session', { ...author, allJobs: true, accessGroups: ['admin'], idToken: 'x' }, 60_000);
+    const legacyRes = await fetch(`${base}/api/me`, { headers: { Cookie: `${SESSION_COOKIE}=${legacy}` } });
+    assert.equal(legacyRes.status, 401, 'a pre-entitlement session without canGenerateAi triggers re-auth');
+    assert.equal((await legacyRes.json() as { code: string }).code, 'UNAUTHENTICATED');
+    const forged = sealValue('another-secret-that-is-long-enough!!', 'session', { ...author, canGenerateAi: false, idToken: 'x' }, 60_000);
     assert.equal((await fetch(`${base}/api/me`, { headers: { Cookie: `${SESSION_COOKIE}=${forged}` } })).status, 401, 'a session sealed with another secret is rejected');
 
     const page = await fetch(`${base}/jobs/job_1?tab=2`, { headers: { Accept: 'text/html,application/xhtml+xml' }, redirect: 'manual' });

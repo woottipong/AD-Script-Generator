@@ -20,7 +20,7 @@ Status: ready-for-agent
 
 - ไม่เรียก Gemini ใน Review Mode และซ่อนทุกส่วนที่เกี่ยวกับการสร้างบท
 - ไม่สลับโหมดกลางงาน งานหนึ่งอยู่โหมดเดียวตลอด
-- ไม่มีรายงานเปรียบเทียบก่อนกับหลังการแก้ ใช้แค่ป้าย "แก้แล้ว" กับตัวกรองที่มีอยู่
+- ไม่มีรายงานเปรียบเทียบก่อนกับหลังการแก้ ใช้ตัวกรองที่มีอยู่
 - ไม่ทำระบบผู้ใช้หรือล็อกอิน และยังไม่ใส่ `owner_id`
 - ไม่มีปุ่ม "เปิดงานนี้" สำหรับงานเก่าที่ไม่ได้ active (ทำเป็นฟีเจอร์แยกทีหลัง)
 - ไม่ดึงเฉพาะส่วนเสียงจาก MP4 ทาง URL (ทำทีหลังถ้าปริมาณเน็ตเป็นปัญหาจริง)
@@ -72,7 +72,7 @@ interface PersistedJobState {
 - `local_file_path` ที่อยู่ชั้นบนสุดย้ายเข้า `video_source` ทุกที่ที่อ่านค่านี้ (ไฟล์สำหรับ Gemini, `GET /api/jobs/:jobId/video`) ต้องอ่านจาก `video_source` แทน
 - งานที่ไม่มี `schema_version` ให้ Job store แปลงตอนอ่านเป็น `mode: 'generate'` และ `video_source: { kind: 'server_copy', local_file_path }` แล้วบันทึกเป็นรูปแบบใหม่ในครั้งถัดไปที่บันทึกงานนั้น ตัวแปลงอยู่ใน `src/utils/jobStore.ts` ที่เดียว
 - งาน Review Mode มี `batches: []` และสถานะเป็น `READY` ตั้งแต่ server สร้างงาน
-- AD Spot ที่มาจาก SRT: `decision: 'generate'`, `text` คือข้อความของ cue, `is_edited: false`, `original_start_ms`/`original_end_ms` เท่ากับเวลาของ cue ตอนนำเข้า
+- AD Spot ที่มาจาก SRT: `decision: 'generate'`, `text` คือข้อความของ cue, `original_start_ms`/`original_end_ms` เท่ากับเวลาของ cue ตอนนำเข้า
 - `video_metadata.height` เก็บความสูงจริงของวิดีโอ ส่วนการตรวจ 480p ใช้กับ Generate Mode เท่านั้น
 - `GET /api/jobs` และหน้าจัดการพื้นที่จัดเก็บแสดงงาน Review Mode ได้ ขนาดที่แสดงคือขนาดของโฟลเดอร์งาน ซึ่งไม่มีวิดีโออยู่ในนั้น
 

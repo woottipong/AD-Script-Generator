@@ -13,12 +13,16 @@ const buttonVariants = cva(
           "border-border bg-background not-disabled:hover:bg-muted not-disabled:hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         "outline-primary":
           "border-border bg-background text-foreground not-disabled:hover:border-brand-300 not-disabled:hover:bg-accent not-disabled:hover:text-accent-foreground aria-expanded:bg-accent aria-expanded:text-accent-foreground",
+        "outline-success":
+          "border-success-border bg-background/85 text-foreground not-disabled:hover:bg-background aria-expanded:bg-background",
         secondary:
           "bg-secondary text-secondary-foreground not-disabled:hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "not-disabled:hover:bg-muted not-disabled:hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         "ghost-destructive":
           "text-muted-foreground not-disabled:hover:bg-destructive/10 not-disabled:hover:text-destructive",
+        "ghost-success":
+          "text-success-foreground not-disabled:hover:bg-success-accent/15 not-disabled:hover:text-success-foreground aria-expanded:bg-success-accent/15 aria-expanded:text-success-foreground",
         destructive:
           "bg-destructive/10 text-destructive not-disabled:hover:bg-destructive/20",
         warning:

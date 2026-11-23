@@ -6,8 +6,17 @@ export type JobStatus =
   | 'DETECTING'
   | 'VAD_READY'
   | 'ANALYZING'
+  | 'STOPPING'
+  | 'STOPPED'
   | 'READY'
   | 'FAILED';
+
+export interface AiGenerationAvailability {
+  enabled: boolean;
+  limit: number;
+  remaining: number;
+  usedJobIds: string[];
+}
 
 export interface VADConfig {
   speechThreshold: number;
@@ -90,7 +99,6 @@ export interface ADSpot {
   decision: 'generate' | 'skip' | 'pending';
   text: string;
   reason?: string;
-  is_edited: boolean;
   // Original non-speech gap boundaries for strict timestamp editing validation
   original_start_ms: number;
   original_end_ms: number;

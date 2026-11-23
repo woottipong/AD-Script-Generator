@@ -8,6 +8,7 @@ export type AuthorSession = {
   allJobs: boolean;
   /** The configured groups the Author belongs to that grant All-Jobs Access. */
   accessGroups?: string[];
+  canGenerateAi: boolean;
   idToken?: string;
 };
 

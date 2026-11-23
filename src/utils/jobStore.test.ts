@@ -21,7 +21,7 @@ function withStore(run: (store: ReturnType<typeof createJobStore>, dataDir: stri
 }
 
 const spot = (id: string, start: number, text = ''): ADSpot => ({
-  spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000, decision: 'pending', text, is_edited: false,
+  spot_id: id, start_ms: start, end_ms: start + 4000, duration_ms: 4000, decision: 'pending', text,
   original_start_ms: start, original_end_ms: start + 4000,
 });
 
@@ -49,7 +49,7 @@ function reviewJob(jobId: string): PersistedJobState {
     vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
     vad_output: { duration_ms: 20000, speech_segments: [], candidate_spots: [] },
     batches: [],
-    spots: [{ ...spot('cue_001', 500, 'ข้อความ'), decision: 'generate', reason: 'นำเข้า', is_edited: true }],
+    spots: [{ ...spot('cue_001', 500, 'ข้อความ'), decision: 'generate', reason: 'นำเข้า' }],
   };
 }
 
@@ -71,6 +71,8 @@ test('a Generate Mode job round-trips through the database and its VAD file', wi
   assert.equal(meta?.title, 'งาน job_gen');
   assert.deepEqual(meta?.video_source, job.video_source);
   assert.equal(store.loadMeta('job_missing'), null);
+  assert.deepEqual(store.loadSpots('job_gen'), job.spots, 'spots load alone in their saved order');
+  assert.deepEqual(store.loadSpots('job_missing'), []);
 }));
 
 test('a Review Mode job round-trips, including its SRT source and optional spot fields', withStore((store) => {
@@ -90,6 +92,27 @@ test('rename changes only the title', withStore(async (store, _dataDir, jobsDir)
   assert.deepEqual(renamed.spots, job.spots);
   assert.ok(renamed.updated_at > savedAt, 'renaming counts as a change');
   assert.equal(store.rename('job_missing', 'x'), false);
+}));
+
+test('saveProgress changes only the progress fields and reports a missing job', withStore((store, _dataDir, jobsDir) => {
+  const job = { ...generateJob('job_gen', jobsDir), status: 'ANALYZING' as const, active_model: 'gemini-a' };
+  store.save(job);
+
+  assert.equal(store.saveProgress('job_gen', { progress_stage: 'ชุดที่ 2/3', progress_percent: 40, active_model: 'gemini-b' }), true);
+  const progressed = store.load('job_gen')!;
+  assert.equal(progressed.progress_stage, 'ชุดที่ 2/3');
+  assert.equal(progressed.progress_percent, 40);
+  assert.equal(progressed.active_model, 'gemini-b');
+  assert.deepEqual({ ...progressed, progress_stage: undefined, progress_percent: job.progress_percent, active_model: job.active_model, updated_at: job.updated_at },
+    { ...job, progress_stage: undefined, updated_at: job.updated_at }, 'spots, title, batches and every other field are unchanged');
+
+  assert.equal(store.saveProgress('job_gen', { progress_percent: 100 }), true);
+  const cleared = store.load('job_gen')!;
+  assert.equal(cleared.progress_stage, undefined);
+  assert.equal(cleared.active_model, undefined);
+  assert.equal(cleared.progress_percent, 100);
+
+  assert.equal(store.saveProgress('job_missing', { progress_percent: 1 }), false);
 }));
 
 test('saving spots or status again leaves vad_output.json untouched', withStore((store, _dataDir, jobsDir) => {
@@ -160,7 +183,6 @@ test('list shows jobs and unfinished uploads newest first, and deleteJob removes
       { job_id: 'job_upload', title: undefined, mode: undefined, status: undefined, is_upload: true, duration_ms: undefined, spot_count: undefined, progress_percent: undefined },
     ],
   );
-  assert.ok(store.list()[0].size_bytes > 0, 'size counts the job folder');
 
   assert.equal(store.deleteJob('job_link'), false);
   assert.ok(fs.existsSync(path.join(outside, 'source_video.mp4')), 'a symlink escape is never followed');
@@ -223,6 +245,28 @@ test('a Job keeps its Job Owner, lists filter by owner, and the owner email can 
   assert.equal(store.loadMeta('job_theirs')?.owner_email, 'b@example.com');
 }));
 
+test('daily AI quota counts distinct jobs per author and day across connections', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'envisio-ai-quota-'));
+  const store = createJobStore(dataDir);
+  const second = createJobStore(dataDir);
+  const firstDay = { authorSub: 'author-a', day: '2026-11-23', limit: 3 };
+  try {
+    for (const jobId of ['job_one', 'job_two', 'job_three']) {
+      assert.equal(store.save(reviewJob(jobId), firstDay), true);
+    }
+    assert.equal(second.save(reviewJob('job_one'), firstDay), true);
+    assert.equal(second.save(reviewJob('job_four'), firstDay), false);
+    assert.equal(second.load('job_four'), null);
+    assert.equal(second.save(reviewJob('job_four'), { ...firstDay, authorSub: 'author-b' }), true);
+    assert.equal(second.save(reviewJob('job_four'), { ...firstDay, day: '2026-11-24' }), true);
+    assert.equal(store.aiUsage('author-a', '2026-11-23').length, 3);
+  } finally {
+    second.close();
+    store.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('a database from before Job Owners upgrades and keeps its Jobs without an owner', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
   try {
@@ -230,13 +274,63 @@ test('a database from before Job Owners upgrades and keeps its Jobs without an o
     first.save(reviewJob('job_before'));
     first.close();
     const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
-    db.exec('DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
+    db.exec('DROP TABLE ai_analysis_stops; DROP TABLE ai_daily_usage; ALTER TABLE job_spots ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0; DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
     db.close();
     const upgraded = createJobStore(dataDir);
     assert.equal(upgraded.load('job_before')?.title, 'บทเรียน');
     assert.equal(upgraded.loadMeta('job_before')?.owner_sub, undefined);
     upgraded.close();
+    const after = new DatabaseSync(path.join(dataDir, 'envisio.db'), { readOnly: true });
+    try {
+      const spotColumns = (after.prepare('PRAGMA table_info(job_spots)').all() as { name: string }[]).map((col) => col.name);
+      assert.equal(spotColumns.includes('is_edited'), false);
+    } finally {
+      after.close();
+    }
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+for (const hasLegacyColumn of [true, false]) {
+  test(`upgrades a version 3 database ${hasLegacyColumn ? 'with' : 'without'} the legacy spot column`, (t) => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
+    t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+    const dbPath = path.join(dataDir, 'envisio.db');
+    const job = {
+      ...generateJob('job_gen', path.join(dataDir, 'jobs')),
+      owner_sub: 'author-a',
+      owner_email: 'a@example.invalid',
+    };
+    const admission = { authorSub: job.owner_sub, day: '2026-11-23', limit: 3 };
+    const initial = createJobStore(dataDir);
+    assert.equal(initial.save(job, admission), true);
+    initial.recordAiStop(job.job_id, job.owner_sub);
+    const saved = initial.load(job.job_id);
+    initial.close();
+    assert.ok(saved);
+
+    const v3 = new DatabaseSync(dbPath);
+    if (hasLegacyColumn) {
+      v3.exec('ALTER TABLE job_spots ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0; UPDATE job_spots SET is_edited = 1');
+    }
+    v3.exec('PRAGMA user_version = 3');
+    v3.close();
+
+    const upgraded = createJobStore(dataDir);
+    try {
+      assert.deepEqual(upgraded.load(job.job_id), saved);
+      assert.deepEqual(upgraded.aiUsage(admission.authorSub, admission.day), [job.job_id]);
+    } finally {
+      upgraded.close();
+    }
+    const after = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      assert.equal(after.prepare("SELECT name FROM pragma_table_info('job_spots') WHERE name = 'is_edited'").get(), undefined);
+      assert.equal(after.prepare('PRAGMA user_version').get()?.user_version, 4);
+      assert.equal(after.prepare('SELECT author_sub FROM ai_analysis_stops WHERE job_id = ?').get(job.job_id)?.author_sub, job.owner_sub);
+    } finally {
+      after.close();
+    }
+  });
+}

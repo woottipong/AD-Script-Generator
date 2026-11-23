@@ -13,7 +13,6 @@ export type StoredJobSummary = {
   job_id: string;
   file_name: string;
   updated_at: string;
-  size_bytes: number;
   is_upload: boolean;
   title?: string;
   mode?: JobMode;
@@ -34,11 +33,13 @@ export type StoredJobRecord = StoredJobSummary & { owner_sub?: string | null };
 /** Everything a Job holds except its VAD output and AD Spots. */
 export type JobMeta = Omit<PersistedJobState, 'vad_output' | 'spots'>;
 
+type AnalysisAdmission = { authorSub: string; day: string; limit: number };
+
 /**
  * Schema changes in order: a database at `user_version` N has run the first N. A released migration is
  * never edited; a schema change is a new entry at the end, which every database runs once on next start.
  */
-const MIGRATIONS = [
+const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   `CREATE TABLE jobs (
     job_id TEXT PRIMARY KEY,
     schema_version INTEGER NOT NULL,
@@ -87,6 +88,23 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN owner_sub TEXT;
   ALTER TABLE jobs ADD COLUMN owner_email TEXT;
   CREATE INDEX idx_jobs_owner ON jobs(owner_sub);`,
+  `CREATE TABLE ai_daily_usage (
+    author_sub TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    PRIMARY KEY (author_sub, usage_day, job_id)
+  );
+  CREATE TABLE ai_analysis_stops (
+    job_id TEXT NOT NULL,
+    author_sub TEXT NOT NULL,
+    stopped_at TEXT NOT NULL
+  );
+  ALTER TABLE job_spots DROP COLUMN is_edited;`,
+  // Some version 3 databases were created before that migration dropped the spot column.
+  (db) => {
+    const column = db.prepare("SELECT name FROM pragma_table_info('job_spots') WHERE name = 'is_edited'").get();
+    if (column) db.exec('ALTER TABLE job_spots DROP COLUMN is_edited');
+  },
 ];
 
 /** Brings the database up to the latest schema; each migration commits together with its version number. */
@@ -98,7 +116,9 @@ function migrate(db: DatabaseSync): void {
   for (let version = current; version < MIGRATIONS.length; version++) {
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.exec(MIGRATIONS[version]);
+      const migration = MIGRATIONS[version];
+      if (typeof migration === 'string') db.exec(migration);
+      else migration(db);
       db.exec(`PRAGMA user_version = ${version + 1}`);
       db.exec('COMMIT');
     } catch (err) {
@@ -151,22 +171,11 @@ function spotFromRow(row: JobRow): ADSpot {
     duration_ms: row.duration_ms as number,
     decision: row.decision as ADSpot['decision'],
     text: row.text as string,
-    is_edited: row.is_edited === 1,
     original_start_ms: row.original_start_ms as number,
     original_end_ms: row.original_end_ms as number,
   };
   if (row.reason !== null) spot.reason = row.reason as string;
   return spot;
-}
-
-function sizeOf(dir: string): number {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += sizeOf(file);
-    else if (entry.isFile()) total += fs.lstatSync(file).size;
-  }
-  return total;
 }
 
 function isMissing(err: unknown): boolean {
@@ -213,7 +222,7 @@ export function createJobStore(dataDir: string) {
   // The Job Owner is written only when the row is first inserted; the upsert above never changes it.
   const deleteSpots = db.prepare('DELETE FROM job_spots WHERE job_id = ?');
   const insertSpot = db.prepare(`INSERT INTO job_spots (job_id, spot_id, position, start_ms, end_ms, duration_ms, decision, text, reason,
-      is_edited, original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      original_start_ms, original_end_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const selectJob = db.prepare('SELECT * FROM jobs WHERE job_id = ?');
   const selectSpots = db.prepare('SELECT * FROM job_spots WHERE job_id = ? ORDER BY position');
   const summaryQuery = (where: string) => db.prepare(`SELECT j.job_id, j.title, j.mode, j.status, j.file_name, j.duration_ms,
@@ -228,7 +237,37 @@ export function createJobStore(dataDir: string) {
   const selectOwnedSummaries = summaryQuery('WHERE j.owner_sub = ?');
   const updateOwnerEmailStmt = db.prepare('UPDATE jobs SET owner_email = ? WHERE owner_sub = ?');
   const updateTitle = db.prepare('UPDATE jobs SET title = ?, updated_at = ? WHERE job_id = ?');
+  const updateProgress = db.prepare(
+    'UPDATE jobs SET progress_stage = ?, progress_percent = ?, active_model = ?, updated_at = ? WHERE job_id = ?',
+  );
   const deleteJobRow = db.prepare('DELETE FROM jobs WHERE job_id = ?');
+  const selectAiUsage = db.prepare('SELECT job_id FROM ai_daily_usage WHERE author_sub = ? AND usage_day = ?');
+  const reserveAiJob = db.prepare(`INSERT OR IGNORE INTO ai_daily_usage (author_sub, usage_day, job_id)
+    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ai_daily_usage WHERE author_sub = ? AND usage_day = ?) < ?`);
+  const setStopping = db.prepare("UPDATE jobs SET status = 'STOPPING', updated_at = ? WHERE job_id = ?");
+  const insertAiStop = db.prepare('INSERT INTO ai_analysis_stops (job_id, author_sub, stopped_at) VALUES (?, ?, ?)');
+
+  function aiUsage(authorSub: string, day: string): string[] {
+    return selectAiUsage.all(authorSub, day).map((row) => String(row.job_id));
+  }
+
+  function reserveAiUsage(authorSub: string, day: string, jobId: string, limit: number): boolean {
+    if (reserveAiJob.run(authorSub, day, jobId, authorSub, day, limit).changes) return true;
+    return aiUsage(authorSub, day).includes(jobId);
+  }
+
+  function recordAiStop(jobId: string, authorSub: string): void {
+    const now = new Date().toISOString();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      setStopping.run(now, jobId);
+      insertAiStop.run(jobId, authorSub, now);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
 
   function dirOf(jobId: string): string {
     if (!isJobId(jobId)) throw new Error('Invalid job ID');
@@ -253,6 +292,11 @@ export function createJobStore(dataDir: string) {
     return found ? metaFromRow(found) : null;
   }
 
+  /** The Job's AD Spots in order, without reading its VAD file. */
+  function loadSpots(jobId: string): ADSpot[] {
+    return isJobId(jobId) ? (selectSpots.all(jobId) as JobRow[]).map(spotFromRow) : [];
+  }
+
   /** A Job without a readable VAD file is reported as missing; a database failure still throws. */
   function load(jobId: string): PersistedJobState | null {
     const found = row(jobId);
@@ -264,21 +308,27 @@ export function createJobStore(dataDir: string) {
       if (isMissing(err) || err instanceof SyntaxError) return null;
       throw err;
     }
-    const spots = (selectSpots.all(jobId) as JobRow[]).map(spotFromRow);
-    return { ...metaFromRow(found), vad_output: vadOutput, spots } as PersistedJobState;
+    return { ...metaFromRow(found), vad_output: vadOutput, spots: loadSpots(jobId) } as PersistedJobState;
   }
 
   /** VAD output never changes after the Job is created, so only the first save writes its file. */
-  function save(job: PersistedJobState): void {
+  function save(job: PersistedJobState, admission?: AnalysisAdmission): boolean {
     const jobDir = dirOf(job.job_id);
-    fs.mkdirSync(jobDir, { recursive: true });
     const vadFile = path.join(jobDir, 'vad_output.json');
-    const createsVad = !fs.existsSync(vadFile);
-    if (createsVad) writeAtomically(vadFile, JSON.stringify(job.vad_output, null, 2));
     const updatedAt = new Date().toISOString();
     const json = (value: unknown) => (value === undefined ? null : JSON.stringify(value));
+    let createdVad = false;
     db.exec('BEGIN IMMEDIATE');
     try {
+      if (admission && !reserveAiUsage(admission.authorSub, admission.day, job.job_id, admission.limit)) {
+        db.exec('ROLLBACK');
+        return false;
+      }
+      fs.mkdirSync(jobDir, { recursive: true });
+      if (!fs.existsSync(vadFile)) {
+        writeAtomically(vadFile, JSON.stringify(job.vad_output, null, 2));
+        createdVad = true;
+      }
       upsertJob.run(job.job_id, job.schema_version, job.title, job.mode, job.status, job.video_metadata.fileName,
         job.video_metadata.durationMs, job.video_source.kind, JSON.stringify(job.video_source), JSON.stringify(job.video_metadata),
         JSON.stringify(job.vad_config), json(job.ad_settings), json(job.srt_source), JSON.stringify(job.batches),
@@ -288,16 +338,27 @@ export function createJobStore(dataDir: string) {
       deleteSpots.run(job.job_id);
       job.spots.forEach((spot, position) => {
         insertSpot.run(job.job_id, spot.spot_id, position, spot.start_ms, spot.end_ms, spot.duration_ms, spot.decision, spot.text,
-          spot.reason ?? null, spot.is_edited ? 1 : 0, spot.original_start_ms, spot.original_end_ms);
+          spot.reason ?? null, spot.original_start_ms, spot.original_end_ms);
       });
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
       // A Job that was never created must not leave a VAD file that no row or listing can reach.
-      if (createsVad) fs.rmSync(vadFile, { force: true });
+      if (createdVad) fs.rmSync(vadFile, { force: true });
       throw err;
     }
     job.updated_at = updatedAt;
+    return true;
+  }
+
+  /** Persists only the live progress fields; returns false when the Job no longer exists. */
+  function saveProgress(
+    jobId: string,
+    progress: Pick<PersistedJobState, 'progress_stage' | 'progress_percent' | 'active_model'>,
+  ): boolean {
+    return isJobId(jobId) && Number(updateProgress.run(
+      progress.progress_stage ?? null, progress.progress_percent ?? null, progress.active_model ?? null,
+      new Date().toISOString(), jobId).changes) > 0;
   }
 
   function rename(jobId: string, title: string): boolean {
@@ -320,16 +381,6 @@ export function createJobStore(dataDir: string) {
     }
   }
 
-  function folderSize(jobId: string): number {
-    const dir = path.join(jobsDir, jobId);
-    try {
-      return isInsideJobsDir(dir) ? sizeOf(dir) : 0;
-    } catch (err) {
-      if (isMissing(err)) return 0;
-      throw err;
-    }
-  }
-
   /**
    * Every stored Job and Unfinished Upload, most recently changed first; with `ownerSub`, only that Author's Jobs
    * (an Unfinished Upload has no Job Owner, so it is left out).
@@ -339,7 +390,7 @@ export function createJobStore(dataDir: string) {
     const jobs = rows.map((found): StoredJobRecord => {
       const summary: StoredJobRecord = {
         job_id: found.job_id as string, file_name: found.file_name as string, updated_at: found.updated_at as string,
-        size_bytes: folderSize(found.job_id as string), is_upload: false,
+        is_upload: false,
         title: found.title as string, mode: found.mode as JobMode, status: found.status as JobStatus,
         duration_ms: Number(found.duration_ms),
         spot_count: Number(found.spot_count),
@@ -356,7 +407,7 @@ export function createJobStore(dataDir: string) {
     const uploads = fs.readdirSync(jobsDir).flatMap((name): StoredJobRecord[] => {
       const upload = findUnfinishedUpload(name);
       if (!upload) return [];
-      return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, size_bytes: folderSize(name), is_upload: true }];
+      return [{ job_id: name, file_name: `อัปโหลดไม่เสร็จ (${name})`, updated_at: upload.updatedAt, is_upload: true }];
     });
     return [...jobs, ...uploads].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }
@@ -387,5 +438,6 @@ export function createJobStore(dataDir: string) {
     db.close();
   }
 
-  return { dirOf, exists, loadMeta, load, save, rename, list, deleteJob, updateOwnerEmail, close };
+  return { dirOf, exists, loadMeta, loadSpots, load, save, saveProgress, rename, list, deleteJob, updateOwnerEmail,
+    aiUsage, recordAiStop, close };
 }

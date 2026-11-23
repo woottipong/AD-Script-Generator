@@ -5,15 +5,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import type { PersistedJobState } from '../types/ad';
-import { authTestEnv, signedInFetch } from './authTestHelpers';
-import { createJobStore } from './jobStore';
+import type { PersistedJobState } from '../../src/types/ad';
+import { authTestEnv, signedInFetch } from './helpers/auth';
+import { createJobStore } from '../../src/utils/jobStore';
 
 const authorA = { sub: 'sub-a', email: 'a@example.com', allJobs: false };
 const authorB = { sub: 'sub-b', email: 'b@example.com', allJobs: false };
 const supervisor = { sub: 'sub-s', email: 'lead@example.com', allJobs: true };
 
-const spot = { spot_id: 'cue_1', start_ms: 1000, end_ms: 4000, duration_ms: 3000, original_start_ms: 1000, original_end_ms: 4000, decision: 'generate' as const, text: 'บท', is_edited: false };
+const spot = { spot_id: 'cue_1', start_ms: 1000, end_ms: 4000, duration_ms: 3000, original_start_ms: 1000, original_end_ms: 4000, decision: 'generate' as const, text: 'บท' };
 const reviewBody = {
   video_metadata: { fileName: 'lesson.mp4', fileSize: 1, mimeType: 'video/mp4', width: 854, height: 480, durationMs: 10000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true },
   vad_config: { speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000 },
@@ -47,13 +47,13 @@ test('an Author sees and acts on only their own Jobs; others answer like a missi
   seed.close();
   const child = spawn(process.execPath, [path.join(process.cwd(), 'server.ts')], { cwd: dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', PORT: String(port), ...authTestEnv(port) }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}/api`;
-  const as = (author: typeof authorA) => {
+  const as = (author: typeof authorA & { canGenerateAi?: boolean }) => {
     const send = signedInFetch(author);
     return (route: string, method = 'GET', body?: unknown) => send(base + route, {
       method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   };
-  const a = as(authorA), b = as(authorB), lead = as(supervisor);
+  const a = as(authorA), b = as({ ...authorB, canGenerateAi: true }), lead = as(supervisor);
   const ids = async (response: Response) => ((await response.json()) as { jobs: { job_id: string }[] }).jobs.map((job) => job.job_id).sort();
   try {
     let ready = false;
@@ -155,13 +155,13 @@ globalThis.fetch = async (input, init) => {
     stdio: 'ignore',
   });
   const base = `http://127.0.0.1:${port}/api`;
-  const as = (author: typeof authorA) => {
+  const as = (author: typeof authorA & { canGenerateAi?: boolean }) => {
     const send = signedInFetch(author);
     return (route: string, method = 'GET', body?: unknown) => send(base + route, {
       method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   };
-  const a = as(authorA), b = as(authorB), lead = as(supervisor);
+  const a = as(authorA), b = as({ ...authorB, canGenerateAi: true }), lead = as(supervisor);
 
   try {
     let ready = false;
@@ -170,7 +170,7 @@ globalThis.fetch = async (input, init) => {
     }
     assert.ok(ready);
 
-    assert.equal((await b('/jobs/job_running/start', 'POST')).status, 200);
+    assert.equal((await b('/jobs/job_running/start', 'POST', { confirmAiCost: true })).status, 200);
     for (let i = 0; i < 200 && !fs.existsSync(path.join(dir, 'entered')); i++) {
       await new Promise(resolve => setTimeout(resolve, 25));
     }

@@ -1,4 +1,4 @@
-import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue, type AuthorSession } from './session';
+import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue, type AuthorSession } from '../../../src/utils/session';
 
 export const TEST_SESSION_SECRET = 'test-only-session-secret-0123456789';
 
@@ -12,13 +12,15 @@ export function authTestEnv(port: number): Record<string, string> {
   };
 }
 
+type TestAuthor = Omit<AuthorSession, 'idToken' | 'canGenerateAi'> & { canGenerateAi?: boolean };
+
 /** A Cookie header carrying a session the test server accepts, without signing in through Keycloak. */
-export function sessionCookie(author: Omit<AuthorSession, 'idToken'>): string {
-  return `${SESSION_COOKIE}=${sealValue(TEST_SESSION_SECRET, 'session', { ...author, idToken: 'test-id-token' }, SESSION_MAX_AGE_MS)}`;
+export function sessionCookie(author: TestAuthor): string {
+  return `${SESSION_COOKIE}=${sealValue(TEST_SESSION_SECRET, 'session', { canGenerateAi: false, ...author, idToken: 'test-id-token' }, SESSION_MAX_AGE_MS)}`;
 }
 
 /** `fetch` that sends the Author's session cookie with every request. */
-export function signedInFetch(author: Omit<AuthorSession, 'idToken'>): typeof fetch {
+export function signedInFetch(author: TestAuthor): typeof fetch {
   const cookie = sessionCookie(author);
   return (input, init) => {
     const headers = new Headers(init?.headers);

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { VideoProcessingStatus } from './VideoProcessingStatus';
-import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
+import { VideoProcessingStatus, type IntakeStep } from './VideoProcessingStatus';
+import { focusIntakeFeedback, IntakeDropzone, IntakeFooter, IntakeShell, IntakeTitleField, selectIntakeFile, type GenerateDraft, type IntakeControls } from './IntakeShell';
 import { isMp4File } from '../utils/videoValidator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,9 +14,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Field, FieldGroup, FieldLabel, FieldTitle } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
+import { Field, FieldDescription, FieldGroup, FieldTitle } from '@/components/ui/field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 import type { ProcessingFeedback } from '../utils/processingFeedback';
 import {
   AlertCircle,
@@ -25,7 +26,6 @@ import {
   Download,
   Ellipsis,
   FileVideo,
-  Loader2,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -46,33 +46,39 @@ import {
   formatFileSize,
 } from '../utils/formatters';
 import { defaultJobTitle } from '../utils/jobValidation';
+import { completedAnalysisSpotIds } from '../utils/jobProcessing';
 
 const batchColors = {
   pending: {
     surface: 'border-border bg-card hover:border-warning-strong-border hover:bg-warning',
     foreground: 'text-foreground',
     secondary: 'text-muted-foreground',
-    badge: 'bg-warning-strong text-warning-strong-foreground',
+    badgeVariant: 'warning-strong' as const,
   },
   processing: {
     surface: 'border-brand-500 bg-brand-100 hover:bg-brand-200',
     foreground: 'text-brand-950',
     secondary: 'text-brand-900',
-    badge: 'bg-brand-800 text-white',
+    badgeVariant: 'default' as const,
   },
   completed: {
     surface: 'border-brand-200 bg-card hover:border-brand-300 hover:bg-brand-50',
     foreground: 'text-foreground',
     secondary: 'text-muted-foreground',
-    badge: 'bg-brand-100 text-brand-900',
+    badgeVariant: 'info-strong' as const,
   },
   failed: {
     surface: 'border-error-border bg-error-surface hover:bg-destructive/15',
     foreground: 'text-error-foreground',
     secondary: 'text-error-foreground',
-    badge: 'bg-destructive/15 text-error-foreground',
+    badgeVariant: 'destructive' as const,
   },
 };
+
+const GENERATE_INTAKE_STEPS: readonly IntakeStep[] = [
+  { label: 'ตรวจสเปกวิดีโอ' },
+  { label: 'เปิดหน้าตัดต่อ' },
+];
 
 interface UploadAndVadPanelProps {
   mode: JobMode;
@@ -93,6 +99,8 @@ interface UploadAndVadPanelProps {
   onRunVad: () => void;
   onStartGeminiAnalysis: () => void;
   onRetryFailedBatches: () => void;
+  aiDisabledReason: string | null;
+  onStopAi?: () => void;
   onResetJob: () => void;
   onOpenJobList: () => void;
   onSelectSpot: (spotId: string, seekToStart?: boolean) => void;
@@ -119,6 +127,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   onRunVad,
   onStartGeminiAnalysis,
   onRetryFailedBatches,
+  aiDisabledReason,
+  onStopAi,
   onResetJob,
   onOpenJobList,
   onSelectSpot,
@@ -136,7 +146,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const hasLoadedProject = Boolean(videoMetadata || vadOutput || videoFile);
   const isDetecting = status === 'DETECTING';
-  const isAnalyzing = status === 'ANALYZING';
+  const isAnalyzing = status === 'ANALYZING' || status === 'STOPPING';
   const isBusy = Boolean(checkingFileName) || isDetecting || isAnalyzing;
   const activityFeedback: ProcessingFeedback | null = checkingFileName
     ? { title: 'กำลังตรวจสอบวิดีโอ', description: 'กำลังตรวจรูปแบบไฟล์ ความละเอียด และแทร็กเสียง' }
@@ -210,15 +220,21 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
 
   const canShowGenerate = !isReview && Boolean(vadOutput?.candidate_spots.length) &&
     Boolean(videoFile || completedBatchesCount < batches.length);
-  const needsResume = failedBatchesCount > 0 ||
+  const needsResume = status === 'STOPPED' || failedBatchesCount > 0 ||
     (completedBatchesCount > 0 && completedBatchesCount < batches.length) ||
     (!videoFile && batches.length > 0 && completedBatchesCount < batches.length);
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
   const showPrimaryGenerate = canShowGenerate && !isBusy && !isRegenerating;
-  const canExport = generatedSpotsCount > 0 && !isBusy;
+  const generateDisabledReason = showPrimaryGenerate ? aiDisabledReason : null;
+  const completeSpotIds = status === 'STOPPED' ? completedAnalysisSpotIds(batches) : null;
+  const canExport = !isBusy && (completeSpotIds
+    ? spots.some((spot) => completeSpotIds.has(spot.spot_id) && spot.decision === 'generate' && spot.text.trim())
+    : generatedSpotsCount > 0);
   const hasStatusError = Boolean(errorMessage) || failedBatchesCount > 0;
-  const idleStatus = hasStatusError
+  const idleStatus = status === 'STOPPED'
+    ? { full: 'หยุดการวิเคราะห์แล้ว', compact: 'หยุดแล้ว' }
+    : hasStatusError
     ? { full: 'ต้องตรวจสอบการทำงาน', compact: 'มีปัญหา' }
     : isReview
     ? { full: `ตรวจแก้ SRT · ${spots.length} บรรทัด`, compact: `${spots.length} บรรทัด` }
@@ -274,7 +290,11 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           <div className="w-full">
             <VideoProcessingStatus
               fileName={checkingFileName}
-              feedback={{ title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              feedback={intake.checkPassed
+                ? { title: 'วิดีโอผ่านการตรวจแล้ว', description: 'กำลังเปิดหน้าตัดต่อ…' }
+                : { title: 'กำลังตรวจสอบวิดีโอ', description: 'ตรวจรูปแบบไฟล์ ความละเอียด และเสียง' }}
+              steps={GENERATE_INTAKE_STEPS}
+              passed={intake.checkPassed}
               onCancel={intake.onCancelCheck}
             />
             {errorAlert && <div className="mt-4">{errorAlert}</div>}
@@ -282,12 +302,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         ) : (
           <FieldGroup className="gap-5">
             <Field aria-labelledby="generate-video-label">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
-                <span id="upload-requirements" className="text-xs text-muted-foreground">
-                  480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
-                </span>
-              </div>
+              <FieldTitle id="generate-video-label">วิดีโอ MP4</FieldTitle>
               <IntakeDropzone
                 file={stagedFile}
                 isDragging={isDragging}
@@ -311,36 +326,27 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 }}
                 icon={<FileVideo className="size-5" />}
                 emptyTitle="วางไฟล์ MP4 ที่นี่"
-                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4` : ''}
+                fileSubtitle={stagedFile ? `${formatFileSize(stagedFile.size)} · MP4 พร้อมใช้` : ''}
                 pickLabel="เลือกวิดีโอ"
                 clearLabel="ล้างไฟล์วิดีโอ"
                 pickDescribedBy={errorAlert ? 'upload-requirements upload-feedback' : 'upload-requirements'}
               />
+              <FieldDescription id="upload-requirements" className="text-xs">
+                รองรับ 480p · H.264 + AAC · ไม่เกิน 30 นาที · 2 GB
+              </FieldDescription>
             </Field>
 
-            <Field>
-              <div className="flex items-baseline justify-between gap-2">
-                <FieldLabel htmlFor="generate-title">ชื่องาน</FieldLabel>
-                <span className="text-xs text-muted-foreground">ไม่บังคับ</span>
-              </div>
-              <Input
-                id="generate-title"
-                type="text"
-                value={resolvedTitle}
-                maxLength={120}
-                onChange={(event) => { const title = event.target.value; setDraft((current) => ({ ...current, title })); }}
-                placeholder="ใช้ชื่อไฟล์วิดีโอเมื่อเว้นว่าง"
-              />
-            </Field>
+            <IntakeTitleField
+              id="generate-title"
+              value={resolvedTitle}
+              isAutoTitle={draft.title === null && resolvedTitle.trim() !== ''}
+              onChange={(title) => setDraft((current) => ({ ...current, title }))}
+            />
 
             {errorAlert}
-            <p className="text-sm text-muted-foreground">
-              ระบบจะตรวจเสียงบนเครื่องแล้วบันทึกวิดีโอไว้บนเซิร์ฟเวอร์ คุณเลือกเริ่มสร้างบทด้วย AI ได้ในหน้าตัดต่อ
-            </p>
 
             <IntakeFooter
               actionLabel="เริ่มเตรียมงาน"
-              hint={stagedFile ? 'พร้อมเริ่มเตรียมงาน' : 'เลือกวิดีโอ MP4 เพื่อเริ่ม'}
               disabled={!stagedFile || Boolean(inputError) || hasBlockingErrors || !intake.canProcess}
               onCancel={onOpenJobList}
               onAction={() => { if (stagedFile) onSelectFile(stagedFile, resolvedTitle); }}
@@ -360,6 +366,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               variant="ghost"
               size="lg"
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
+              aria-describedby={generateDisabledReason ? 'ai-generation-unavailable' : undefined}
               className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:has-data-[icon=inline-end]:pr-1.5 lg:max-w-[27rem] pointer-coarse:h-11 ${
                 hasStatusError
                   ? 'border border-error-border bg-error-surface text-error-foreground not-disabled:hover:bg-destructive/15'
@@ -371,7 +378,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           }
         >
           {isBusy ? (
-            <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none text-brand-700" aria-hidden="true" />
+            <Spinner data-icon="inline-start" className="text-brand-700" aria-hidden="true" />
           ) : hasStatusError ? (
             <AlertCircle data-icon="inline-start" className="max-sm:hidden text-error-foreground" aria-hidden="true" />
           ) : status === 'READY' || isReview ? (
@@ -406,7 +413,8 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                 <X aria-hidden="true" />
               </Button>
             </div>
-            <div className="space-y-3 px-4 pb-4 pt-2">
+            <div className="flex flex-col gap-3 px-4 pb-4 pt-2">
+              {generateDisabledReason && <p className="text-muted-foreground">{generateDisabledReason}</p>}
               {activityFeedback && (
                 <p className="leading-relaxed text-muted-foreground">
                   {activityFeedback.detail || activityFeedback.description}
@@ -454,10 +462,10 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
                           <p className="font-semibold">ชุด {batch.batch_index}<span className={`ml-2 font-normal tabular-nums ${colors.secondary}`}>{formatCompactTime(batch.batch_start_ms)}–{formatCompactTime(batch.batch_end_ms)}</span></p>
                           <p className={`mt-1 ${colors.secondary}`}>{batch.candidate_spots.length} ช่วงบรรยาย</p>
                         </div>
-                        <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 font-medium ${colors.badge}`}>
-                          {batch.status === 'processing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                        <Badge variant={colors.badgeVariant}>
+                          {batch.status === 'processing' ? <Spinner aria-hidden="true" /> : batch.status === 'completed' ? <CheckCircle2 aria-hidden="true" /> : batch.status === 'failed' ? <AlertCircle aria-hidden="true" /> : <Clock aria-hidden="true" />}
                           {batch.status === 'processing' ? 'กำลังวิเคราะห์' : batch.status === 'completed' ? 'เสร็จแล้ว' : batch.status === 'failed' ? 'ทำไม่สำเร็จ' : 'รอคิว'}
-                        </span>
+                        </Badge>
                       </button>
                     );
                   })}
@@ -468,11 +476,25 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
         </PopoverContent>
       </Popover>
 
-      {showPrimaryGenerate ? (
-        <Button size="lg" onClick={generateAd} disabled={!canGenerateAd && failedBatchesCount === 0} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
-          <Sparkles data-icon="inline-start" aria-hidden="true" />
-          {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+      {onStopAi && isAnalyzing ? (
+        <Button variant="outline" size="lg" onClick={onStopAi} disabled={status === 'STOPPING'}>
+          {status === 'STOPPING' ? 'กำลังหยุด…' : 'หยุดการวิเคราะห์'}
         </Button>
+      ) : showPrimaryGenerate ? (
+        <>
+          <Button
+            size="lg"
+            onClick={generateAd}
+            disabled={Boolean(generateDisabledReason) || (!canGenerateAd && !needsResume)}
+            focusableWhenDisabled={Boolean(generateDisabledReason)}
+            aria-describedby={generateDisabledReason ? 'ai-generation-unavailable' : undefined}
+            className="h-10 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-primary aria-disabled:active:translate-y-0 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11"
+          >
+            <Sparkles data-icon="inline-start" aria-hidden="true" />
+            {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
+          </Button>
+          {generateDisabledReason && <span id="ai-generation-unavailable" className="sr-only">{generateDisabledReason}</span>}
+        </>
       ) : canExport && (
         <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
           <Download data-icon="inline-start" aria-hidden="true" />
@@ -488,14 +510,17 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
             <>
               <DropdownMenuGroup>
                 {showPrimaryGenerate && canExport && <DropdownMenuItem onClick={onExportSrt}><Download aria-hidden="true" />ส่งออก SRT</DropdownMenuItem>}
-                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && <DropdownMenuItem onClick={generateAd} disabled={isBusy || Boolean(aiDisabledReason)}><Sparkles aria-hidden="true" />สร้างบทบรรยายใหม่</DropdownMenuItem>}
+                {canShowGenerate && isRegenerating && aiDisabledReason && <p className="px-2 py-1 text-xs text-muted-foreground">{aiDisabledReason}</p>}
                 {videoFile && <DropdownMenuItem onClick={onRunVad} disabled={!canRunVad}><RefreshCw aria-hidden="true" />สแกนเสียงใหม่</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} disabled={Boolean(checkingFileName) || isDetecting}><Upload aria-hidden="true" />เปลี่ยนวิดีโอ</DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem variant="destructive" onClick={onResetJob} disabled={Boolean(checkingFileName) || isDetecting}><RotateCcw aria-hidden="true" />เริ่มงานใหม่</DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

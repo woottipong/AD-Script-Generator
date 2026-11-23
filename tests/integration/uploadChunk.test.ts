@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import { authTestEnv, signedInFetch } from './authTestHelpers';
+import { authTestEnv, signedInFetch } from './helpers/auth';
 
 // Every API call in this file is made by an Author with All-Jobs Access, so seeded Jobs with no Job Owner stay reachable.
 const fetch = signedInFetch({ sub: 'sub-test-author', email: 'author@example.com', allJobs: true });
