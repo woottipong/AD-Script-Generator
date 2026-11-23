@@ -1,6 +1,6 @@
 # TCC Envisio API reference
 
-This reference describes the routes in [server.ts](../server.ts). Request and response types are defined in [src/types/ad.ts](../src/types/ad.ts). Installation and startup commands are in the [README](../README.md#การรันโปรเจกต์).
+This reference describes the routes in [server.ts](../server.ts). Request and response types are defined in [src/types/ad.ts](../src/types/ad.ts). Installation and startup commands are in the [README](../README.md#เริ่มต้นใช้งาน).
 
 ## Base configuration and conventions
 

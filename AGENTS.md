@@ -18,7 +18,7 @@ Read the matching reference before working in that area:
 
 ## Development & verification
 
-Keep executable setup, Docker, build, and test commands in [README.md - การรันโปรเจกต์](README.md#การรันโปรเจกต์); consult `package.json` for scripts.
+Keep executable setup, Docker, build, and test commands in [README.md - เริ่มต้นใช้งาน](README.md#เริ่มต้นใช้งาน); consult `package.json` for scripts.
 
 - **Dependencies & checks**: update `package.json` and `bun.lock` (`lockfileVersion 2`) together using Bun 1.4+ (Docker uses `--frozen-lockfile`; `bun test` requires Bun 1.4+ for `node:sqlite`). Add shadcn components inside the dev container with `bun x --bun shadcn@latest add <name>` so lockfiles stay in sync. Host `node_modules/` is an empty Docker mountpoint (host "Cannot find module" diagnostics are noise); run unit (`bun run test:unit` -> `src/`), integration (`bun run test:integration` -> `tests/integration/`), or full check (`bun run check`: `tsc --noEmit` + `test:unit` + `test:integration` + `vite build`) in the dev container: `docker compose exec envisio bun run check`. With npm, pass `--legacy-peer-deps`.
 - **Docker**: `docker-compose.yml` (`Dockerfile` `development` stage) bind-mounts `.:/app` for development; `docker-compose.prod.yml` (`Dockerfile` `production` stage) mounts only `./.data:/app/.data`. Both persist Jobs in `.data/` (`envisio.db` + `jobs/`).

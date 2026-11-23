@@ -18,4 +18,4 @@ Review-stage standards for TCC Envisio. Mechanical checks (`tsc --noEmit`, `node
 ## Domain and documentation drift
 
 - **Canonical terminology & ADRs**: use the domain terms in [GLOSSARY.md](GLOSSARY.md). Flag any change that contradicts an accepted decision in [docs/adr/](docs/adr/) unless the ADR is explicitly reopened.
-- **Keep docs in sync with code**: when adding or changing routes, response fields, error messages, env vars, or system rules, verify that [docs/API.md](docs/API.md), [docs/agents/system-constraints.md](docs/agents/system-constraints.md), [AGENTS.md](AGENTS.md) context pointers, and [README.md](README.md) (`.env` and UI workflow) are updated in the same change.
+- **Keep docs in sync with code**: when adding or changing routes, response fields, error messages, env vars, or system rules, verify that [docs/API.md](docs/API.md), [docs/agents/system-constraints.md](docs/agents/system-constraints.md), [AGENTS.md](AGENTS.md) context pointers, and [README.md](README.md) (`.env`) and [docs/usage.md](docs/usage.md) (UI workflow) are updated in the same change.

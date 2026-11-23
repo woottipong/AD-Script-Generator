@@ -36,7 +36,7 @@ TCC Envisio (สโลแกน "ให้ทุกภาพมีเสีย�
 
 ## Evidence on Hand
 
-- วิธีใช้งาน ข้อกำหนดไฟล์ และคีย์ลัดอยู่ใน [README.md](README.md)
+- วิธีใช้งาน ข้อกำหนดไฟล์ และคีย์ลัดอยู่ใน [docs/usage.md](docs/usage.md)
 - สัญญา API และขอบเขตการตรวจสอบอยู่ใน [docs/API.md](docs/API.md)
 - ข้อกำหนดระบบและกฎการตรวจสอบทั้งหมดอยู่ใน [docs/agents/system-constraints.md](docs/agents/system-constraints.md)
 - ยังไม่มีผลวิจัยผู้ใช้หรือตัวชี้วัดผลลัพธ์ในเอกสารโปรเจกต์ที่ตรวจพบ
