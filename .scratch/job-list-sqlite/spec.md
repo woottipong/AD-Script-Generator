@@ -112,7 +112,6 @@ CREATE TABLE IF NOT EXISTS job_spots (
   decision TEXT NOT NULL,
   text TEXT NOT NULL,
   reason TEXT,
-  is_edited INTEGER NOT NULL DEFAULT 0,
   original_start_ms INTEGER NOT NULL,
   original_end_ms INTEGER NOT NULL,
   PRIMARY KEY (job_id, spot_id),

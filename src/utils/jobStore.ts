@@ -39,7 +39,7 @@ type AnalysisAdmission = { authorSub: string; day: string; limit: number };
  * Schema changes in order: a database at `user_version` N has run the first N. A released migration is
  * never edited; a schema change is a new entry at the end, which every database runs once on next start.
  */
-const MIGRATIONS = [
+const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   `CREATE TABLE jobs (
     job_id TEXT PRIMARY KEY,
     schema_version INTEGER NOT NULL,
@@ -100,6 +100,11 @@ const MIGRATIONS = [
     stopped_at TEXT NOT NULL
   );
   ALTER TABLE job_spots DROP COLUMN is_edited;`,
+  // Some version 3 databases were created before that migration dropped the spot column.
+  (db) => {
+    const column = db.prepare("SELECT name FROM pragma_table_info('job_spots') WHERE name = 'is_edited'").get();
+    if (column) db.exec('ALTER TABLE job_spots DROP COLUMN is_edited');
+  },
 ];
 
 /** Brings the database up to the latest schema; each migration commits together with its version number. */
@@ -111,7 +116,9 @@ function migrate(db: DatabaseSync): void {
   for (let version = current; version < MIGRATIONS.length; version++) {
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.exec(MIGRATIONS[version]);
+      const migration = MIGRATIONS[version];
+      if (typeof migration === 'string') db.exec(migration);
+      else migration(db);
       db.exec(`PRAGMA user_version = ${version + 1}`);
       db.exec('COMMIT');
     } catch (err) {

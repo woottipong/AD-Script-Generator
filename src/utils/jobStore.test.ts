@@ -291,3 +291,46 @@ test('a database from before Job Owners upgrades and keeps its Jobs without an o
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+for (const hasLegacyColumn of [true, false]) {
+  test(`upgrades a version 3 database ${hasLegacyColumn ? 'with' : 'without'} the legacy spot column`, (t) => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-job-store-'));
+    t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+    const dbPath = path.join(dataDir, 'envisio.db');
+    const job = {
+      ...generateJob('job_gen', path.join(dataDir, 'jobs')),
+      owner_sub: 'author-a',
+      owner_email: 'a@example.invalid',
+    };
+    const admission = { authorSub: job.owner_sub, day: '2026-11-23', limit: 3 };
+    const initial = createJobStore(dataDir);
+    assert.equal(initial.save(job, admission), true);
+    initial.recordAiStop(job.job_id, job.owner_sub);
+    const saved = initial.load(job.job_id);
+    initial.close();
+    assert.ok(saved);
+
+    const v3 = new DatabaseSync(dbPath);
+    if (hasLegacyColumn) {
+      v3.exec('ALTER TABLE job_spots ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0; UPDATE job_spots SET is_edited = 1');
+    }
+    v3.exec('PRAGMA user_version = 3');
+    v3.close();
+
+    const upgraded = createJobStore(dataDir);
+    try {
+      assert.deepEqual(upgraded.load(job.job_id), saved);
+      assert.deepEqual(upgraded.aiUsage(admission.authorSub, admission.day), [job.job_id]);
+    } finally {
+      upgraded.close();
+    }
+    const after = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      assert.equal(after.prepare("SELECT name FROM pragma_table_info('job_spots') WHERE name = 'is_edited'").get(), undefined);
+      assert.equal(after.prepare('PRAGMA user_version').get()?.user_version, 4);
+      assert.equal(after.prepare('SELECT author_sub FROM ai_analysis_stops WHERE job_id = ?').get(job.job_id)?.author_sub, job.owner_sub);
+    } finally {
+      after.close();
+    }
+  });
+}
