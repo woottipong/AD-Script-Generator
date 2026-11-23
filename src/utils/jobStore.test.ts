@@ -274,12 +274,19 @@ test('a database from before Job Owners upgrades and keeps its Jobs without an o
     first.save(reviewJob('job_before'));
     first.close();
     const db = new DatabaseSync(path.join(dataDir, 'envisio.db'));
-    db.exec('DROP TABLE ai_analysis_stops; DROP TABLE ai_daily_usage; DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
+    db.exec('DROP TABLE ai_analysis_stops; DROP TABLE ai_daily_usage; ALTER TABLE job_spots ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0; DROP INDEX idx_jobs_owner; ALTER TABLE jobs DROP COLUMN owner_sub; ALTER TABLE jobs DROP COLUMN owner_email; PRAGMA user_version = 1');
     db.close();
     const upgraded = createJobStore(dataDir);
     assert.equal(upgraded.load('job_before')?.title, 'บทเรียน');
     assert.equal(upgraded.loadMeta('job_before')?.owner_sub, undefined);
     upgraded.close();
+    const after = new DatabaseSync(path.join(dataDir, 'envisio.db'), { readOnly: true });
+    try {
+      const spotColumns = (after.prepare('PRAGMA table_info(job_spots)').all() as { name: string }[]).map((col) => col.name);
+      assert.equal(spotColumns.includes('is_edited'), false);
+    } finally {
+      after.close();
+    }
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue } from '../../../src/utils/session';
+import { SESSION_COOKIE, SESSION_MAX_AGE_MS, sealValue, type AuthorSession } from '../../../src/utils/session';
 
 const SMOKE_PORT = 4174;
 const DEFAULT_BASE_URL = `http://127.0.0.1:${SMOKE_PORT}`;
@@ -94,10 +94,11 @@ test('production container serves config, auth gate, ONNX assets, and root page 
   expect(rootRedirectRes.status()).toBe(302);
   expect(rootRedirectRes.headers()['location']).toBe('/auth/login?returnTo=%2F');
 
+  const smokeSession: AuthorSession = { sub: 'smoke-user', email: 'smoke@example.com', allJobs: false, canGenerateAi: false };
   const sealedSession = sealValue(
     SMOKE_SESSION_SECRET,
     'session',
-    { sub: 'smoke-user', email: 'smoke@example.com', allJobs: false },
+    smokeSession,
     SESSION_MAX_AGE_MS
   );
   await context.addCookies([{ name: SESSION_COOKIE, value: sealedSession, url: baseUrl }]);

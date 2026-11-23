@@ -142,7 +142,9 @@ export function mountAuth(app: Express, config: AuthConfig, onSignIn: (author: A
 
   function sessionOf(req: Request): AuthorSession | null {
     const sealed = readCookie(req.headers.cookie, SESSION_COOKIE);
-    return sealed ? unsealValue<AuthorSession>(config.sessionSecret, 'session', sealed) : null;
+    const session = sealed ? unsealValue<AuthorSession>(config.sessionSecret, 'session', sealed) : null;
+    // Sessions sealed before AI Generation Access existed lack `canGenerateAi`; treat them as signed out so Keycloak re-issues the entitlement.
+    return session && typeof session.canGenerateAi === 'boolean' ? session : null;
   }
 
   app.use('/auth', (_req, res, next) => {

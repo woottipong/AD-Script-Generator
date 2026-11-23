@@ -29,10 +29,16 @@ FROM deps AS build
 COPY . .
 RUN bun run build
 
+FROM base AS prod-deps
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY package.json bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --production
+
 FROM base AS production
 ENV NODE_ENV=production
 
-COPY --from=deps --link /app/node_modules ./node_modules
+COPY --from=prod-deps --link /app/node_modules ./node_modules
 COPY --from=build --link /app/dist ./dist
 COPY --link package.json server.ts ./
 COPY --link public ./public

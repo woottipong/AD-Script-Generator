@@ -8,7 +8,6 @@ import path from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createServer as createViteServer } from 'vite';
 import { ApiError, GoogleGenAI, MediaProcessing, MediaResolution, ThinkingLevel, Type } from '@google/genai';
 import {
   ADAnalysisSettings,
@@ -77,20 +76,24 @@ function geminiApiKey(): string | undefined {
   return key && key !== 'MY_GEMINI_API_KEY' ? key : undefined;
 }
 
-function admitAiAnalysis(res: Response, confirmed: unknown, job: PersistedJobState): boolean {
+function admitAiAnalysis(res: Response, confirmed: unknown, job: PersistedJobState, onReject?: () => void): boolean {
   const author = res.locals.author as AuthorSession;
+  let denial: { status: number; code: string; error: string } | null = null;
   if (!author.canGenerateAi) {
-    res.status(401).json({ code: 'AI_ACCESS_REQUIRED', error: 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้' });
+    denial = { status: 401, code: 'AI_ACCESS_REQUIRED', error: 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้' };
   } else if (!geminiApiKey()) {
-    res.status(500).json({ code: 'AI_NOT_CONFIGURED', error: 'ระบบยังไม่ได้ตั้งค่า Gemini' });
+    denial = { status: 500, code: 'AI_NOT_CONFIGURED', error: 'ระบบยังไม่ได้ตั้งค่า Gemini' };
   } else if (confirmed !== true) {
-    res.status(400).json({ code: 'AI_CONFIRMATION_REQUIRED', error: 'กรุณายืนยันค่าใช้จ่ายก่อนเริ่มวิเคราะห์' });
+    denial = { status: 400, code: 'AI_CONFIRMATION_REQUIRED', error: 'กรุณายืนยันค่าใช้จ่ายก่อนเริ่มวิเคราะห์' };
   } else if (!store.save(job, { authorSub: author.sub, day: thailandDay.format(), limit: aiDailyLimit })) {
-    res.status(429).json({ code: 'AI_DAILY_QUOTA_EXHAUSTED', error: 'ใช้โควตาสร้างบท AI ครบแล้ววันนี้' });
-  } else {
-    return true;
+    denial = { status: 429, code: 'AI_DAILY_QUOTA_EXHAUSTED', error: 'ใช้โควตาสร้างบท AI ครบแล้ววันนี้' };
   }
-  return false;
+  if (denial) {
+    onReject?.();
+    res.status(denial.status).json({ code: denial.code, error: denial.error });
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -970,18 +973,23 @@ async function startServer() {
       next();
     }
   }, async (req: Request, res: Response) => {
-    const autoStart = req.body?.autoStart !== false && req.body?.autoStart !== 'false';
-    if (
-      autoStart &&
-      activeProcessingLock
-    ) {
-      res.status(409).json({
-        error: ANOTHER_JOB_ANALYZING_ERROR,
-      });
-      return;
-    }
-
+    let jobSaved = false;
+    const cleanupMultipart = () => {
+      if (!jobSaved && req.file) fs.rmSync(path.dirname(req.file.path), { recursive: true, force: true });
+    };
     try {
+      const autoStart = req.body?.autoStart !== false && req.body?.autoStart !== 'false';
+      if (
+        autoStart &&
+        activeProcessingLock
+      ) {
+        cleanupMultipart();
+        res.status(409).json({
+          error: ANOTHER_JOB_ANALYZING_ERROR,
+        });
+        return;
+      }
+
       let localFilePath: string;
       let jobId: string;
       let videoMetadata: VideoMetadata;
@@ -1039,12 +1047,14 @@ async function startServer() {
 
       const validated = validateJobInitialization({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings });
       if (!validated.success || fs.statSync(localFilePath).size !== validated.data.video_metadata.fileSize) {
+        cleanupMultipart();
         res.status(400).json({ error: 'ข้อมูลวิดีโอหรือผลตรวจเสียงไม่ถูกต้อง' });
         return;
       }
       ({ video_metadata: videoMetadata, vad_config: vadConfig, vad_output: vadOutput, ad_settings: adSettings } = validated.data);
       const title = resolveJobTitle(req.body.title, videoMetadata.fileName);
       if (!title.success) {
+        cleanupMultipart();
         res.status(400).json({ error: title.error });
         return;
       }
@@ -1096,10 +1106,11 @@ async function startServer() {
       };
 
       if (willAnalyzeNow) {
-        if (!admitAiAnalysis(res, req.body?.confirmAiCost === 'true' || req.body?.confirmAiCost === true, jobState)) return;
+        if (!admitAiAnalysis(res, req.body?.confirmAiCost === 'true' || req.body?.confirmAiCost === true, jobState, cleanupMultipart)) return;
       } else {
         store.save(jobState);
       }
+      jobSaved = true;
       uploadActivity.delete(jobId);
       uploadOwners.delete(jobId);
 
@@ -1113,6 +1124,7 @@ async function startServer() {
       void runJobInBackground(jobId).catch(() => console.error('Failed to run job processing'));
       res.json({ job: jobState, isRunning: true });
     } catch (err) {
+      cleanupMultipart();
       if (err instanceof SyntaxError) {
         res.status(400).json({ error: 'ข้อมูลคำขอไม่ใช่ JSON ที่ถูกต้อง' });
         return;
@@ -1122,6 +1134,8 @@ async function startServer() {
         error: parsed.userMessage,
         isRateLimit: parsed.isRateLimit,
       });
+    } finally {
+      cleanupMultipart();
     }
   });
 
@@ -1509,6 +1523,7 @@ async function startServer() {
 
   // Mount Vite middleware in development or static dist in production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,

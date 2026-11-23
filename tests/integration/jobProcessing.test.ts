@@ -469,3 +469,27 @@ test('a failed job read never replaces the unreadable persisted data', { timeout
     assert.equal((await otherRes.json()).isRunning, false);
   });
 });
+
+test('direct multipart init removes its uploaded folder when AI admission is rejected', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, origin }) => {
+    const jobsDir = path.join(dir, '.data/jobs');
+    const before = fs.readdirSync(jobsDir).sort();
+    const form = new FormData();
+    form.append('video', new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/mp4' }), 'sample.mp4');
+    form.append('video_metadata', JSON.stringify({
+      fileName: 'sample.mp4', fileSize: 4, mimeType: 'video/mp4', width: 854, height: 480,
+      durationMs: 20000, videoCodec: 'avc1', audioCodec: 'mp4a.40.2', hasAudioTrack: true,
+    }));
+    form.append('vad_config', JSON.stringify({
+      speechThreshold: 0.5, minSpeechDurationMs: 250, minSilenceDurationMs: 400, speechPaddingMs: 200, minAdGapMs: 3000,
+    }));
+    form.append('vad_output', JSON.stringify({
+      duration_ms: 20000, speech_segments: [], candidate_spots: [{ spot_id: 'spot_1', start_ms: 1000, end_ms: 5000, duration_ms: 4000 }],
+    }));
+
+    const res = await fetch(`${origin}/api/jobs/init`, { method: 'POST', body: form });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json() as { code?: string }).code, 'AI_CONFIRMATION_REQUIRED');
+    assert.deepEqual(fs.readdirSync(jobsDir).sort(), before);
+  });
+});

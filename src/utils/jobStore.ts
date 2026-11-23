@@ -77,6 +77,7 @@ const MIGRATIONS = [
     decision TEXT NOT NULL,
     text TEXT NOT NULL,
     reason TEXT,
+    is_edited INTEGER NOT NULL DEFAULT 0,
     original_start_ms INTEGER NOT NULL,
     original_end_ms INTEGER NOT NULL,
     PRIMARY KEY (job_id, spot_id),
@@ -97,7 +98,8 @@ const MIGRATIONS = [
     job_id TEXT NOT NULL,
     author_sub TEXT NOT NULL,
     stopped_at TEXT NOT NULL
-  );`,
+  );
+  ALTER TABLE job_spots DROP COLUMN is_edited;`,
 ];
 
 /** Brings the database up to the latest schema; each migration commits together with its version number. */
