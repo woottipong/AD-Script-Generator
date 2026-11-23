@@ -1100,7 +1100,7 @@ export default function App() {
       if (token.aborted) return;
       if (saved === false) {
         setVadProgress(null);
-        setStatus('FAILED');
+        setStatus(status);
         setErrorMessage('บันทึกการแก้ไขไม่สำเร็จ กรุณาลองบันทึกอีกครั้งก่อนดำเนินการต่อ');
         return;
       }

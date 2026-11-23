@@ -28,7 +28,7 @@ A job response contains a `job` object. The fields below describe the current Ty
 | `video_source` | Where the video lives: `{ kind: "server_copy", local_file_path }`, `{ kind: "url", url }`, or `{ kind: "local_file", file_name, file_size }`. Generate Mode jobs use `server_copy` |
 | `srt_source` | Optional imported SRT details for Review Mode: `file_name`, `cue_count`, `imported_at` |
 | `created_at`, `updated_at` | ISO timestamp strings |
-| `status` | `IDLE`, `VIDEO_READY`, `DETECTING`, `VAD_READY`, `ANALYZING`, `READY`, or `FAILED` |
+| `status` | `IDLE`, `VIDEO_READY`, `DETECTING`, `VAD_READY`, `ANALYZING`, `STOPPING`, `STOPPED`, `READY`, or `FAILED` |
 | `video_metadata` | File name, byte size, MIME type, width, height, duration, video codec, audio codec, and `hasAudioTrack`. Optional `sampleRate` and `channelCount` |
 | `vad_config` | `speechThreshold`, `minSpeechDurationMs`, `minSilenceDurationMs`, `speechPaddingMs`, and `minAdGapMs` |
 | `ad_settings` | Optional analysis settings. Defaults are listed under job initialization |
@@ -42,7 +42,7 @@ An analysis batch contains `batch_index`, `batch_id`, `batch_start_ms`, `batch_e
 
 An `ADSpot` contains `spot_id`, `start_ms`, `end_ms`, `duration_ms`, `decision`, `text`, `original_start_ms`, and `original_end_ms`. Its decision is `pending`, `generate`, or `skip`. `reason` is optional.
 
-The server reuses the Gemini file across batches. After the last batch or a processing failure, it attempts to delete the job's Gemini file before releasing the processing lock. A successful deletion or HTTP 404 clears the Gemini file metadata. Other deletion errors leave the analysis result and file reference intact. If deletion fails before a replacement upload, the job fails and can be retried. The server keeps the local MP4 for playback and re-upload.
+The server reuses the Gemini file across batches. After the last batch, a processing failure, or a stop request, the background runner attempts to delete the Job's Gemini file before releasing the processing lock. A successful deletion or HTTP 404 clears the Gemini file metadata. Other deletion errors leave the analysis result and file reference intact. If deletion fails before a replacement upload, the attempt ends and the caller can retry. The server keeps the local MP4 for playback and re-upload.
 
 `isRunning` indicates whether the process-local lock belongs to the job, including during Gemini file cleanup. The browser waits for `isRunning: false` before treating the processing run as finished. `progress_percent` is stage-based progress, not a prediction of remaining time.
 
@@ -237,11 +237,11 @@ The route also accepts `multipart/form-data` with one file field named `video` a
 |---|---|
 | 200, candidates present | `{ job, isRunning: true }`. Initial job status is `ANALYZING`, progress is 8, and Gemini upload and sequential analysis start in the background (or `status: "VAD_READY"` and `isRunning: false` without starting Gemini when `autoStart` is `false`) |
 | 200, no candidates | `{ job, isRunning: false }`. Status is `READY`, progress is 100, and Gemini is not called |
-| 400 | No uploaded file, empty chunked upload file, invalid `uploadId`, existing job, malformed JSON, invalid metadata/VAD/settings schema, `fileSize` mismatch, or invalid `title` |
+| 400 | No uploaded file, empty chunked upload file, invalid `uploadId`, existing job, malformed JSON, invalid metadata/VAD/settings schema, `fileSize` mismatch, invalid `title`, or missing AI cost confirmation when starting analysis |
 | 409 | An active processing lock blocks initialization (only checked when `autoStart` is not `false`) |
 | 401, 429, or 500 | Classified initialization or Gemini client errors, after status sanitization |
 
-The server checks for `GEMINI_API_KEY` before saving a job with candidate spots when `autoStart` is not `false`. A missing key currently returns HTTP 500. Background failures appear later in the persisted job's status and `error_message`. A failed initialization can leave uploaded files on disk.
+To start analysis during initialization, the caller needs AI Generation Access, a configured `GEMINI_API_KEY`, explicit cost confirmation, and a daily quota reservation. The [start endpoint](#post-apijobsjobidstart) lists the corresponding error codes. Background failures appear later in the persisted Job's status and `error_message`. A failed initialization can leave uploaded files on disk.
 
 ### POST /api/jobs/review
 
@@ -268,15 +268,14 @@ Starts or resumes background processing. Review Mode jobs return HTTP 409. Send 
 
 - HTTP 200 returns `{ job, isRunning: true }` when background work starts.
 - If the same job already holds the lock, HTTP 200 returns its current state with `isRunning: true` without starting another runner.
-- If all batches are completed and the job still has a Gemini file name, HTTP 200 returns `{ job, isRunning: true }` and retries deletion in the background. The server skips analysis and keeps the job `READY`.
-- If all batches are completed and the job has no Gemini file name, HTTP 200 returns `{ job, isRunning: false }` with status `READY` and progress 100.
+- If all batches are complete, the server sets the Job to `READY` with progress 100. It retries Gemini file deletion in the background if the Job still has a Gemini file name, the caller has AI Generation Access, and the server has a configured key. HTTP 200 returns `{ job, isRunning: true }` when the retry starts and `{ job, isRunning: false }` otherwise. This cleanup requires neither cost confirmation nor a daily quota reservation.
 - HTTP 404 means that the job was not found.
 - HTTP 409 means that another job holds the lock. The error reads `มีงานอื่นกำลังวิเคราะห์อยู่ ลองใหม่เมื่อเสร็จ`.
 - Classified client errors return HTTP 401, 429, or 500 with `error`.
 
-On backend restart, recovery applies to every saved job. It changes interrupted batches from `processing` to `pending` and changes a job in `ANALYZING` to `VAD_READY`. Startup does not automatically call Gemini. This endpoint resumes the work. An expired or unavailable Gemini file can be uploaded again from the local MP4.
+At startup, the server resets interrupted batches from `processing` to `pending` and changes `ANALYZING` Jobs to `VAD_READY`. It moves Jobs left in `STOPPING` to `STOPPED` if batches remain or to `READY` if all batches are complete. If a Job was `STOPPING` and has a Gemini file name, the server retries the Gemini Files API deletion when a key is configured. Analysis resumes only after a confirmed request. The server can re-upload the local MP4 when the Gemini file is expired or unavailable.
 
-All routes that start a Gemini analysis enforce AI Generation Access and the daily quota. A rejected request returns code `AI_ACCESS_REQUIRED` (401), `AI_NOT_CONFIGURED` (500), `AI_CONFIRMATION_REQUIRED` (400), or `AI_DAILY_QUOTA_EXHAUSTED` (429). A reservation is reused when the same Author resumes the same Job on the same day.
+All routes that start Gemini analysis enforce AI Generation Access and the Daily AI Quota. A rejected request returns code `AI_ACCESS_REQUIRED` (401), `AI_NOT_CONFIGURED` (500), `AI_CONFIRMATION_REQUIRED` (400), or `AI_DAILY_QUOTA_EXHAUSTED` (429). The quota counts distinct Jobs per Author per calendar day in Thailand. The same Author can resume the same Job that day using its existing reservation. A reservation survives retries, stops, server restarts, and Job deletion.
 
 ### POST /api/jobs/:jobId/stop
 
@@ -295,7 +294,7 @@ JSON body when starting a batch, with optional `batch_id`:
 }
 ```
 
-If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch.
+If the same job is already processing, the request waits for it to finish before reloading the job and selecting a batch. If a stop interrupts the run it was waiting for, the request returns HTTP 409. If no ID is supplied, the route selects the first batch that is not completed. A successful selected batch returns HTTP 200 with `{ job, batch }`. An explicitly selected completed batch returns its saved result without calling Gemini. When an incomplete batch is analyzed, its spots receive new AI decisions, text, and reasons, and their times reset to the original gap boundaries. This can replace manual edits for that batch.
 
 If no batch matches, the route returns HTTP 200 with `{ job }`. An explicitly stopped Job keeps its `STOPPED` status. Other Jobs are set to `READY`.
 
@@ -307,7 +306,7 @@ Renames a job. The body is `{ "title": "…" }`; the title is trimmed and must b
 
 ### PATCH /api/jobs/:jobId/spots
 
-Replaces the job's entire `spots` array and saves the job. This endpoint does not merge individual entries. A request that omits existing spots removes those entries from the saved array.
+Replaces the Job's entire `spots` array. The request must include every existing spot ID exactly once.
 
 The following request represents the complete array for a job with one spot:
 
@@ -329,7 +328,11 @@ The following request represents the complete array for a job with one spot:
 }
 ```
 
-The route validates `spots` strictly with Zod via `validateEditedSpots` (requiring nonnegative finite integer timestamps, the same set of unique spot IDs as the saved job, original boundaries matching stored values, and `duration_ms === end_ms - start_ms`) before running `validateSpotTimestampEdit` per the mode-specific timing rules in [system constraints](agents/system-constraints.md#editing-and-validation-rules) (for Review Mode, timing is checked only for spots whose `start_ms` or `end_ms` changed). HTTP 200 returns `{ job }`. An unknown job returns HTTP 404. Invalid spots or failed timestamp checks return HTTP 400 with `error`.
+`validateEditedSpots` requires nonnegative finite integer timestamps, original boundaries that match the saved values, and `duration_ms === end_ms - start_ms`. It applies mode-specific timing rules to every Generate Mode spot and to Review Mode spots whose `start_ms` or `end_ms` changed. See [editing and validation rules](agents/system-constraints.md#editing-and-validation-rules).
+
+HTTP 200 returns `{ job }`. An unknown Job returns HTTP 404. Invalid spots or failed timestamp checks return HTTP 400 with `error`.
+
+For a `STOPPED` Job, callers can edit only spots in completed batches. A valid request that changes the time, text, decision, or reason of a spot in an incomplete batch returns HTTP 409 with `error`.
 
 The browser serializes saves and shows success only after receiving an acknowledgement for the job.
 

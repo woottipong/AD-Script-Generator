@@ -54,11 +54,12 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
     spots: [spot, completed],
   };
 
-  let started = false;
+  let startRequests = 0;
   let canGenerateAi = false;
   let geminiEnabled = false;
   let exerciseStop = false;
   let aiStatus = 'VAD_READY';
+  let authorReply = Promise.resolve();
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -67,7 +68,10 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = request.url();
-    if (url.endsWith('/api/me')) return route.fulfill({ json: { email: 'author@example.com', allJobs: false, canGenerateAi, aiGeneration: { enabled: geminiEnabled, remaining: 3, limit: 3, usedJobIds: [] } } });
+    if (url.endsWith('/api/me')) {
+      await authorReply;
+      return route.fulfill({ json: { email: 'author@example.com', allJobs: false, canGenerateAi, aiGeneration: { enabled: geminiEnabled, remaining: 3, limit: 3, usedJobIds: [] } } });
+    }
     if (new URL(url).pathname === '/api/jobs/job_fixture' && request.method() === 'GET') {
       const stoppedBatches = [batch, { ...batch, batch_id: 'batch_2', batch_index: 2, status: 'completed', candidate_spots: [completed] }];
       const snapshot = exerciseStop ? { ...job, status: aiStatus, batches: aiStatus === 'STOPPED' ? stoppedBatches : job.batches } : job;
@@ -75,7 +79,7 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
     }
     if (url.endsWith('/start')) {
       expect(request.postDataJSON()).toEqual({ confirmAiCost: true });
-      started = true;
+      startRequests++;
       await held;
       if (exerciseStop) aiStatus = 'ANALYZING';
       return route.fulfill({ json: { job, isRunning: true } });
@@ -84,16 +88,44 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
       aiStatus = 'STOPPED';
       return route.fulfill({ json: { isRunning: true } });
     }
+    if (url.endsWith('/spots') && request.method() === 'PATCH') {
+      return route.fulfill({ status: 500, json: { error: 'บันทึกไม่สำเร็จ' } });
+    }
     if (request.method() === 'DELETE') throw new Error('Leaving a job must not delete it');
     return route.fulfill({ status: 404, json: { error: 'fixture' } });
   });
 
-  await page.goto('/jobs/job_fixture');
   const resume = page.getByRole('button', { name: 'ทำต่อจากชุดที่ค้าง' });
   const manage = page.getByRole('button', { name: 'จัดการงาน', exact: true });
-  await expect(resume).toBeDisabled();
-  await expect(resume).toHaveAccessibleDescription('เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้');
+  const workspace = page.getByRole('main');
+  const viewport = page.viewportSize();
   canGenerateAi = true;
+  geminiEnabled = true;
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    let releaseAuthor!: () => void;
+    authorReply = new Promise<void>((resolve) => { releaseAuthor = resolve; });
+    await page.goto('/jobs/job_fixture');
+    await expect(resume).toBeDisabled();
+    await expect(resume).toHaveAccessibleDescription('กำลังตรวจสอบสิทธิ์สร้างบท AI');
+    const workspaceTop = await workspace.evaluate((el) => el.getBoundingClientRect().top);
+    releaseAuthor();
+    await expect(resume).toBeEnabled();
+    expect(await workspace.evaluate((el) => el.getBoundingClientRect().top), `Permission response shifts the editor at ${width}px`).toBe(workspaceTop);
+  }
+  if (viewport) await page.setViewportSize(viewport);
+  canGenerateAi = false;
+  await page.reload();
+  const noAccess = 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้';
+  await expect(resume).toBeDisabled();
+  await expect(resume).toHaveAccessibleDescription(noAccess);
+  await resume.focus();
+  await expect(resume).toBeFocused();
+  await page.getByRole('button', { name: /มีงานที่ยังไม่เสร็จ.*ดูรายละเอียดการทำงาน/ }).click();
+  await expect(page.getByRole('dialog', { name: 'รายละเอียดการทำงาน' }).getByText(noAccess)).toBeVisible();
+  await page.getByRole('button', { name: 'ปิดรายละเอียดการทำงาน' }).click();
+  canGenerateAi = true;
+  geminiEnabled = false;
   await page.reload();
   await expect(resume).toBeDisabled();
   await expect(resume).toHaveAccessibleDescription('ระบบยังไม่ได้ตั้งค่า Gemini');
@@ -101,7 +133,6 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
   await page.reload();
   await expect(resume).toBeEnabled();
 
-  const viewport = page.viewportSize();
   await page.setViewportSize({ width: 320, height: 900 });
   const compactStatus = page.getByRole('button', { name: /มีงานที่ยังไม่เสร็จ.*ดูรายละเอียดการทำงาน/ }).getByText('งานค้าง', { exact: true });
   expect(
@@ -121,13 +152,13 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
   await resume.click();
   const cost = page.getByRole('alertdialog', { name: 'เริ่มสร้างบท AI?' });
   await expect(cost).toContainText('อาจมีค่าใช้จ่าย');
-  expect(started).toBe(false);
+  expect(startRequests).toBe(0);
   await cost.getByRole('button', { name: 'ยกเลิก' }).click();
   await expect(cost).toBeHidden();
-  expect(started).toBe(false);
+  expect(startRequests).toBe(0);
   await resume.click();
   await cost.getByRole('button', { name: 'เริ่มสร้างบท AI' }).click();
-  await expect.poll(() => started, { message: 'Resume did not start' }).toBe(true);
+  await expect.poll(() => startRequests, { message: 'Resume did not start' }).toBe(1);
 
   const confirmReset = page.getByRole('alertdialog', { name: 'เริ่มงานใหม่และออกจากงานปัจจุบัน?' });
   await manage.click();
@@ -174,4 +205,22 @@ test('resume job, narrow status badge, reset confirmation, late response ignore,
   await resume.click();
   const resumeCost = page.getByRole('alertdialog', { name: 'ทำต่อ?' });
   await expect(resumeCost).toContainText('วิเคราะห์ 1 ชุด');
+  await resumeCost.getByRole('button', { name: 'ยกเลิก' }).click();
+
+  await page.getByRole('button', { name: /^เลือกช่วงที่ 2 / }).click();
+  const completedLine = page.getByRole('textbox', { name: 'บทบรรยายที่ 2', exact: true });
+  await completedLine.fill('บทที่แก้แล้ว');
+  await expect(page.getByText('บันทึกไม่สำเร็จ · งานที่แก้ยังอยู่ในหน้านี้')).toBeVisible();
+
+  await resume.click();
+  await resumeCost.getByRole('button', { name: 'ทำต่อ', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'บันทึกการแก้ไขไม่สำเร็จ' })).toBeVisible();
+  expect(startRequests).toBe(2);
+  await expect(page.getByRole('button', { name: /หยุดการวิเคราะห์แล้ว.*ดูรายละเอียดการทำงาน/ })).toBeVisible();
+  await expect(completedLine).toBeEnabled();
+  await page.getByRole('button', { name: /^เลือกช่วงที่ 1 / }).click();
+  await expect(page.getByRole('group', { name: 'เลือกการบรรยายจุดที่ 1' }).getByRole('button', { name: 'บรรยาย', exact: true })).toBeDisabled();
+  await manage.click();
+  await page.getByRole('menuitem', { name: 'ส่งออก SRT' }).click();
+  await expect(partial).toBeVisible();
 });

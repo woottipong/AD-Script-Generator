@@ -226,6 +226,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
   const isRegenerating = !needsResume && generatedSpotsCount > 0 && pendingSpotsCount === 0;
   const generateAd = needsResume ? onRetryFailedBatches : onStartGeminiAnalysis;
   const showPrimaryGenerate = canShowGenerate && !isBusy && !isRegenerating;
+  const generateDisabledReason = showPrimaryGenerate ? aiDisabledReason : null;
   const completeSpotIds = status === 'STOPPED' ? completedAnalysisSpotIds(batches) : null;
   const canExport = !isBusy && (completeSpotIds
     ? spots.some((spot) => completeSpotIds.has(spot.spot_id) && spot.decision === 'generate' && spot.text.trim())
@@ -365,6 +366,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               variant="ghost"
               size="lg"
               aria-label={`${statusText}${activityFeedback?.detail ? ` · ${activityFeedback.detail}` : ''} · ดูรายละเอียดการทำงาน`}
+              aria-describedby={generateDisabledReason ? 'ai-generation-unavailable' : undefined}
               className={`h-10 min-w-0 shrink text-xs max-sm:gap-1 max-sm:px-2 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:has-data-[icon=inline-end]:pr-1.5 lg:max-w-[27rem] pointer-coarse:h-11 ${
                 hasStatusError
                   ? 'border border-error-border bg-error-surface text-error-foreground not-disabled:hover:bg-destructive/15'
@@ -412,6 +414,7 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
               </Button>
             </div>
             <div className="flex flex-col gap-3 px-4 pb-4 pt-2">
+              {generateDisabledReason && <p className="text-muted-foreground">{generateDisabledReason}</p>}
               {activityFeedback && (
                 <p className="leading-relaxed text-muted-foreground">
                   {activityFeedback.detail || activityFeedback.description}
@@ -478,13 +481,20 @@ export const UploadAndVadPanel: React.FC<UploadAndVadPanelProps> = ({
           {status === 'STOPPING' ? 'กำลังหยุด…' : 'หยุดการวิเคราะห์'}
         </Button>
       ) : showPrimaryGenerate ? (
-        <div className="flex min-w-0 flex-col items-start gap-1">
-          <Button size="lg" onClick={generateAd} disabled={Boolean(aiDisabledReason) || (!canGenerateAd && !needsResume)} aria-describedby={aiDisabledReason ? 'ai-generation-unavailable' : undefined} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
+        <>
+          <Button
+            size="lg"
+            onClick={generateAd}
+            disabled={Boolean(generateDisabledReason) || (!canGenerateAd && !needsResume)}
+            focusableWhenDisabled={Boolean(generateDisabledReason)}
+            aria-describedby={generateDisabledReason ? 'ai-generation-unavailable' : undefined}
+            className="h-10 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-primary aria-disabled:active:translate-y-0 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11"
+          >
             <Sparkles data-icon="inline-start" aria-hidden="true" />
             {needsResume ? 'ทำต่อจากชุดที่ค้าง' : 'สร้างบทบรรยายภาพ'}
           </Button>
-          {aiDisabledReason && <p id="ai-generation-unavailable" className="max-w-44 text-xs leading-snug text-muted-foreground">{aiDisabledReason}</p>}
-        </div>
+          {generateDisabledReason && <span id="ai-generation-unavailable" className="sr-only">{generateDisabledReason}</span>}
+        </>
       ) : canExport && (
         <Button size="lg" onClick={onExportSrt} className="h-10 max-sm:gap-1 max-sm:px-2.5 max-sm:has-data-[icon=inline-start]:pl-2 max-sm:text-xs pointer-coarse:h-11">
           <Download data-icon="inline-start" aria-hidden="true" />

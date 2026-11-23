@@ -75,6 +75,15 @@ globalThis.fetch = async (input, init) => {
     return Response.json({}, { headers: { 'x-goog-upload-url': 'https://generativelanguage.googleapis.com/test-upload' } });
   }
   if (pathname === '/test-upload') {
+    if (fs.existsSync('hold-upload')) {
+      const headers = new Headers(init?.headers);
+      const offset = headers.get('x-goog-upload-offset');
+      const command = headers.get('x-goog-upload-command');
+      fs.appendFileSync('upload-offsets', offset + '\\n');
+      while (!fs.existsSync('release-upload')) await new Promise(r => setTimeout(r, 20));
+      if (fs.existsSync('retry-upload')) return Response.json({});
+      if (command === 'upload') return Response.json({}, { headers: { 'x-goog-upload-status': 'active' } });
+    }
     const id = 'upload-' + ++uploads;
     fs.writeFileSync(id, '1');
     return Response.json({ file: {
@@ -345,6 +354,50 @@ test('authorized stop preserves the in-flight batch and resumes with the same qu
     assert.equal((await usage()).remaining, 2);
   });
 });
+
+test('failed start preserves quota and leaves the Job ready to start', { timeout: 20000 }, async () => {
+  await withServer(false, async ({ dir, origin, request }) => {
+    const db = new DatabaseSync(path.join(dir, '.data/envisio.db'));
+    try {
+      db.exec(`CREATE TRIGGER fail_analysis_admission BEFORE UPDATE ON jobs
+        WHEN NEW.status = 'ANALYZING' BEGIN SELECT RAISE(ABORT, 'test write failure'); END`);
+    } finally {
+      db.close();
+    }
+    const usage = async () => (await (await fetch(`${origin}/api/me`)).json()).aiGeneration.remaining;
+    assert.equal(await usage(), 3);
+    assert.equal((await request('/start', 'POST')).status, 500);
+    assert.equal(await usage(), 3);
+    const { job, isRunning } = await (await request()).json();
+    assert.equal(job.status, 'VAD_READY');
+    assert.equal(isRunning, false);
+    assert.ok(!fs.existsSync(path.join(dir, 'entered-1')));
+  });
+});
+
+for (const phase of ['next chunk', 'retry', 'finalize'] as const) {
+  test(`stop during Gemini upload handles ${phase}`, { timeout: 20000 }, async () => {
+    await withServer(false, async ({ dir, request }) => {
+      fs.writeFileSync(path.join(dir, 'old-processing'), '1');
+      fs.writeFileSync(path.join(dir, 'hold-upload'), '1');
+      if (phase !== 'finalize') fs.truncateSync(path.join(dir, '.data/jobs/job_test/source_video.mp4'), 8 * 1024 * 1024 + 1);
+      if (phase === 'retry') fs.writeFileSync(path.join(dir, 'retry-upload'), '1');
+      const offsets = path.join(dir, 'upload-offsets');
+
+      assert.equal((await request('/start', 'POST')).status, 200);
+      await until(() => fs.existsSync(offsets));
+      assert.equal((await request('/stop', 'POST')).status, 200);
+      fs.writeFileSync(path.join(dir, 'release-upload'), '1');
+      await until(async () => !(await (await request()).json()).isRunning);
+
+      const { job } = await (await request()).json();
+      assert.equal(job.status, 'STOPPED');
+      assert.equal(fs.readFileSync(offsets, 'utf8').trim(), '0');
+      assert.equal(fs.existsSync(path.join(dir, 'deleted-upload-1')), phase === 'finalize');
+      assert.ok(!fs.existsSync(path.join(dir, 'entered-1')));
+    });
+  });
+}
 
 test('stop while waiting for the Gemini file skips all analysis and cleans up the upload', { timeout: 20000 }, async () => {
   await withServer(false, async ({ dir, request }) => {

@@ -77,7 +77,7 @@ function geminiApiKey(): string | undefined {
   return key && key !== 'MY_GEMINI_API_KEY' ? key : undefined;
 }
 
-function allowAiGeneration(res: Response, confirmed: unknown, jobId: string): boolean {
+function admitAiAnalysis(res: Response, confirmed: unknown, job: PersistedJobState): boolean {
   const author = res.locals.author as AuthorSession;
   if (!author.canGenerateAi) {
     res.status(401).json({ code: 'AI_ACCESS_REQUIRED', error: 'เฉพาะผู้ดูแลและหัวหน้างานที่สร้างบทด้วย AI ได้' });
@@ -85,7 +85,7 @@ function allowAiGeneration(res: Response, confirmed: unknown, jobId: string): bo
     res.status(500).json({ code: 'AI_NOT_CONFIGURED', error: 'ระบบยังไม่ได้ตั้งค่า Gemini' });
   } else if (confirmed !== true) {
     res.status(400).json({ code: 'AI_CONFIRMATION_REQUIRED', error: 'กรุณายืนยันค่าใช้จ่ายก่อนเริ่มวิเคราะห์' });
-  } else if (!store.reserveAiUsage(author.sub, thailandDay.format(), jobId, aiDailyLimit)) {
+  } else if (!store.save(job, { authorSub: author.sub, day: thailandDay.format(), limit: aiDailyLimit })) {
     res.status(429).json({ code: 'AI_DAILY_QUOTA_EXHAUSTED', error: 'ใช้โควตาสร้างบท AI ครบแล้ววันนี้' });
   } else {
     return true;
@@ -104,7 +104,15 @@ function sanitizeApiStatusCode(code: number): number {
   return code;
 }
 
-function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
+function fetchUntilStopped(signal: AbortSignal): typeof fetch {
+  return (input, init) => {
+    // Let an in-flight finalize return the file name for cleanup.
+    signal.throwIfAborted();
+    return fetch(input, init);
+  };
+}
+
+function getGeminiClient(options?: { fastFail?: boolean; stopBeforeFetch?: AbortSignal }): GoogleGenAI {
   const apiKey = geminiApiKey();
   if (!apiKey) {
     throw new Error(
@@ -122,6 +130,7 @@ function getGeminiClient(options?: { fastFail?: boolean }): GoogleGenAI {
       retryOptions: fastFail
         ? { attempts: 1 }
         : { attempts: 2, initialDelay: 1, maxDelay: 4 },
+      ...(options?.stopBeforeFetch ? { fetch: fetchUntilStopped(options.stopBeforeFetch) } : {}),
     },
   });
 }
@@ -273,6 +282,7 @@ async function ensureActiveGeminiFileUri(
   onProgressStage?: (stage: string) => void
 ): Promise<{ uri: string; mimeType: string }> {
   signal.throwIfAborted();
+  const fileStatusConfig = { httpOptions: { fetch: fetchUntilStopped(signal) } };
   const existingName = job.gemini_file_name;
   if (existingName) {
     const expiresMs = job.gemini_file_expires_at
@@ -288,7 +298,7 @@ async function ensureActiveGeminiFileUri(
     }
 
     try {
-      const remoteFile = await uploadAi.files.get({ name: existingName });
+      const remoteFile = await uploadAi.files.get({ name: existingName, config: fileStatusConfig });
       if (remoteFile && remoteFile.state === 'ACTIVE' && remoteFile.uri) {
         verifiedActiveFileNames.add(existingName);
         return {
@@ -298,6 +308,7 @@ async function ensureActiveGeminiFileUri(
       }
     } catch {
       verifiedActiveFileNames.delete(existingName);
+      signal.throwIfAborted();
     }
   }
 
@@ -315,7 +326,7 @@ async function ensureActiveGeminiFileUri(
 
   onProgressStage?.('กำลังส่งไฟล์วิดีโอไปยัง Gemini Files API...');
   signal.throwIfAborted();
-  const uploaded = await uploadAi.files.upload({
+  const uploaded = await getGeminiClient({ stopBeforeFetch: signal }).files.upload({
     file: videoPath,
     config: {
       httpOptions: { retryOptions: { attempts: 1 } },
@@ -342,7 +353,7 @@ async function ensureActiveGeminiFileUri(
   for (let attempt = 1; currentFile.state === 'PROCESSING' && attempt <= maxPollAttempts; attempt++) {
     onProgressStage?.(`รอ Gemini Files API ประมวลผลไฟล์วิดีโอ (${attempt * 2} วินาที)...`);
     await delay(2000, undefined, { signal });
-    currentFile = await uploadAi.files.get({ name });
+    currentFile = await uploadAi.files.get({ name, config: fileStatusConfig });
   }
   signal.throwIfAborted();
 
@@ -1084,9 +1095,11 @@ async function startServer() {
         progress_percent: batches.length === 0 ? 100 : willAnalyzeNow ? 8 : undefined,
       };
 
-      if (willAnalyzeNow && !allowAiGeneration(res, req.body?.confirmAiCost === 'true' || req.body?.confirmAiCost === true, jobId)) return;
-
-      store.save(jobState);
+      if (willAnalyzeNow) {
+        if (!admitAiAnalysis(res, req.body?.confirmAiCost === 'true' || req.body?.confirmAiCost === true, jobState)) return;
+      } else {
+        store.save(jobState);
+      }
       uploadActivity.delete(jobId);
       uploadOwners.delete(jobId);
 
@@ -1216,11 +1229,10 @@ async function startServer() {
         return;
       }
     } else {
-      if (!allowAiGeneration(res, req.body?.confirmAiCost, jobId)) return;
       job.status = 'ANALYZING';
       job.error_message = undefined;
       job.progress_stage = 'กำลังเชื่อมต่อ Gemini เพื่อเริ่มวิเคราะห์ชุดข้อมูล...';
-      store.save(job);
+      if (!admitAiAnalysis(res, req.body?.confirmAiCost, job)) return;
     }
 
     void runJobInBackground(jobId, isResumingStoppedJob).catch(() => console.error('Failed to run job processing'));
@@ -1315,17 +1327,16 @@ async function startServer() {
         return;
       }
 
-      if (!allowAiGeneration(res, req.body?.confirmAiCost, jobId)) return;
       const isResumingStoppedJob = job.status === 'STOPPED';
-      const lock = createProcessingLock(jobId);
-      activeProcessingLock = lock;
       batch.status = 'processing';
       batch.error = undefined;
       job.status = 'ANALYZING';
       job.error_message = undefined;
+      if (!admitAiAnalysis(res, req.body?.confirmAiCost, job)) return;
+      const lock = createProcessingLock(jobId);
+      activeProcessingLock = lock;
       let uploadAi: GoogleGenAI | undefined;
       try {
-        store.save(job);
         uploadAi = getGeminiClient({ fastFail: false });
         const fastAi = getGeminiClient({ fastFail: true });
         if (isResumingStoppedJob && job.gemini_file_name) await clearStoppedGeminiFile(uploadAi, job);

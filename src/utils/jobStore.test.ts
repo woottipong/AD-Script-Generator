@@ -249,14 +249,16 @@ test('daily AI quota counts distinct jobs per author and day across connections'
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'envisio-ai-quota-'));
   const store = createJobStore(dataDir);
   const second = createJobStore(dataDir);
+  const firstDay = { authorSub: 'author-a', day: '2026-11-23', limit: 3 };
   try {
     for (const jobId of ['job_one', 'job_two', 'job_three']) {
-      assert.equal(store.reserveAiUsage('author-a', '2026-11-23', jobId, 3), true);
+      assert.equal(store.save(reviewJob(jobId), firstDay), true);
     }
-    assert.equal(second.reserveAiUsage('author-a', '2026-11-23', 'job_one', 3), true);
-    assert.equal(second.reserveAiUsage('author-a', '2026-11-23', 'job_four', 3), false);
-    assert.equal(second.reserveAiUsage('author-b', '2026-11-23', 'job_four', 3), true);
-    assert.equal(second.reserveAiUsage('author-a', '2026-11-24', 'job_four', 3), true);
+    assert.equal(second.save(reviewJob('job_one'), firstDay), true);
+    assert.equal(second.save(reviewJob('job_four'), firstDay), false);
+    assert.equal(second.load('job_four'), null);
+    assert.equal(second.save(reviewJob('job_four'), { ...firstDay, authorSub: 'author-b' }), true);
+    assert.equal(second.save(reviewJob('job_four'), { ...firstDay, day: '2026-11-24' }), true);
     assert.equal(store.aiUsage('author-a', '2026-11-23').length, 3);
   } finally {
     second.close();

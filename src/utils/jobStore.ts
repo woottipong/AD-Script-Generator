@@ -33,6 +33,8 @@ export type StoredJobRecord = StoredJobSummary & { owner_sub?: string | null };
 /** Everything a Job holds except its VAD output and AD Spots. */
 export type JobMeta = Omit<PersistedJobState, 'vad_output' | 'spots'>;
 
+type AnalysisAdmission = { authorSub: string; day: string; limit: number };
+
 /**
  * Schema changes in order: a database at `user_version` N has run the first N. A released migration is
  * never edited; a schema change is a new entry at the end, which every database runs once on next start.
@@ -301,16 +303,23 @@ export function createJobStore(dataDir: string) {
   }
 
   /** VAD output never changes after the Job is created, so only the first save writes its file. */
-  function save(job: PersistedJobState): void {
+  function save(job: PersistedJobState, admission?: AnalysisAdmission): boolean {
     const jobDir = dirOf(job.job_id);
-    fs.mkdirSync(jobDir, { recursive: true });
     const vadFile = path.join(jobDir, 'vad_output.json');
-    const createsVad = !fs.existsSync(vadFile);
-    if (createsVad) writeAtomically(vadFile, JSON.stringify(job.vad_output, null, 2));
     const updatedAt = new Date().toISOString();
     const json = (value: unknown) => (value === undefined ? null : JSON.stringify(value));
+    let createdVad = false;
     db.exec('BEGIN IMMEDIATE');
     try {
+      if (admission && !reserveAiUsage(admission.authorSub, admission.day, job.job_id, admission.limit)) {
+        db.exec('ROLLBACK');
+        return false;
+      }
+      fs.mkdirSync(jobDir, { recursive: true });
+      if (!fs.existsSync(vadFile)) {
+        writeAtomically(vadFile, JSON.stringify(job.vad_output, null, 2));
+        createdVad = true;
+      }
       upsertJob.run(job.job_id, job.schema_version, job.title, job.mode, job.status, job.video_metadata.fileName,
         job.video_metadata.durationMs, job.video_source.kind, JSON.stringify(job.video_source), JSON.stringify(job.video_metadata),
         JSON.stringify(job.vad_config), json(job.ad_settings), json(job.srt_source), JSON.stringify(job.batches),
@@ -326,10 +335,11 @@ export function createJobStore(dataDir: string) {
     } catch (err) {
       db.exec('ROLLBACK');
       // A Job that was never created must not leave a VAD file that no row or listing can reach.
-      if (createsVad) fs.rmSync(vadFile, { force: true });
+      if (createdVad) fs.rmSync(vadFile, { force: true });
       throw err;
     }
     job.updated_at = updatedAt;
+    return true;
   }
 
   /** Persists only the live progress fields; returns false when the Job no longer exists. */
@@ -420,5 +430,5 @@ export function createJobStore(dataDir: string) {
   }
 
   return { dirOf, exists, loadMeta, loadSpots, load, save, saveProgress, rename, list, deleteJob, updateOwnerEmail,
-    aiUsage, reserveAiUsage, recordAiStop, close };
+    aiUsage, recordAiStop, close };
 }
